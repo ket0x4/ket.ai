@@ -1,2 +1,4 @@
 langchain_community
 telebot
+python-dotenv
+psutil

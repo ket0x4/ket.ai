@@ -1,0 +1,25 @@
+{
+  "owner": "owner id",
+  "bot": "bot name",
+  "token": "bot token",
+  "api_url": "http://localhost:11434",
+  "llm_model": "phi3",
+  "vision_model": "phi3-vision",
+  "debug": false,
+  "lite": false,
+  "admins": [
+    123456789,
+    123456789,
+    123456789
+  ],
+  "users": [
+    123456789,
+    123456789,
+    123456789
+  ],
+  "groups": [
+    -100123456789,
+    -100123456789,
+    -100123456789
+  ]
+}
