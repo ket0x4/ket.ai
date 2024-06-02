@@ -8,6 +8,6 @@ Usage:
 `source .venv/bin/activate`\
 4- Install requirements\
 `pip install -r requirements.txt`\
-5- Create rename `settings.json.example` to `settings.json` and fill\
+5- Rename `settings.json.example` to `settings.json` and fill\
 6- Run the bot\
 `python bot.py`
