@@ -28,5 +28,8 @@
     "ket",
     "sor",
     "ask"
+  ],
+  "board": [
+    "Raspberry Pi 4"
   ]
 }
