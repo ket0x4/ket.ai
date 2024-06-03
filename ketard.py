@@ -3,7 +3,9 @@ import os
 import psutil
 import json
 import telebot
+import requests
 from langchain_community.llms import Ollama
+import threading
 
 # Load JSON data
 try:
@@ -12,7 +14,6 @@ try:
         ALLOWED_CHATS = data["groups"]
         ALLOWED_USERS = data["users"]
         ADMINS = data["admins"]
-        TOKEN = data["token"]
         NAME = data["bot"]
         DEBUG = data["debug"]
         LITE = data["lite"]
@@ -31,22 +32,47 @@ logging.basicConfig(
     handlers=[logging.FileHandler("bot.log"), logging.StreamHandler()],
 )
 
+# Set up token
+if DEBUG:
+    logging.info("Debug mode enabled.")
+    if data["debug_token"]:
+        TOKEN = data["debug_token"]
+        logging.info("Using debug token.")
+else:
+    logging.warning("Debug token not found in settings.json. Using default token.")
+    TOKEN = data["token"]
+
 
 # Ollama setup
 def ollama_function(model, prompt):
+    global ollama_url
     if not model:
         model = LLM_MODEL
-    url = f"{API_URL}/api/generate"
+    ollama_url = f"{API_URL}/api/generate"
     data = f'{{ "model": "{model}", "prompt": "{prompt}" }}'
     # Example for making HTTP request:
     # response = requests.post(url, json=data)
     # Handle response appropriately
 
 
+# check ollama api reachability
+def check_ollama_api():
+    try:
+        response = requests.get(API_URL)
+        if response.status_code == 200:
+            return True
+        else:
+            return False
+    except requests.exceptions.RequestException as e:
+        return False
+
+
 bot = telebot.TeleBot(TOKEN)
 ollama = Ollama(base_url=API_URL, model=LLM_MODEL)
 process_next_message = False
+queue_count = 0
 board = "Raspberry Pi 4"
+version = "2.2-testing"
 
 
 # Restart Ollama command
@@ -54,7 +80,7 @@ board = "Raspberry Pi 4"
 def restart_bot(message):
     if str(message.from_user.id) in map(str, ADMINS):
         bot.reply_to(message, f"Restarting {NAME}...")
-        logging.info(f"Restarting {NAME}...")
+        logging.info(f"`Restarting {NAME}...`", parse_mode="Markdown")
         try:
             # os.system("sudo systemctl restart ollama.service")
             bot.send_message(ADMINS[0], f"{NAME} restarted.")
@@ -72,10 +98,12 @@ def restart_bot(message):
 @bot.message_handler(commands=["model"])
 def handle_model_command(message):
     if str(message.from_user.id) in map(str, ADMINS):
+        command = message.text.split()[0]
+        user_id = message.text.split()[1]
         if LITE:
             bot.reply_to(
                 message,
-                f"`Using other model than phi3-mini not supported on {board}`",
+                f"Using other model than phi3-mini not supported on `{board}`. To override, set `lite` to False in settings.json",
                 parse_mode="Markdown",
             )
         else:
@@ -83,7 +111,7 @@ def handle_model_command(message):
         logging.info("Model change command invoked.")
     else:
         bot.reply_to(message, "You are not allowed to use this command.")
-        logging.warning("Unauthorized model change attempt.")
+        logging.warning(f"{user_id} tried to use restricted command.")
 
 
 # Add/remove allowed users
@@ -114,27 +142,34 @@ def handle_allow_command(message):
                 logging.warning(f"User {user_id} is not in the allowed users list.")
     else:
         bot.reply_to(message, "You are not allowed to use this command.")
-        logging.warning("Unauthorized attempt to modify allowed users.")
+        logging.warning(f"{user_id} tried to use restricted command.")
 
 
 # Initial vision model support
 @bot.message_handler(commands=["vision"])
 def handle_vision_command(message):
+    user_id = message.text.split()[1]
     bot.reply_to(message, "`Not implemented yet.`", parse_mode="Markdown")
-    logging.info("User tried to use unimplemented command: /vision")
+    logging.info(f"{user_id} tried to use unimplemented command: /vision")
 
 
 # Initial OCR support
 @bot.message_handler(commands=["ocr"])
 def handle_ocr_command(message):
+    user_id = message.text.split()[1]
     bot.reply_to(message, "`Not implemented yet.`", parse_mode="Markdown")
-    logging.info("User tried to use unimplemented command: /ocr")
+    logging.info(f"{user_id} tried to use unimplemented command: /ocr")
+
+
+# Initialize a global variable for the queue
+queue_count = 0
 
 
 # Handle incoming messages with /ket command
 @bot.message_handler(commands=["ket", "sor", "ask", "zirlamican"])
 def handle_ket_command(message):
     global process_next_message
+    global queue_count  # Use the global queue_count variable
     process_next_message = True
     try:
         chat_id = str(message.chat.id)
@@ -144,17 +179,22 @@ def handle_ket_command(message):
             or chat_id in map(str, ALLOWED_CHATS)
             or user_id in map(str, ALLOWED_USERS)
         ):
+            queue_count += (
+                1  # Increase the queue count when a new user uses the /ket command
+            )
             bot.reply_to(
                 message,
-                f"`{NAME} currently processing your prompt. This may take a while depending on current system load`",
+                f"`{NAME}` Processing your prompt. Check `/status` for more info. `/stopgen` to stop.",
                 parse_mode="Markdown",
             )
+
             prompt = message.text.replace("/ket", "").strip()
             response = ollama.invoke(prompt)
             bot.reply_to(message, response, parse_mode="Markdown")
             logging.info(
                 f"Processed /ket command from user {user_id} in chat {chat_id}."
             )
+            queue_count -= 1  # Decrease the queue count after sending the reply
         else:
             bot.reply_to(message, "Ket.ai not allowed on this chat.")
             logging.warning(
@@ -178,8 +218,21 @@ def handle_help_command(message):
 # Handle status command
 @bot.message_handler(commands=["status"])
 def handle_status_command(message):
-    bot.reply_to(message, "`Ket.ai is running...`", parse_mode="Markdown")
+    ollama_status = "`Avabile`" if check_ollama_api() else "`Not available`"
+    load = os.getloadavg()
+    cpu_load = f"{load[0]:.2f}"
+    threading.Thread(
+        target=send_status_message, args=(message, ollama_status, cpu_load)
+    ).start()
     logging.info("Status command invoked.")
+
+
+def send_status_message(message, ollama_status, cpu_load):
+    bot.reply_to(
+        message,
+        f"Ollama api: {ollama_status}\nCPU load: `{cpu_load}%`\nDebug: `{DEBUG}`\nLite: `{LITE}`\nVersion: `{version}`\nQueued prompts: `{queue_count}`",
+        parse_mode="Markdown",
+    )
 
 
 # Get system usage info
@@ -220,6 +273,11 @@ def get_cpu_temperature():
 @bot.message_handler(commands=["boardinfo"])
 def handle_board_info_command(message):
     """Get system information."""
+    threading.Thread(target=send_board_info_message, args=(message,)).start()
+    logging.info("Board info command invoked.")
+
+
+def send_board_info_message(message):
     try:
         device = f"**Board:** `{board}`"
         cpu_usage = get_cpu_usage()
@@ -227,7 +285,6 @@ def handle_board_info_command(message):
         cpu_temp = get_cpu_temperature()
         info = f"{device}\n{cpu_usage}\n{ram_usage}\n{cpu_temp}"
         bot.reply_to(message, info, parse_mode="Markdown")
-        logging.info("Board info command invoked.")
     except Exception as e:
         bot.send_message(ADMINS[0], f"An error occurred: {str(e)}")
         logging.error(f"Error fetching board info: {str(e)}")

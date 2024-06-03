@@ -2,6 +2,7 @@
   "owner": "owner id",
   "bot": "bot name",
   "token": "bot token",
+  "debug_token": "optional. debug token for testing purposes",
   "api_url": "http://localhost:11434",
   "llm_model": "phi3",
   "vision_model": "phi3-vision",

@@ -7,3 +7,4 @@ settings.json
 llama.py
 start.sh
 pork/
+vision.py
