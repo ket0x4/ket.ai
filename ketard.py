@@ -14,6 +14,7 @@ try:
         ALLOWED_CHATS = data["groups"]
         ALLOWED_USERS = data["users"]
         ADMINS = data["admins"]
+        BOARD = data["board"]
         NAME = data["bot"]
         DEBUG = data["debug"]
         LITE = data["lite"]
@@ -21,6 +22,7 @@ try:
         API_URL = data["api_url"]
         LLM_MODEL = data["llm_model"]
         VISION_MODEL = data["vision_model"]
+        GEN_COMMANDS = data["gen_commands"]
 except FileNotFoundError:
     logging.critical("settings.json file not found. Please create one.")
     exit(1)
@@ -71,7 +73,7 @@ bot = telebot.TeleBot(TOKEN)
 ollama = Ollama(base_url=API_URL, model=LLM_MODEL)
 process_next_message = False
 queue_count = 0
-board = "Raspberry Pi 4"
+board = BOARD
 version = "2.2-testing"
 
 
@@ -166,7 +168,7 @@ queue_count = 0
 
 
 # Handle incoming messages with /ket command
-@bot.message_handler(commands=["ket", "sor", "ask", "zirlamican"])
+@bot.message_handler(commands=GEN_COMMANDS)
 def handle_ket_command(message):
     global process_next_message
     global queue_count  # Use the global queue_count variable
@@ -182,6 +184,15 @@ def handle_ket_command(message):
             queue_count += (
                 1  # Increase the queue count when a new user uses the /ket command
             )
+
+            prompt = message.text.split(' ', 1)
+            if len(prompt) == 1 or not prompt[1].strip():
+                bot.reply_to(message, "Please enter a message after the command.")
+                queue_count -= 1  # Decrease the queue count if no prompt is provided
+                return
+            
+            prompt = prompt[1].strip()
+
             bot.reply_to(
                 message,
                 f"`{NAME}` Processing your prompt. Check `/status` for more info. `/stopgen` to stop.",
@@ -218,7 +229,7 @@ def handle_help_command(message):
 # Handle status command
 @bot.message_handler(commands=["status"])
 def handle_status_command(message):
-    ollama_status = "`Avabile`" if check_ollama_api() else "`Not available`"
+    ollama_status = "`Available`" if check_ollama_api() else "`Not available`"
     load = os.getloadavg()
     cpu_load = f"{load[0]:.2f}"
     threading.Thread(

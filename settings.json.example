@@ -23,4 +23,13 @@
     -100123456789,
     -100123456789
   ]
+  "gen_commands": [
+    "zirlamıcan",
+    "ket",
+    "sor",
+    "ask"
+  ],
+  "board": [
+    "Raspberry Pi 4"
+  ]
 }
