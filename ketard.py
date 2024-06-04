@@ -2,10 +2,12 @@ import logging
 import os
 import psutil
 import json
-import telebot
 import requests
 from langchain_community.llms import Ollama
 import threading
+
+from pyrogram import Client, filters, enums, idle
+from pyrogram.types import Message
 
 # Load JSON data
 try:
@@ -69,7 +71,14 @@ def check_ollama_api():
         return False
 
 
-bot = telebot.TeleBot(TOKEN)
+bot = Client(
+    name=data["bot"],
+    api_id=data["api_id"],
+    api_hash=data["api_hash"],
+    bot_token=TOKEN,
+    parse_mode=enums.ParseMode.MARKDOWN,
+    # skip_updates (bool, optional) – Pass True to skip pending updates that arrived while the client was offline. Defaults to True.
+)
 ollama = Ollama(base_url=API_URL, model=LLM_MODEL)
 process_next_message = False
 queue_count = 0
@@ -78,89 +87,140 @@ version = "2.2-testing"
 
 
 # Restart Ollama command
-@bot.message_handler(commands=["restart"])
-def restart_bot(message):
+@bot.on_message(filters.command(["restart"]))
+async def restart_bot(bot, message):
     if str(message.from_user.id) in map(str, ADMINS):
-        bot.reply_to(message, f"Restarting {NAME}...")
-        logging.info(f"`Restarting {NAME}...`", parse_mode="Markdown")
+        x = await message.reply_text(
+            f"Restarting {NAME}...",
+            quote=True
+        )
+        logging.info(
+            f"`Restarting {NAME}...`"
+        )
         try:
             # os.system("sudo systemctl restart ollama.service")
-            bot.send_message(ADMINS[0], f"{NAME} restarted.")
-        except Exception as e:
-            bot.reply_to(
-                message, f"An error occurred: {str(e)}. Sending error logs to admins..."
+            await bot.send_message(
+                ADMINS[0],
+                f"{NAME} restarted."
             )
-            logging.error(f"Error while restarting: {str(e)}")
+        except Exception as e:
+            await x.edit_text(
+                f"An error occurred: {str(e)}. Sending error logs to admins..."
+            )
+            logging.error(
+                f"Error while restarting: {str(e)}"
+            )
     else:
-        bot.reply_to(message, "You are not allowed to use this command.")
+        await message.reply_text(
+            "You are not allowed to use this command.",
+            quote=True
+        )
         logging.warning("Unauthorized restart attempt.")
 
 
 # Change model command
-@bot.message_handler(commands=["model"])
-def handle_model_command(message):
+@bot.on_message(filters.command(["model"]))
+async def handle_model_command(bot, message):
     if str(message.from_user.id) in map(str, ADMINS):
         command = message.text.split()[0]
         user_id = message.text.split()[1]
         if LITE:
-            bot.reply_to(
-                message,
+            await message.reply_text(
                 f"Using other model than phi3-mini not supported on `{board}`. To override, set `lite` to False in settings.json",
-                parse_mode="Markdown",
+                quote=True
             )
         else:
-            bot.reply_to(message, "`Not implemented yet.`", parse_mode="Markdown")
+            await message.reply_text(
+                "`Not implemented yet.`",
+                quote=True
+            )
         logging.info("Model change command invoked.")
     else:
-        bot.reply_to(message, "You are not allowed to use this command.")
-        logging.warning(f"{user_id} tried to use restricted command.")
+        await message.reply_text(
+            "You are not allowed to use this command.",
+            quote=True
+        )
+        logging.warning(
+            f"{user_id} tried to use restricted command."
+        )
 
 
 # Add/remove allowed users
-@bot.message_handler(commands=["allow", "remove"])
-def handle_allow_command(message):
+@bot.on_message(filters.command(["allow", "remove"]))
+async def handle_allow_command(bot, message):
     if str(message.from_user.id) in map(str, ADMINS):
-        command = message.text.split()[0]
-        user_id = message.text.split()[1]
+        command = message.command[0]
+        user_id = message.command[1]
         if command == "/allow":
             if user_id not in ALLOWED_USERS:
                 ALLOWED_USERS.append(user_id)
-                bot.reply_to(message, f"User {user_id} added to allowed users.")
-                logging.info(f"User {user_id} added to allowed users.")
-            else:
-                bot.reply_to(
-                    message, f"User {user_id} is already in the allowed users list."
+                await message.reply_text(
+                    f"User {user_id} added to allowed users.",
+                    quote=True
                 )
-                logging.warning(f"User {user_id} is already in the allowed users list.")
+                logging.info(
+                    f"User {user_id} added to allowed users."
+                )
+            else:
+                await message.reply_text(
+                    f"User {user_id} is already in the allowed users list.",
+                    quote=True
+                )
+                logging.warning(
+                    f"User {user_id} is already in the allowed users list."
+                )
         elif command == "/remove":
             if user_id in ALLOWED_USERS:
                 ALLOWED_USERS.remove(user_id)
-                bot.reply_to(message, f"User {user_id} removed from allowed users.")
-                logging.info(f"User {user_id} removed from allowed users.")
-            else:
-                bot.reply_to(
-                    message, f"User {user_id} is not in the allowed users list."
+                await message.reply_text(
+                    f"User {user_id} removed from allowed users.",
+                    quote=True
                 )
-                logging.warning(f"User {user_id} is not in the allowed users list.")
+                logging.info(
+                    f"User {user_id} removed from allowed users."
+                )
+            else:
+                await message.reply_text(
+                    f"User {user_id} is not in the allowed users list.",
+                    quote=True
+                )
+                logging.warning(
+                    f"User {user_id} is not in the allowed users list."
+                )
     else:
-        bot.reply_to(message, "You are not allowed to use this command.")
-        logging.warning(f"{user_id} tried to use restricted command.")
+        await message.reply_text(
+            "You are not allowed to use this command.",
+            quote=True
+        )
+        logging.warning(
+            f"{user_id} tried to use restricted command."
+        )
 
 
 # Initial vision model support
-@bot.message_handler(commands=["vision"])
-def handle_vision_command(message):
+@bot.on_message(filters.command(["vision"]))
+async def handle_vision_command(bot, message):
     user_id = message.text.split()[1]
-    bot.reply_to(message, "`Not implemented yet.`", parse_mode="Markdown")
-    logging.info(f"{user_id} tried to use unimplemented command: /vision")
+    await message.reply_text(
+        "`Not implemented yet.`",
+        queue=True
+    )
+    logging.info(
+        f"{user_id} tried to use unimplemented command: /vision"
+    )
 
 
 # Initial OCR support
-@bot.message_handler(commands=["ocr"])
-def handle_ocr_command(message):
+@bot.on_message(commands(["ocr"]))
+async def handle_ocr_command(bot, message):
     user_id = message.text.split()[1]
-    bot.reply_to(message, "`Not implemented yet.`", parse_mode="Markdown")
-    logging.info(f"{user_id} tried to use unimplemented command: /ocr")
+    await message.reply_text(
+        "`Not implemented yet.`",
+        quote=True
+    )
+    logging.info(
+        f"{user_id} tried to use unimplemented command: /ocr"
+    )
 
 
 # Initialize a global variable for the queue
@@ -168,8 +228,8 @@ queue_count = 0
 
 
 # Handle incoming messages with /ket command
-@bot.message_handler(commands=GEN_COMMANDS)
-def handle_ket_command(message):
+@bot.on_message(filters.command(GEN_COMMANDS))
+async def handle_ket_command(bot, message):
     global process_next_message
     global queue_count  # Use the global queue_count variable
     process_next_message = True
@@ -187,48 +247,60 @@ def handle_ket_command(message):
 
             prompt = message.text.split(' ', 1)
             if len(prompt) == 1 or not prompt[1].strip():
-                bot.reply_to(message, "Please enter a message after the command.")
+                await message.reply_text(
+                    "Please enter a message after the command.",
+                    quote=True
+                )
                 queue_count -= 1  # Decrease the queue count if no prompt is provided
                 return
             
             prompt = prompt[1].strip()
 
-            bot.reply_to(
-                message,
+            await message.reply_text(
                 f"`{NAME}` Processing your prompt. Check `/status` for more info. `/stopgen` to stop.",
-                parse_mode="Markdown",
+                quote=True
             )
 
             prompt = message.text.replace("/ket", "").strip()
             response = ollama.invoke(prompt)
-            bot.reply_to(message, response, parse_mode="Markdown")
+            await message.reply_text(
+                response, quote=True
+            )
             logging.info(
                 f"Processed /ket command from user {user_id} in chat {chat_id}."
             )
             queue_count -= 1  # Decrease the queue count after sending the reply
         else:
-            bot.reply_to(message, "Ket.ai not allowed on this chat.")
+            await message.reply_text(
+                "Ket.ai not allowed on this chat.",
+                quote=True
+            )
             logging.warning(
                 f"Unauthorized /ket command attempt by user {user_id} in chat {chat_id}."
             )
     except Exception as e:
-        bot.send_message(ADMINS[0], f"An error occurred: {str(e)}")
-        logging.error(f"Error processing /ket command: {str(e)}")
+        await bot.send_message(
+            ADMINS[0],
+            f"An error occurred: {str(e)}"
+        )
+        logging.error(
+            f"Error processing /ket command: {str(e)}"
+        )
 
 
 # Handle help command
-@bot.message_handler(commands=["help"])
-def handle_help_command(message):
-    bot.reply_to(
-        message,
+@bot.on_message(filters.command(["help"]))
+async def handle_help_command(bot, message):
+    await message.reply_text(
         "To use Ket.ai, type /ket followed by your prompt. For example, /ket What is the meaning of life?\nCreator: @ket0x004",
+        quote=True
     )
     logging.info("Help command invoked.")
 
 
 # Handle status command
-@bot.message_handler(commands=["status"])
-def handle_status_command(message):
+@bot.on_message(filters.command(["status"]))
+async def handle_status_command(bot, message):
     ollama_status = "`Available`" if check_ollama_api() else "`Not available`"
     load = os.getloadavg()
     cpu_load = f"{load[0]:.2f}"
@@ -238,11 +310,10 @@ def handle_status_command(message):
     logging.info("Status command invoked.")
 
 
-def send_status_message(message, ollama_status, cpu_load):
-    bot.reply_to(
-        message,
+async def send_status_message(message, ollama_status, cpu_load):
+    await message.reply_text(
         f"Ollama api: {ollama_status}\nCPU load: `{cpu_load}%`\nDebug: `{DEBUG}`\nLite: `{LITE}`\nVersion: `{version}`\nQueued prompts: `{queue_count}`",
-        parse_mode="Markdown",
+        quote=True
     )
 
 
@@ -281,30 +352,42 @@ def get_cpu_temperature():
 
 
 # Handle board info command
-@bot.message_handler(commands=["boardinfo"])
-def handle_board_info_command(message):
+@bot.on_message(filters.command(["boardinfo"]))
+async def handle_board_info_command(bot, message):
     """Get system information."""
     threading.Thread(target=send_board_info_message, args=(message,)).start()
     logging.info("Board info command invoked.")
 
 
-def send_board_info_message(message):
+async def send_board_info_message(message):
     try:
         device = f"**Board:** `{board}`"
         cpu_usage = get_cpu_usage()
         ram_usage = get_ram_usage()
         cpu_temp = get_cpu_temperature()
         info = f"{device}\n{cpu_usage}\n{ram_usage}\n{cpu_temp}"
-        bot.reply_to(message, info, parse_mode="Markdown")
+        await message.reply_text(
+            info, quote=True
+        )
     except Exception as e:
-        bot.send_message(ADMINS[0], f"An error occurred: {str(e)}")
-        logging.error(f"Error fetching board info: {str(e)}")
+        await bot.send_message(
+            ADMINS[0],
+            f"An error occurred: {str(e)}"
+        )
+        logging.error(
+            f"Error fetching board info: {str(e)}"
+        )
 
 
-try:
-    bot.polling()
-except telebot.apihelper.ApiException as e:
-    logging.error(f"An API exception occurred: {str(e)}")
-except KeyboardInterrupt:
-    bot.stop_polling()
-    logging.info("Exiting...")
+async def main():
+    logging.info("Bot starting...")
+    await bot.start()
+    logging.info("Bot started.")
+    await idle()
+    logging.info("Bot stopping...")
+    await bot.stop()
+    logging.info("Bot stopped.")
+    
+if __name__ == "__main__":
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(main())
