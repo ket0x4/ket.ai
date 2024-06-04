@@ -10,6 +10,7 @@
   "vision_model": "phi3-vision",
   "debug": false,
   "lite": false,
+  "board": "Raspberry Pi 5"
   "admins": [
     123456789,
     123456789,
@@ -30,8 +31,5 @@
     "ket",
     "sor",
     "ask"
-  ],
-  "board": [
-    "Raspberry Pi 4"
   ]
 }
