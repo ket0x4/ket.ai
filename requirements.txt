@@ -1,4 +1,4 @@
 langchain_community
-telebot
+https://github.com/KurimuzonAkuma/pyrogram/archive/dev.zip
 python-dotenv
 psutil
