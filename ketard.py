@@ -113,7 +113,7 @@ async def handle_ket_command(bot, message):
                 quote=True,
             )
 
-            prompt = message.text.replace("/ket", "").strip()
+            prompt = message.text.split(" ", 1)[1]
             response = ollama.invoke(prompt)
             await message.reply_text(response, quote=True)
             logging.info(f"Processed prompt from user {user_id} in chat {chat_id}.")
