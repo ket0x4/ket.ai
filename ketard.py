@@ -2,6 +2,8 @@ import asyncio
 from imaplib import Commands
 import logging
 import os
+import time
+import random
 import psutil
 import json
 import requests
@@ -136,8 +138,9 @@ async def handle_ket_command(bot, message):
 # Handle help command
 @bot.on_message(filters.command(["help"]))
 async def handle_help_command(bot, message):
+    rnd_comm = random.choice(GEN_COMMANDS)
     await message.reply_text(
-        f"To use {NAME}, type /ket followed by your prompt. For example, `/ket What is the meaning of life?`\nCreator: `@ket0x004`",
+        f"To use {NAME}, type /{rnd_comm} followed by your prompt. For example:\n`/{rnd_comm} What is the meaning of life?`",
         quote=True,
     )
     logging.info("Help command invoked.")
