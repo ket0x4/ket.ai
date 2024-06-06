@@ -114,8 +114,13 @@ async def handle_ket_command(bot, message):
             )
 
             prompt = message.text.split(" ", 1)[1]
+            start_time = time.time()  # Record start time
             response = ollama.invoke(prompt)
-            await message.reply_text(response, quote=True)
+            end_time = time.time()  # Record end time
+            generation_time = round(end_time - start_time, 2)  # Calculate generation time
+            model_name = ollama.model  # Get model name
+            formatted_response = f"{response}\n\n⌛️{generation_time}sec | 🦙 {model_name}"
+            await message.reply_text(formatted_response, quote=True)
             logging.info(f"Processed prompt from user {user_id} in chat {chat_id}.")
             queue_count -= 1  # Decrease the queue count after sending the reply
         else:
