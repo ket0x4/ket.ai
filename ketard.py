@@ -126,7 +126,7 @@ async def handle_ket_command(bot, message):
             logging.info(f"Processed prompt from user {user_id} in chat {chat_id}.")
             queue_count -= 1  # Decrease the queue count after sending the reply
         else:
-            await message.reply_text("Ket.ai not allowed on this chat.", quote=True)
+            await message.reply_text(f"`{NAME}` not allowed on this chat.", quote=True)
             logging.warning(
                 f"Unauthorized prompt command attempt by user {user_id} in chat {chat_id}."
             )
