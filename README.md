@@ -2,6 +2,11 @@
 
 ## Installation
 
+### Requirements
+* Python3
+* GNU+Linux
+* [Ollama](https://ollama.com/download/linux)
+
 1. **Clone the repository:**
    ```bash
    git clone https://github.com/ket0x4/ketard-ai.git
@@ -15,13 +20,8 @@
    python3 -m venv .venv
    ```
 4. **Activate the virtual environment:**
-   - On Linux/macOS:
      ```bash
      source .venv/bin/activate
-     ```
-   - On Windows:
-     ```bash
-     .venv\Scripts\activate
      ```
 5. **Install the required packages:**
    ```bash
@@ -36,7 +36,7 @@
 
 7. **Run the bot:**
    ```bash
-   python bot.py
+   python3 ketard.py
    ```
 
 ## License
