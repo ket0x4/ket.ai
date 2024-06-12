@@ -1,0 +1,28 @@
+{
+    "BotConfig": {
+        "BOT_NAME": "",
+        "API_ID": "",
+        "API_HASH": "",
+        "BOT_TOKEN": ""
+    },
+    "LogConfig": {
+        "DEBUG": "",
+        "DEBUG_TOKEN": "",
+        "LOG_TO_FILE": "",
+        "LOG_FILE_PATH": "",
+        "WORKERS": ""
+    },
+    "ApiConfig": {
+        "API_URL": "",
+        "LLM_MODEL": "",
+        "LITE": "",
+        "BOARD": ""
+    },
+    "DataConfig": {
+        "OWNER_ID": "",
+        "ADMINS": [],
+        "USERS": [],
+        "GROUPS": [],
+        "GEN_COMMANDS": []
+    }
+}
