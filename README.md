@@ -10,6 +10,11 @@ Ketard AI Bot is a Telegram bot designed for interacting with users through a va
 - **Debug and Status Modes**: Includes configurations for debug mode and system status reporting.
 - **Command Handling**: Custom commands for different functionalities, including help and start commands.
 
+### Requirements
+* Python3
+* GNU+Linux
+* [Ollama](https://ollama.com/download/linux)
+
 ## Usage
 - **Start Command**: `/start` to get an introduction and available commands.
 - **Help Command**: `/help` provides information on how to use the bot and its commands.
@@ -27,11 +32,6 @@ Ketard AI Bot is a Telegram bot designed for interacting with users through a va
    python -m venv venv
    ```
 3. Activate the virtual environment:
-   - On Windows:
-     ```bash
-     .\venv\Scripts\activate
-     ```
-   - On macOS and Linux:
      ```bash
      source venv/bin/activate
      ```
@@ -47,6 +47,8 @@ Ketard AI Bot is a Telegram bot designed for interacting with users through a va
 
 ## Configuration
 Ensure that your `config.json` is correctly set up with the necessary API credentials and configurations for bot behavior.
+
+## To-do
 
 ## License
 This project is licensed under the [MIT License](LICENSE).
