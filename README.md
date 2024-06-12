@@ -49,6 +49,10 @@ Ketard AI Bot is a Telegram bot designed for interacting with users through a va
 Ensure that your `config.json` is correctly set up with the necessary API credentials and configurations for bot behavior.
 
 ## To-do
-
+- [ ] Fix async `/status` command
+- [ ] Add blacklist support
+- [ ] log prompts and responses to db
+- [ ] split long messages
+- [ ] delete status message after sending prompt response
 ## License
 This project is licensed under the [MIT License](LICENSE).
