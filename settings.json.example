@@ -1,5 +1,4 @@
 {
-  "owner": "owner id",
   "bot": "bot name",
   "token": "bot token",
   "api_id": "api_id",
@@ -11,7 +10,6 @@
   "vision_model": "phi3-vision",
   "debug": false,
   "lite": false,
-  "board": "Raspberry Pi 5",
   "admins": [
     123456789,
     123456789,

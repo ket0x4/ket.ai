@@ -18,7 +18,7 @@ try:
         ALLOWED_CHATS = data["groups"]
         ALLOWED_USERS = data["users"]
         ADMINS = data["admins"]
-        BOARD = data["board"]
+#        BOARD = data["board"]
         NAME = data["bot"]
         DEBUG = data["debug"]
         LITE = data["lite"]
@@ -73,6 +73,14 @@ bot = Client(
     parse_mode=enums.ParseMode.MARKDOWN,
     skip_updates=True,
 )
+
+# Get board name
+product_file = '/sys/devices/virtual/dmi/id/product_name'
+if os.path.exists(product_file):
+    with open(product_file) as f:
+        BOARD = f.read().replace('\n', '')
+else:
+    BOARD = "Unknown"
 
 # Base variables
 ollama = Ollama(base_url=API_URL, model=LLM_MODEL)
