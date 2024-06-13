@@ -2,8 +2,6 @@ import asyncio
 from imaplib import Commands
 import logging
 import os
-import time
-import random
 import psutil
 import json
 import requests
@@ -115,18 +113,13 @@ async def handle_ket_command(bot, message):
                 quote=True,
             )
 
-            prompt = message.text.split(" ", 1)[1]
-            start_time = time.time()  # Record start time
+            prompt = message.text.replace("/ket", "").strip()
             response = ollama.invoke(prompt)
-            end_time = time.time()  # Record end time
-            generation_time = round(end_time - start_time, 2)  # Calculate generation time
-            model_name = ollama.model  # Get model name
-            formatted_response = f"{response}\n\n⌛️{generation_time}sec | 🦙 {model_name}"
-            await message.reply_text(formatted_response, quote=True)
+            await message.reply_text(response, quote=True)
             logging.info(f"Processed prompt from user {user_id} in chat {chat_id}.")
             queue_count -= 1  # Decrease the queue count after sending the reply
         else:
-            await message.reply_text(f"`{NAME}` not allowed on this chat.", quote=True)
+            await message.reply_text("Ket.ai not allowed on this chat.", quote=True)
             logging.warning(
                 f"Unauthorized prompt command attempt by user {user_id} in chat {chat_id}."
             )
@@ -138,9 +131,8 @@ async def handle_ket_command(bot, message):
 # Handle help command
 @bot.on_message(filters.command(["help"]))
 async def handle_help_command(bot, message):
-    rnd_comm = random.choice(GEN_COMMANDS)
     await message.reply_text(
-        f"To use {NAME}, type /{rnd_comm} followed by your prompt. For example:\n`/{rnd_comm} What is the meaning of life?`",
+        f"To use {NAME}, type /ket followed by your prompt. For example, `/ket What is the meaning of life?`\nCreator: `@ket0x004`",
         quote=True,
     )
     logging.info("Help command invoked.")
