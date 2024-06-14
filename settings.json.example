@@ -6,8 +6,8 @@
   "debug_token": "optional. debug token for testing purposes",
   "api_url": "http://localhost:11434",
   "llm_model": "phi3",
+  "whisper_model": "ggml-large-v3",
   "version": "2.5",
-  "vision_model": "phi3-vision",
   "debug": false,
   "lite": false,
   "admins": [
