@@ -3,6 +3,3 @@ https://github.com/KurimuzonAkuma/pyrogram/archive/dev.zip
 psutil
 asyncio
 TgCrypto
-torch --find-links https://download.pytorch.org/whl/cpu
-torchvision --find-links https://download.pytorch.org/whl/cpu
-torchaudio --find-links https://download.pytorch.org/whl/cpu

@@ -18,7 +18,7 @@ try:
         ALLOWED_CHATS = data["groups"]
         ALLOWED_USERS = data["users"]
         ADMINS = data["admins"]
-#        BOARD = data["board"]
+ #       BOARD = data["board"]
         NAME = data["bot"]
         DEBUG = data["debug"]
         LITE = data["lite"]
@@ -33,7 +33,8 @@ except FileNotFoundError:
 
 # Set up logging
 logging.basicConfig(
-    level=logging.DEBUG if DEBUG else logging.INFO,
+    level=logging.DEBUG if DEBUG else logging.WARN,
+    #level=logging.INFO,
     format="%(levelname)s - %(message)s",
     handlers=[logging.FileHandler("debug.log"), logging.StreamHandler()],
 )
@@ -75,12 +76,21 @@ bot = Client(
 )
 
 # Get board name
-product_file = '/sys/devices/virtual/dmi/id/product_name'
-if os.path.exists(product_file):
-    with open(product_file) as f:
-        BOARD = f.read().replace('\n', '')
+if os.system == "Windows":
+    BOARD = "Windows"
+    OS = "Microsoft Windows"
 else:
-    BOARD = "Unknown"
+    OS = "GNU+Linux"
+    product_file = "/sys/devices/virtual/dmi/id/product_name"
+    if os.path.exists(product_file):
+        with open(product_file) as f:
+            BOARD = f.read().replace("\n", "")
+    else:
+        BOARD = "Unknown"
+
+logging.info(f"Board: {BOARD}, Platform: {OS}")
+if os.system == "Windows":
+    logging.warning("Windows support is experimental and many features may not work.")
 
 # Base variables
 ollama = Ollama(base_url=API_URL, model=LLM_MODEL)
@@ -146,17 +156,11 @@ async def handle_help_command(bot, message):
     logging.info("Help command invoked.")
 
 
-# Get system usage info
+# Get system usage info with psutil
 def get_cpu_usage():
-    """Get current CPU usage percentage."""
-    cpu_pct = (
-        os.popen(
-            """grep 'cpu ' /proc/stat | awk '{usage=($2+$4)*100/($2+$4+$5)} END {print usage }' """
-        )
-        .readline()
-        .strip()
-    )
-    return f"**CPU Usage:** `{cpu_pct}%`"
+    """Get CPU usage information."""
+    cpu = psutil.cpu_percent(interval=1)
+    return f"**CPU Usage:** `{cpu:.2f}%`"
 
 
 def get_ram_usage():
@@ -168,15 +172,18 @@ def get_ram_usage():
 
 
 def get_cpu_temperature():
-    """Get CPU temperature."""
-    try:
-        with open("/sys/class/thermal/thermal_zone0/temp", "r") as temp_file: # only works on Raspberry Pi
-            temp = int(temp_file.read()) / 1000.0
-            logging.info(f"CPU temperature: {temp:.2f}°C")
-            return f"**CPU Temp:** `{temp:.2f}°C`"
-    except FileNotFoundError:
-        logging.error("Failed to read CPU temperature.")
-        return "**CPU Temp:** `Failed to read`"
+    """Get CPU temperature information."""
+    if os.system == "Linux":
+        try:
+            with open("/sys/class/thermal/thermal_zone0/temp") as f:
+                temp = f.read()
+                temp = int(temp) / 1000  # Convert to Celsius
+                return f"**CPU Temp:** `{temp:.2f}°C`"
+        except FileNotFoundError:
+            logging.warning("CPU temperature file not found.")
+            return "**CPU Temp:** `Unavailable`"
+    else:
+        return "**CPU Temp:** `Unsupported OS`"
 
 
 # Handle status info command
