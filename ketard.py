@@ -26,6 +26,7 @@ try:
         VERSION = data["version"]
         API_URL = data["api_url"]
         LLM_MODEL = data["llm_model"]
+        WHISPER_MODEL = data["whisper_model"] + ".bin"
         GEN_COMMANDS = data["gen_commands"]
 except FileNotFoundError:
     print("settings.json not found. Please create one.")
@@ -65,6 +66,8 @@ def check_ollama_api():
         logging.error(f"Ollama API is unreachable: {str(e)}")
         return False
 
+check_ollama_api()
+
 
 bot = Client(
     name=data["bot"],
@@ -91,6 +94,27 @@ else:
 logging.info(f"Board: {BOARD}, Platform: {OS}")
 if os.name == "nt":
     logging.warning("Windows support is experimental and many features may not work.")
+
+# Check required files for whisper
+def check_whisper_files():
+    global wbin, wmodel
+    if os.name == "nt":
+        wbin = "whisper\\whisper.exe"
+        wmodel = f"whisper\\{WHISPER_MODEL}"
+    else:
+        wbin = "./whisper/whisper"
+        wmodel = f"./whisper/{WHISPER_MODEL}"
+
+    if os.path.exists(wbin) and os.path.exists(wmodel):
+        logging.info("Found whisper model and binary.")
+        return True
+    else:
+        logging.error("Whisper files missing. Check the readme for instructions.")
+        return False
+
+check_whisper_files()
+
+
 
 # Base variables
 ollama = Ollama(base_url=API_URL, model=LLM_MODEL)

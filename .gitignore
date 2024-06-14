@@ -11,3 +11,5 @@ vision.py
 Ket.ai.session
 debug.log
 Ket.ai.session-journal
+whisper/ggml-large-v3.bin
+whisper/whisper.exe
