@@ -54,16 +54,16 @@ else:
 # check ollama api reachability
 def check_ollama_api():
     try:
-        response = requests.get(API_URL)
+        response = requests.get(API_URL, timeout=0.3,)
         if response.status_code == 200:
             logging.info("Ollama API is reachable.")
-            return "**Ollama API:** `Available`"
+            return True
         else:
             logging.warning("Ollama API is unreachable.")
             return False
     except requests.exceptions.RequestException as e:
-        logging.error(f"Error reaching Ollama API: {str(e)}")
-        return "**Ollama API:** `Unavailable`"
+        logging.error(f"Ollama API is unreachable: {str(e)}")
+        return False
 
 
 bot = Client(
@@ -79,7 +79,6 @@ bot = Client(
 if os.name == "nt":
     OS = "Microsoft Windows"
     BOARD = "Unkonwn"
-    logging.warning("Windows support is experimental and many features may not work.")
 else:
     try:
         with open("/sys/devices/virtual/dmi/id/product_name") as f:
@@ -90,7 +89,7 @@ else:
     OS = os.uname().sysname
 
 logging.info(f"Board: {BOARD}, Platform: {OS}")
-if os.system == "NT":
+if os.name == "nt":
     logging.warning("Windows support is experimental and many features may not work.")
 
 # Base variables
@@ -105,51 +104,57 @@ async def handle_ket_command(bot, message):
     global process_next_message
     global queue_count
     process_next_message = True
-    try:
-        chat_id = str(message.chat.id)
-        user_id = str(message.from_user.id)
-        if (
-            user_id in map(str, ADMINS)
-            or chat_id in map(str, ALLOWED_CHATS)
-            or user_id in map(str, ALLOWED_USERS)
-        ):
-            queue_count += (
-                1  # Increase the queue count when a new user uses the /prompt command
-            )
-
-            prompt = message.text.split(" ", 1)[1]
-            start_time = time.time()  # Record start time to calculate processing time
-            if len(prompt) == 1 or not prompt[1].strip():
-                await message.reply_text(
-                    "Please enter a message after the command.", quote=True
+    if check_ollama_api() is False:
+        await message.reply_text(
+            "Backend service is not responding. Please try again later.",
+            quote=True,
+        )
+    else:
+        try:
+            chat_id = str(message.chat.id)
+            user_id = str(message.from_user.id)
+            if (
+                user_id in map(str, ADMINS)
+                or chat_id in map(str, ALLOWED_CHATS)
+                or user_id in map(str, ALLOWED_USERS)
+            ):
+                queue_count += (
+                    1  # Increase the queue count when a new user uses the /prompt command
                 )
-                queue_count -= 1  # Decrease the queue count if no prompt is provided
-                return
 
-            prompt = prompt[1].strip()
+                prompt = message.text.split(" ", 1)[1]
+                start_time = time.time()  # Record start time to calculate processing time
+                if len(prompt) == 1 or not prompt[1].strip():
+                    await message.reply_text(
+                        "Please enter a message after the command.", quote=True
+                    )
+                    queue_count -= 1  # Decrease the queue count if no prompt is provided
+                    return
 
-            await message.reply_text(
-                f"`{NAME}` Processing your prompt. Check `/status` for more info.",
-                quote=True,
-            )
+                prompt = prompt[1].strip()
 
-            prompt = message.text.replace("/ket", "").strip()
-            response = ollama.invoke(prompt)
-            end_time = time.time()  # Record end time
-            generation_time = round(end_time - start_time, 2)  # Calculate generation time
-            model_name = ollama.model  # Get model name
-            formatted_response = f"{response}\n\nTook: `{generation_time}s` | Model: `{model_name}`"
-            await message.reply_text(formatted_response, quote=True)
-            logging.info(f"Processed prompt from user {user_id} in chat {chat_id}.")
-            queue_count -= 1  # Decrease the queue count after sending the reply
-        else:
-            await message.reply_text(f"`{NAME}` not allowed on this chat.", quote=True)
-            logging.warning(
-                f"Unauthorized prompt command attempt by user {user_id} in chat {chat_id}."
-            )
-    except Exception as e:
-        await bot.send_message(ADMINS[0], f"An error occurred: `{str(e)}`")
-        logging.error(f"Error processing prompt command: {str(e)}")
+                await message.reply_text(
+                    f"`{NAME}` Processing your prompt. Check `/status` for more info.",
+                    quote=True,
+                )
+
+                prompt = message.text.replace("/ket", "").strip()
+                response = ollama.invoke(prompt)
+                end_time = time.time()  # Record end time
+                generation_time = round(end_time - start_time, 2)  # Calculate generation time
+                model_name = ollama.model  # Get model name
+                formatted_response = f"{response}\n\nTook: `{generation_time}s` | Model: `{model_name}`"
+                await message.reply_text(formatted_response, quote=True)
+                logging.info(f"Processed prompt from user {user_id} in chat {chat_id}.")
+                queue_count -= 1  # Decrease the queue count after sending the reply
+            else:
+                await message.reply_text(f"`{NAME}` not allowed on this chat.", quote=True)
+                logging.warning(
+                    f"Unauthorized prompt command attempt by user {user_id} in chat {chat_id}."
+                )
+        except Exception as e:
+            await bot.send_message(ADMINS[0], f"An error occurred: `{str(e)}`")
+            logging.error(f"Error processing prompt command: {str(e)}")
 
 
 # Handle help command
@@ -202,14 +207,18 @@ async def handle_status_info_command(bot, message):
 
 
 async def send_status_info_message(message):
+    if check_ollama_api() is False:
+        api_status = "`Unavailable`"
+    else:
+        api_status = "`Available`"
     try:
-        queue = f"**Queue:** `{queue_count}`"
+        queue = f"**Queued prompts:** `{queue_count}`"
         device = f"**Board:** `{BOARD}`"
         osname = f"**OS:** `{OS}`"
         cpu_usage = get_cpu_usage()
         ram_usage = get_ram_usage()
         cpu_temp = get_cpu_temperature()
-        ollama_api = check_ollama_api()
+        ollama_api = f"**API Status:** {api_status}"
         version = f"**Version:** `{VERSION}`"
         lite = f"**Lite mode:** `{LITE}`"
         debug = f"**Debug mode:** `{DEBUG}`"
