@@ -4,6 +4,8 @@ import logging
 import os
 import psutil
 import json
+import time
+import random
 import requests
 from langchain_community.llms import Ollama
 
@@ -18,12 +20,10 @@ try:
         ALLOWED_CHATS = data["groups"]
         ALLOWED_USERS = data["users"]
         ADMINS = data["admins"]
- #       BOARD = data["board"]
         NAME = data["bot"]
         DEBUG = data["debug"]
         LITE = data["lite"]
         VERSION = data["version"]
-        BOARD = data["board"]
         API_URL = data["api_url"]
         LLM_MODEL = data["llm_model"]
         GEN_COMMANDS = data["gen_commands"]
@@ -33,8 +33,8 @@ except FileNotFoundError:
 
 # Set up logging
 logging.basicConfig(
-    level=logging.DEBUG if DEBUG else logging.WARN,
-    #level=logging.INFO,
+    # level=logging.DEBUG if DEBUG else logging.WARN,
+    level=logging.INFO,
     format="%(levelname)s - %(message)s",
     handlers=[logging.FileHandler("debug.log"), logging.StreamHandler()],
 )
@@ -75,21 +75,22 @@ bot = Client(
     skip_updates=True,
 )
 
-# Get board name
-if os.system == "Windows":
-    BOARD = "Windows"
+# Get OS name and BOARD
+if os.name == "nt":
     OS = "Microsoft Windows"
+    BOARD = "Unkonwn"
+    logging.warning("Windows support is experimental and many features may not work.")
 else:
-    OS = "GNU+Linux"
-    product_file = "/sys/devices/virtual/dmi/id/product_name"
-    if os.path.exists(product_file):
-        with open(product_file) as f:
+    try:
+        with open("/sys/devices/virtual/dmi/id/product_name") as f:
             BOARD = f.read().replace("\n", "")
-    else:
+    except FileNotFoundError:
+        logging.error("Board name not found.")
         BOARD = "Unknown"
+    OS = os.uname().sysname
 
 logging.info(f"Board: {BOARD}, Platform: {OS}")
-if os.system == "Windows":
+if os.system == "NT":
     logging.warning("Windows support is experimental and many features may not work.")
 
 # Base variables
@@ -116,7 +117,8 @@ async def handle_ket_command(bot, message):
                 1  # Increase the queue count when a new user uses the /prompt command
             )
 
-            prompt = message.text.split(" ", 1)
+            prompt = message.text.split(" ", 1)[1]
+            start_time = time.time()  # Record start time to calculate processing time
             if len(prompt) == 1 or not prompt[1].strip():
                 await message.reply_text(
                     "Please enter a message after the command.", quote=True
@@ -133,11 +135,15 @@ async def handle_ket_command(bot, message):
 
             prompt = message.text.replace("/ket", "").strip()
             response = ollama.invoke(prompt)
-            await message.reply_text(response, quote=True)
+            end_time = time.time()  # Record end time
+            generation_time = round(end_time - start_time, 2)  # Calculate generation time
+            model_name = ollama.model  # Get model name
+            formatted_response = f"{response}\n\nTook: `{generation_time}s` | Model: `{model_name}`"
+            await message.reply_text(formatted_response, quote=True)
             logging.info(f"Processed prompt from user {user_id} in chat {chat_id}.")
             queue_count -= 1  # Decrease the queue count after sending the reply
         else:
-            await message.reply_text("Ket.ai not allowed on this chat.", quote=True)
+            await message.reply_text(f"`{NAME}` not allowed on this chat.", quote=True)
             logging.warning(
                 f"Unauthorized prompt command attempt by user {user_id} in chat {chat_id}."
             )
@@ -149,8 +155,9 @@ async def handle_ket_command(bot, message):
 # Handle help command
 @bot.on_message(filters.command(["help"]))
 async def handle_help_command(bot, message):
+    rnd_comm = random.choice(GEN_COMMANDS)
     await message.reply_text(
-        f"To use {NAME}, type /ket followed by your prompt. For example, `/ket What is the meaning of life?`\nCreator: `@ket0x004`",
+        f"To use {NAME}, type /{rnd_comm} followed by your prompt. For example:\n`/{rnd_comm} What is the meaning of life?`",
         quote=True,
     )
     logging.info("Help command invoked.")
@@ -198,6 +205,7 @@ async def send_status_info_message(message):
     try:
         queue = f"**Queue:** `{queue_count}`"
         device = f"**Board:** `{BOARD}`"
+        osname = f"**OS:** `{OS}`"
         cpu_usage = get_cpu_usage()
         ram_usage = get_ram_usage()
         cpu_temp = get_cpu_temperature()
@@ -205,7 +213,7 @@ async def send_status_info_message(message):
         version = f"**Version:** `{VERSION}`"
         lite = f"**Lite mode:** `{LITE}`"
         debug = f"**Debug mode:** `{DEBUG}`"
-        info = f"{queue}\n{device}\n{cpu_usage}\n{ram_usage}\n{ollama_api}\n{cpu_temp}\n{lite}\n{debug}\n{version}"
+        info = f"{queue}\n{device}\n{osname}\n{cpu_usage}\n{ram_usage}\n{ollama_api}\n{cpu_temp}\n{lite}\n{debug}\n{version}"
         await message.reply_text(info, quote=True)
 
     except Exception as e:
