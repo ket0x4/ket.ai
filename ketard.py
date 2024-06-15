@@ -164,7 +164,7 @@ async def handle_sum_command(bot, message):
             transcript = YouTubeTranscriptApi.get_transcript(video_id)
 
             # Create a prompt for summarizing the transcript
-            lmm_prompt = ".. This is a transcript of a youtube video: summarize and make it short. I mean really short. exclude sposors and intros"
+            lmm_prompt = ".. This is a transcript of a youtube video: summarize and make it short. I mean really short. exclude sponsored sections and inro/outro"
             prompt = lmm_prompt + " ".join([item["text"] for item in transcript])
 
             # Summarize the transcript
