@@ -3,3 +3,5 @@ https://github.com/KurimuzonAkuma/pyrogram/archive/dev.zip
 psutil
 TgCrypto
 colorlog
+httpx
+gitpython

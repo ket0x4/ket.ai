@@ -23,13 +23,14 @@ class BotConfig:
     API_ID = int(config["BotConfig"]["API_ID"])
     API_HASH = str(config["BotConfig"]["API_HASH"])
     BOT_TOKEN = str(config["BotConfig"]["BOT_TOKEN"])
+    UPSTREAM_BRANCH = str(config["BotConfig"]["UPSTREAM_BRANCH"])
 
 class LogConfig:
     DEBUG = strtobool(config["LogConfig"]["DEBUG"])
     DEBUG_TOKEN = str(config["LogConfig"]["DEBUG_TOKEN"])
     LOG_TO_FILE = strtobool(config["LogConfig"]["LOG_TO_FILE"])
     LOG_FILE_PATH = Path(config["LogConfig"]["LOG_FILE_PATH"])
-    WORKERS = int(config["LogConfig"]["WORKERS"])
+    WORKERS = config["LogConfig"]["WORKERS"]
 
 class ApiConfig:
     API_URL = str(config["ApiConfig"]["API_URL"])

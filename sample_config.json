@@ -3,7 +3,8 @@
         "BOT_NAME": "",
         "API_ID": "",
         "API_HASH": "",
-        "BOT_TOKEN": ""
+        "BOT_TOKEN": "",
+        "UPSTREAM_BRANCH": ""
     },
     "LogConfig": {
         "DEBUG": "",

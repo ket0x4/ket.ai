@@ -3,12 +3,18 @@ from pyrogram import Client
 from langchain_community.llms import Ollama
 
 from ketard.config import BotConfig, LogConfig, ApiConfig
+from ketard.utils.paste import Paste
 from ketard.utils.logging import LOGGER
+from ketard.utils.filters import MyFilters
 from ketard.utils.status_info import SystemStatus
 
 VERSION = "3.0.0"
 
 LOGGER = LOGGER
+
+paste = Paste()
+
+my_filters = MyFilters()
 
 if LogConfig.DEBUG:
     LOGGER(__name__).info("Debug mode enabled.")
