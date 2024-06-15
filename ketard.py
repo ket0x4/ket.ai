@@ -105,71 +105,57 @@ process_next_message = False
 queue_count = 0
 
 
-# Handle incoming messages with /prompt command
+# Optimized and more readable version of the handle_ket_command function
 @bot.on_message(filters.command(GEN_COMMANDS))
 async def handle_ket_command(bot, message):
-    global process_next_message
-    global queue_count
+    global process_next_message, queue_count
     process_next_message = True
-    if check_ollama_api() is False:
+
+    if not check_ollama_api():
         await message.reply_text(
-            "Backend service is not responding. Please try again later.",
-            quote=True,
+            "Backend service is not responding. Please try again later.", quote=True
         )
-    else:
-        try:
-            chat_id = str(message.chat.id)
-            user_id = str(message.from_user.id)
-            if (
-                user_id in map(str, ADMINS)
-                or chat_id in map(str, ALLOWED_CHATS)
-                or user_id in map(str, ALLOWED_USERS)
-            ):
-                queue_count += 1  # Increase the queue count when a new user uses the /prompt command
+        return
 
-                prompt = message.text.split(" ", 1)[1]
-                start_time = (
-                    time.time()
-                )  # Record start time to calculate processing time
-                if len(prompt) == 1 or not prompt[1].strip():
-                    await message.reply_text(
-                        "Please enter a message after the command.", quote=True
-                    )
-                    queue_count -= (
-                        1  # Decrease the queue count if no prompt is provided
-                    )
-                    return
+    chat_id, user_id = str(message.chat.id), str(message.from_user.id)
+    if (
+        user_id not in map(str, ADMINS)
+        and chat_id not in map(str, ALLOWED_CHATS)
+        and user_id not in map(str, ALLOWED_USERS)
+    ):
+        await message.reply_text(f"`{NAME}` not allowed on this chat.", quote=True)
+        logging.warning(
+            f"Unauthorized prompt command attempt by user {user_id} in chat {chat_id}."
+        )
+        return
 
-                prompt = prompt[1].strip()
+    queue_count += 1
+    prompt = message.text.split(" ", 1)
+    if len(prompt) < 2 or not prompt[1].strip():
+        await message.reply_text(
+            "Please enter a prompt after the command.", quote=True
+        )
+        queue_count -= 1
+        return
 
-                await message.reply_text(
-                    f"`{NAME}` Processing your prompt. Check `/status` for more info.",
-                    quote=True,
-                )
+    prompt = prompt[1].strip()
+    await message.reply_text(
+        f"`{NAME}` Processing your prompt. Check `/status` for more info.", quote=True
+    )
 
-                prompt = message.text.replace("/ket", "").strip()
-                response = ollama.invoke(prompt)
-                end_time = time.time()  # Record end time
-                generation_time = round(
-                    end_time - start_time, 2
-                )  # Calculate generation time
-                model_name = ollama.model  # Get model name
-                formatted_response = (
-                    f"{response}\n\nTook: `{generation_time}s` | Model: `{model_name}`"
-                )
-                await message.reply_text(formatted_response, quote=True)
-                logging.info(f"Processed prompt from user {user_id} in chat {chat_id}.")
-                queue_count -= 1  # Decrease the queue count after sending the reply
-            else:
-                await message.reply_text(
-                    f"`{NAME}` not allowed on this chat.", quote=True
-                )
-                logging.warning(
-                    f"Unauthorized prompt command attempt by user {user_id} in chat {chat_id}."
-                )
-        except Exception as e:
-            await bot.send_message(ADMINS[0], f"An error occurred: `{str(e)}`")
-            logging.error(f"Error processing prompt command: {str(e)}")
+    start_time = time.time()
+    response = ollama.invoke(prompt)
+    end_time = time.time()
+
+    generation_time = round(end_time - start_time, 2)
+    model_name = ollama.model
+    formatted_response = (
+        f"{response}\n\nTook: `{generation_time}s` | Model: `{model_name}`"
+    )
+    await message.reply_text(formatted_response, quote=True)
+
+    logging.info(f"Processed prompt from user {user_id} in chat {chat_id}.")
+    queue_count -= 1
 
 
 # Handle help command
