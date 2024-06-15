@@ -13,3 +13,4 @@ debug.log
 Ket.ai.session-journal
 whisper/ggml-large-v3.bin
 whisper/whisper.exe
+test2.py
