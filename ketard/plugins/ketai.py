@@ -20,7 +20,8 @@ async def handle_ket_command(client: Client, message: Message):
         prompt = message.text.split(" ", 1)
         if len(prompt) == 1 or not prompt[1].strip():
             await message.reply_text(
-                "Please enter a message after the command.", quote=True
+                "Please enter a message after the command.",
+                quote=True
             )
             return
 

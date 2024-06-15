@@ -90,7 +90,7 @@ A new update is available for the {BotConfig.BOT_NAME}!
 
 Pushing Updates Now
 
-Updates:\n\n
+Updates:\n
     """
     ordinal = lambda format: "%d%s" % (
         format,
@@ -106,7 +106,7 @@ Updates:\n\n
     ):
         _updates = f"""
 #{info.count()}: [{info.summary}]({REPO_}/commit/{info}) by -> {info.author}
-        Commited on: {ordinal(int(datetime.fromtimestamp(info.committed_date).strftime('%d')))} {datetime.fromtimestamp(info.committed_date).strftime('%b')}, {datetime.fromtimestamp(info.committed_date).strftime('%Y')}\n\n
+        Commited on: {ordinal(int(datetime.fromtimestamp(info.committed_date).strftime('%d')))} {datetime.fromtimestamp(info.committed_date).strftime('%b')}, {datetime.fromtimestamp(info.committed_date).strftime('%Y')}\n
         """
 
     final_updates = updates + _updates

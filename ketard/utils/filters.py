@@ -1,7 +1,7 @@
 
 from pyrogram import filters, types
 
-from config import DataConfig
+from ketard.config import DataConfig
 
 
 class MyFilters:
