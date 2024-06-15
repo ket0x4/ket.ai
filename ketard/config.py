@@ -30,7 +30,7 @@ class LogConfig:
     DEBUG_TOKEN = str(config["LogConfig"]["DEBUG_TOKEN"])
     LOG_TO_FILE = strtobool(config["LogConfig"]["LOG_TO_FILE"])
     LOG_FILE_PATH = Path(config["LogConfig"]["LOG_FILE_PATH"])
-    WORKERS = config["LogConfig"]["WORKERS"]
+    WORKERS = int(config["LogConfig"]["WORKERS"])
 
 class ApiConfig:
     API_URL = str(config["ApiConfig"]["API_URL"])
