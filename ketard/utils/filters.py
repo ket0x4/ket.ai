@@ -1,6 +1,8 @@
 
 from pyrogram import filters, types
 
+from config import DataConfig
+
 
 class MyFilters:
     def __init__(self, config):
