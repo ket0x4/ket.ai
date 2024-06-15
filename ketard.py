@@ -26,7 +26,6 @@ LITE = data.get("lite", False)
 VERSION = data.get("version", "1.0")
 API_URL = data.get("api_url", "http://localhost:8000")
 LLM_MODEL = data.get("llm_model", "default_model")
-WHISPER_MODEL = data.get("whisper_model", "default_whisper") + ".bin"
 GEN_COMMANDS = data.get("gen_commands", ["gen"])
 
 # Set up logging
