@@ -31,7 +31,7 @@ GEN_COMMANDS = data.get("gen_commands", ["gen"])
 # Set up logging
 logging.basicConfig(
     level=logging.DEBUG if DEBUG else logging.INFO,
-    format="%(levelname)s - %(message)s",
+    format="%(time) - %(levelname)s - %(message)s",
     handlers=[logging.FileHandler("debug.log"), logging.StreamHandler()],
 )
 
