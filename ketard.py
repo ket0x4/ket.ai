@@ -55,7 +55,10 @@ else:
 # check ollama api reachability
 def check_ollama_api():
     try:
-        response = requests.get(API_URL, timeout=0.3,)
+        response = requests.get(
+            API_URL,
+            timeout=0.3,
+        )
         if response.status_code == 200:
             logging.info("Ollama API is reachable.")
             return True
@@ -65,6 +68,7 @@ def check_ollama_api():
     except requests.exceptions.RequestException as e:
         logging.error(f"Ollama API is unreachable: {str(e)}")
         return False
+
 
 check_ollama_api()
 
@@ -95,27 +99,6 @@ logging.info(f"Board: {BOARD}, Platform: {OS}")
 if os.name == "nt":
     logging.warning("Windows support is experimental and many features may not work.")
 
-# Check required files for whisper
-def check_whisper_files():
-    global wbin, wmodel
-    if os.name == "nt":
-        wbin = "whisper\\whisper.exe"
-        wmodel = f"whisper\\{WHISPER_MODEL}"
-    else:
-        wbin = "./whisper/whisper"
-        wmodel = f"./whisper/{WHISPER_MODEL}"
-
-    if os.path.exists(wbin) and os.path.exists(wmodel):
-        logging.info("Found whisper model and binary.")
-        return True
-    else:
-        logging.error("Whisper files missing. Check the readme for instructions.")
-        return False
-
-check_whisper_files()
-
-
-
 # Base variables
 ollama = Ollama(base_url=API_URL, model=LLM_MODEL)
 process_next_message = False
@@ -142,17 +125,19 @@ async def handle_ket_command(bot, message):
                 or chat_id in map(str, ALLOWED_CHATS)
                 or user_id in map(str, ALLOWED_USERS)
             ):
-                queue_count += (
-                    1  # Increase the queue count when a new user uses the /prompt command
-                )
+                queue_count += 1  # Increase the queue count when a new user uses the /prompt command
 
                 prompt = message.text.split(" ", 1)[1]
-                start_time = time.time()  # Record start time to calculate processing time
+                start_time = (
+                    time.time()
+                )  # Record start time to calculate processing time
                 if len(prompt) == 1 or not prompt[1].strip():
                     await message.reply_text(
                         "Please enter a message after the command.", quote=True
                     )
-                    queue_count -= 1  # Decrease the queue count if no prompt is provided
+                    queue_count -= (
+                        1  # Decrease the queue count if no prompt is provided
+                    )
                     return
 
                 prompt = prompt[1].strip()
@@ -165,14 +150,20 @@ async def handle_ket_command(bot, message):
                 prompt = message.text.replace("/ket", "").strip()
                 response = ollama.invoke(prompt)
                 end_time = time.time()  # Record end time
-                generation_time = round(end_time - start_time, 2)  # Calculate generation time
+                generation_time = round(
+                    end_time - start_time, 2
+                )  # Calculate generation time
                 model_name = ollama.model  # Get model name
-                formatted_response = f"{response}\n\nTook: `{generation_time}s` | Model: `{model_name}`"
+                formatted_response = (
+                    f"{response}\n\nTook: `{generation_time}s` | Model: `{model_name}`"
+                )
                 await message.reply_text(formatted_response, quote=True)
                 logging.info(f"Processed prompt from user {user_id} in chat {chat_id}.")
                 queue_count -= 1  # Decrease the queue count after sending the reply
             else:
-                await message.reply_text(f"`{NAME}` not allowed on this chat.", quote=True)
+                await message.reply_text(
+                    f"`{NAME}` not allowed on this chat.", quote=True
+                )
                 logging.warning(
                     f"Unauthorized prompt command attempt by user {user_id} in chat {chat_id}."
                 )
