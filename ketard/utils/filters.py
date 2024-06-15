@@ -5,7 +5,7 @@ from ketard.config import DataConfig
 
 
 class MyFilters:
-    def __init__(self, config):
+    def __init__(self):
         self.config = DataConfig()
 
     def is_allowed(self) -> filters.Filter:
