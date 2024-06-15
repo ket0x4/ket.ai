@@ -42,6 +42,7 @@ if not TOKEN:
     logging.error("Token not found in settings.json. Exiting.")
     exit(1)
 
+
 # Check Ollama API reachability
 def check_ollama_api():
     try:
@@ -50,11 +51,14 @@ def check_ollama_api():
             logging.info("Ollama API is reachable.")
             return True
         else:
-            logging.warning(f"Ollama API responded with status code {response.status_code}.")
+            logging.warning(
+                f"Ollama API responded with status code {response.status_code}."
+            )
             return False
     except requests.RequestException as e:
         logging.error(f"Ollama API is unreachable: {str(e)}")
         return False
+
 
 # Initialize bot
 bot = Client(
@@ -79,18 +83,27 @@ logging.info(f"Board: {BOARD}, Platform: {OS}")
 ollama = Ollama(base_url=API_URL, model=LLM_MODEL)
 queue_count = 0
 
+
 # Handle command
 @bot.on_message(filters.command(GEN_COMMANDS))
 async def handle_ket_command(bot, message):
     global queue_count
     if not check_ollama_api():
-        await message.reply_text("Backend service is not responding. Please try again later.", quote=True)
+        await message.reply_text(
+            "Backend service is not responding. Please try again later.", quote=True
+        )
         return
 
     chat_id, user_id = str(message.chat.id), str(message.from_user.id)
-    if user_id not in map(str, ADMINS) and chat_id not in map(str, ALLOWED_CHATS) and user_id not in map(str, ALLOWED_USERS):
+    if (
+        user_id not in map(str, ADMINS)
+        and chat_id not in map(str, ALLOWED_CHATS)
+        and user_id not in map(str, ALLOWED_USERS)
+    ):
         await message.reply_text(f"`{NAME}` not allowed on this chat.", quote=True)
-        logging.warning(f"Unauthorized prompt command attempt by user {user_id} in chat {chat_id}.")
+        logging.warning(
+            f"Unauthorized prompt command attempt by user {user_id} in chat {chat_id}."
+        )
         return
 
     queue_count += 1
@@ -101,7 +114,9 @@ async def handle_ket_command(bot, message):
         return
 
     prompt = prompt[1].strip()
-    await message.reply_text(f"`{NAME}` Processing your prompt. Check `/status` for more info.", quote=True)
+    await message.reply_text(
+        f"`{NAME}` Processing your prompt. Check `/status` for more info.", quote=True
+    )
 
     try:
         start_time = time.time()
@@ -110,28 +125,37 @@ async def handle_ket_command(bot, message):
 
         generation_time = round(end_time - start_time, 2)
         model_name = ollama.model
-        formatted_response = f"{response}\n\nTook: `{generation_time}s` | Model: `{model_name}`"
+        formatted_response = (
+            f"{response}\n\nTook: `{generation_time}s` | Model: `{model_name}`"
+        )
         await message.reply_text(formatted_response, quote=True)
         logging.info(f"Processed prompt from user {user_id} in chat {chat_id}.")
     finally:
         queue_count -= 1
 
+
 # Handle help command
 @bot.on_message(filters.command(["help"]))
 async def handle_help_command(bot, message):
     rnd_comm = random.choice(GEN_COMMANDS)
-    await message.reply_text(f"To use {NAME}, type /{rnd_comm} followed by your prompt. For example:\n`/{rnd_comm} What is the meaning of life?`", quote=True)
+    await message.reply_text(
+        f"To use {NAME}, type /{rnd_comm} followed by your prompt. For example:\n`/{rnd_comm} What is the meaning of life?`",
+        quote=True,
+    )
     logging.info("Help command invoked.")
+
 
 # Get system usage info
 def get_cpu_usage():
     return f"**CPU Usage:** `{psutil.cpu_percent(interval=1):.2f}%`"
 
+
 def get_ram_usage():
     mem = psutil.virtual_memory()
-    total_ram = mem.total / (1024 ** 3)  # Convert to GB
-    used_ram = mem.used / (1024 ** 3)
+    total_ram = mem.total / (1024**3)  # Convert to GB
+    used_ram = mem.used / (1024**3)
     return f"**RAM Usage:** `{used_ram:.2f}/{total_ram:.2f}GB`"
+
 
 def get_cpu_temperature():
     if OS == "Linux":
@@ -144,11 +168,13 @@ def get_cpu_temperature():
             return "**CPU Temp:** `Unavailable`"
     return "**CPU Temp:** `Unsupported OS`"
 
+
 # Handle status info command
 @bot.on_message(filters.command(["status", "boardinfo"]))
 async def handle_status_info_command(bot, message):
     await send_status_info_message(message)
     logging.info("Status info command invoked.")
+
 
 async def send_status_info_message(message):
     api_status = "`Available`" if check_ollama_api() else "`Unavailable`"
@@ -169,6 +195,7 @@ async def send_status_info_message(message):
         await bot.send_message(ADMINS[0], f"An error occurred: {str(e)}")
         logging.error(f"Error fetching status info: {str(e)}")
 
+
 async def main():
     logging.info("Bot starting...")
     await bot.start()
@@ -177,6 +204,7 @@ async def main():
     logging.info("Bot stopping...")
     await bot.stop()
     logging.info("Bot stopped.")
+
 
 if __name__ == "__main__":
     bot.run(main())
