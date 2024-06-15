@@ -7,6 +7,7 @@ import random
 import psutil
 from pyrogram import Client, filters, enums, idle
 from langchain_community.llms import Ollama
+from youtube_transcript_api import YouTubeTranscriptApi
 
 # Load JSON data
 try:
@@ -31,7 +32,7 @@ GEN_COMMANDS = data.get("gen_commands", ["gen"])
 # Set up logging
 logging.basicConfig(
     level=logging.DEBUG if DEBUG else logging.INFO,
-    format="%(time) - %(levelname)s - %(message)s",
+    format="%(asctime)s - %(levelname)s - %(message)s",
     handlers=[logging.FileHandler("debug.log"), logging.StreamHandler()],
 )
 
@@ -83,7 +84,7 @@ ollama = Ollama(base_url=API_URL, model=LLM_MODEL)
 queue_count = 0
 
 
-# Handle command
+# Handle prompt command
 @bot.on_message(filters.command(GEN_COMMANDS))
 async def handle_ket_command(bot, message):
     global queue_count
@@ -114,7 +115,7 @@ async def handle_ket_command(bot, message):
 
     prompt = prompt[1].strip()
     await message.reply_text(
-        f"`{NAME}` Processing your prompt. Check `/status` for more info.", quote=True
+        f"`{NAME}` Processing... Check `/status` for more info.", quote=True
     )
 
     try:
@@ -131,6 +132,62 @@ async def handle_ket_command(bot, message):
         logging.info(f"Processed prompt from user {user_id} in chat {chat_id}.")
     finally:
         queue_count -= 1
+
+
+# hanlde youtube transcript (sum) command
+@bot.on_message(filters.command(["sum", "vid", "video", "youtube", "transcript", "summarize"]))
+async def handle_sum_command(bot, message):
+    global queue_count
+    if not check_ollama_api():
+        await message.reply_text(
+            "Backend service is not responding. Please try again later.", quote=True
+        )
+        return
+    await message.reply_text(f"Summarizing content... this may take a while depending on the video length.", quote=True)
+    chat_id, user_id = str(message.chat.id), str(message.from_user.id)
+    if (
+        user_id not in map(str, ADMINS)
+        and chat_id not in map(str, ALLOWED_CHATS)
+        and user_id not in map(str, ALLOWED_USERS)):
+        await message.reply_text(f"`{NAME}` not allowed on this chat.", quote=True)
+        logging.warning(
+            f"Unauthorized prompt command attempt by user {user_id} in chat {chat_id}."
+        )
+        return
+    try:
+        # video url format: https://www.youtube.com/watch?v=VIDEO_ID parse the video id from the message
+        # to-do: add support parsing https://youtu.be/50yz_BFL7ao?si=VIDEO_ID scheme
+        url = message.text.split(" ")[1]
+        try:
+            video_id = url.split("v=")[1]
+            # Get the transcript of the video
+            transcript = YouTubeTranscriptApi.get_transcript(video_id)
+
+            # Create a prompt for summarizing the transcript
+            lmm_prompt = ".. This is a transcript of a youtube video: summarize and make it short. I mean really short. exclude sposors and intros"
+            prompt = lmm_prompt + " ".join([item["text"] for item in transcript])
+
+            # Summarize the transcript
+            response_header = f"**Summarized Video:** `{url}`\n\n"
+            start_time = time.time()
+            response = response_header + ollama.invoke(prompt)
+            end_time = time.time()
+            generation_time = round(end_time - start_time, 2)
+            model_name = ollama.model
+            response += f"\n\nTook: `{generation_time}s` | Model: `{model_name}`"
+
+            await message.reply_text(response, quote=True)
+        except:
+            await message.reply_text(
+                f"Invalid URL or failed to parse video id. {NAME} can only parse `youtube.com/watch?v=VIDEO_ID` URL schema.", quote=True
+            )
+            logging.error("Invalid URL or failed to parse video id. ID: {video_id} URL: {url}")
+
+    except Exception as e:
+        await bot.send_message(ADMINS[0], f"An error occurred: {str(e)}")
+        logging.error(f"Error fetching youtube transcript: {str(e)}")
+        return
+    logging.info(f"Processed youtube transcript from user {user_id} in chat {chat_id}.")
 
 
 # Handle help command
