@@ -1,80 +1,64 @@
-import asyncio
-from imaplib import Commands
 import logging
 import os
-import psutil
 import json
 import time
-import random
 import requests
-from langchain_community.llms import Ollama
-
+import random
+import psutil
 from pyrogram import Client, filters, enums, idle
-from pyrogram.types import Message
-
+from langchain_community.llms import Ollama
 
 # Load JSON data
 try:
     with open("settings.json") as f:
         data = json.load(f)
-        ALLOWED_CHATS = data["groups"]
-        ALLOWED_USERS = data["users"]
-        ADMINS = data["admins"]
-        NAME = data["bot"]
-        DEBUG = data["debug"]
-        LITE = data["lite"]
-        VERSION = data["version"]
-        API_URL = data["api_url"]
-        LLM_MODEL = data["llm_model"]
-        WHISPER_MODEL = data["whisper_model"] + ".bin"
-        GEN_COMMANDS = data["gen_commands"]
-except FileNotFoundError:
-    print("settings.json not found. Please create one.")
+except (FileNotFoundError, json.JSONDecodeError) as e:
+    print(f"Error loading settings.json: {e}")
     exit(1)
+
+# Retrieve configurations with defaults
+ALLOWED_CHATS = data.get("groups", [])
+ALLOWED_USERS = data.get("users", [])
+ADMINS = data.get("admins", [])
+NAME = data.get("bot", "Bot")
+DEBUG = data.get("debug", False)
+LITE = data.get("lite", False)
+VERSION = data.get("version", "1.0")
+API_URL = data.get("api_url", "http://localhost:8000")
+LLM_MODEL = data.get("llm_model", "default_model")
+WHISPER_MODEL = data.get("whisper_model", "default_whisper") + ".bin"
+GEN_COMMANDS = data.get("gen_commands", ["gen"])
 
 # Set up logging
 logging.basicConfig(
-    # level=logging.DEBUG if DEBUG else logging.WARN,
-    level=logging.INFO,
+    level=logging.DEBUG if DEBUG else logging.INFO,
     format="%(levelname)s - %(message)s",
     handlers=[logging.FileHandler("debug.log"), logging.StreamHandler()],
 )
 
 # Set up token
-if DEBUG:
-    logging.info("Debug mode enabled.")
-    if data.get("debug_token"):
-        TOKEN = data["debug_token"]
-        logging.info("Using debug token.")
-    else:
-        logging.warning("Debug token not found in settings.json. Using default.")
-else:
-    TOKEN = data["token"]
+TOKEN = data.get("debug_token" if DEBUG else "token")
+if not TOKEN:
+    logging.error("Token not found in settings.json. Exiting.")
+    exit(1)
 
-
-# check ollama api reachability
+# Check Ollama API reachability
 def check_ollama_api():
     try:
-        response = requests.get(
-            API_URL,
-            timeout=0.3,
-        )
+        response = requests.get(API_URL, timeout=1)
         if response.status_code == 200:
             logging.info("Ollama API is reachable.")
             return True
         else:
-            logging.warning("Ollama API is unreachable.")
+            logging.warning(f"Ollama API responded with status code {response.status_code}.")
             return False
-    except requests.exceptions.RequestException as e:
+    except requests.RequestException as e:
         logging.error(f"Ollama API is unreachable: {str(e)}")
         return False
 
-
-check_ollama_api()
-
-
+# Initialize bot
 bot = Client(
-    name=data["bot"],
+    name=NAME,
     api_id=data["api_id"],
     api_hash=data["api_hash"],
     bot_token=TOKEN,
@@ -83,135 +67,91 @@ bot = Client(
 )
 
 # Get OS name and BOARD
-if os.name == "nt":
-    OS = "Microsoft Windows"
-    BOARD = "Unkonwn"
-else:
-    try:
-        with open("/sys/devices/virtual/dmi/id/product_name") as f:
-            BOARD = f.read().replace("\n", "")
-    except FileNotFoundError:
-        logging.error("Board name not found.")
-        BOARD = "Unknown"
-    OS = os.uname().sysname
-
+OS = os.uname().sysname if os.name != "nt" else "Microsoft Windows"
+try:
+    with open("/sys/devices/virtual/dmi/id/product_name") as f:
+        BOARD = f.read().strip()
+except FileNotFoundError:
+    BOARD = "Unknown"
 logging.info(f"Board: {BOARD}, Platform: {OS}")
-if os.name == "nt":
-    logging.warning("Windows support is experimental and many features may not work.")
 
-# Base variables
+# Initialize Ollama
 ollama = Ollama(base_url=API_URL, model=LLM_MODEL)
-process_next_message = False
 queue_count = 0
 
-
-# Optimized and more readable version of the handle_ket_command function
+# Handle command
 @bot.on_message(filters.command(GEN_COMMANDS))
 async def handle_ket_command(bot, message):
-    global process_next_message, queue_count
-    process_next_message = True
-
+    global queue_count
     if not check_ollama_api():
-        await message.reply_text(
-            "Backend service is not responding. Please try again later.", quote=True
-        )
+        await message.reply_text("Backend service is not responding. Please try again later.", quote=True)
         return
 
     chat_id, user_id = str(message.chat.id), str(message.from_user.id)
-    if (
-        user_id not in map(str, ADMINS)
-        and chat_id not in map(str, ALLOWED_CHATS)
-        and user_id not in map(str, ALLOWED_USERS)
-    ):
+    if user_id not in map(str, ADMINS) and chat_id not in map(str, ALLOWED_CHATS) and user_id not in map(str, ALLOWED_USERS):
         await message.reply_text(f"`{NAME}` not allowed on this chat.", quote=True)
-        logging.warning(
-            f"Unauthorized prompt command attempt by user {user_id} in chat {chat_id}."
-        )
+        logging.warning(f"Unauthorized prompt command attempt by user {user_id} in chat {chat_id}.")
         return
 
     queue_count += 1
     prompt = message.text.split(" ", 1)
     if len(prompt) < 2 or not prompt[1].strip():
-        await message.reply_text(
-            "Please enter a prompt after the command.", quote=True
-        )
+        await message.reply_text("Please enter a prompt after the command.", quote=True)
         queue_count -= 1
         return
 
     prompt = prompt[1].strip()
-    await message.reply_text(
-        f"`{NAME}` Processing your prompt. Check `/status` for more info.", quote=True
-    )
+    await message.reply_text(f"`{NAME}` Processing your prompt. Check `/status` for more info.", quote=True)
 
-    start_time = time.time()
-    response = ollama.invoke(prompt)
-    end_time = time.time()
+    try:
+        start_time = time.time()
+        response = ollama.invoke(prompt)
+        end_time = time.time()
 
-    generation_time = round(end_time - start_time, 2)
-    model_name = ollama.model
-    formatted_response = (
-        f"{response}\n\nTook: `{generation_time}s` | Model: `{model_name}`"
-    )
-    await message.reply_text(formatted_response, quote=True)
-
-    logging.info(f"Processed prompt from user {user_id} in chat {chat_id}.")
-    queue_count -= 1
-
+        generation_time = round(end_time - start_time, 2)
+        model_name = ollama.model
+        formatted_response = f"{response}\n\nTook: `{generation_time}s` | Model: `{model_name}`"
+        await message.reply_text(formatted_response, quote=True)
+        logging.info(f"Processed prompt from user {user_id} in chat {chat_id}.")
+    finally:
+        queue_count -= 1
 
 # Handle help command
 @bot.on_message(filters.command(["help"]))
 async def handle_help_command(bot, message):
     rnd_comm = random.choice(GEN_COMMANDS)
-    await message.reply_text(
-        f"To use {NAME}, type /{rnd_comm} followed by your prompt. For example:\n`/{rnd_comm} What is the meaning of life?`",
-        quote=True,
-    )
+    await message.reply_text(f"To use {NAME}, type /{rnd_comm} followed by your prompt. For example:\n`/{rnd_comm} What is the meaning of life?`", quote=True)
     logging.info("Help command invoked.")
 
-
-# Get system usage info with psutil
+# Get system usage info
 def get_cpu_usage():
-    """Get CPU usage information."""
-    cpu = psutil.cpu_percent(interval=1)
-    return f"**CPU Usage:** `{cpu:.2f}%`"
-
+    return f"**CPU Usage:** `{psutil.cpu_percent(interval=1):.2f}%`"
 
 def get_ram_usage():
-    """Get RAM usage information."""
     mem = psutil.virtual_memory()
-    total_ram = mem.total / (1024**3)  # Convert to GB
-    used_ram = mem.used / (1024**3)
+    total_ram = mem.total / (1024 ** 3)  # Convert to GB
+    used_ram = mem.used / (1024 ** 3)
     return f"**RAM Usage:** `{used_ram:.2f}/{total_ram:.2f}GB`"
 
-
 def get_cpu_temperature():
-    """Get CPU temperature information."""
-    if os.system == "Linux":
+    if OS == "Linux":
         try:
             with open("/sys/class/thermal/thermal_zone0/temp") as f:
-                temp = f.read()
-                temp = int(temp) / 1000  # Convert to Celsius
+                temp = int(f.read()) / 1000  # Convert to Celsius
                 return f"**CPU Temp:** `{temp:.2f}°C`"
         except FileNotFoundError:
             logging.warning("CPU temperature file not found.")
             return "**CPU Temp:** `Unavailable`"
-    else:
-        return "**CPU Temp:** `Unsupported OS`"
-
+    return "**CPU Temp:** `Unsupported OS`"
 
 # Handle status info command
 @bot.on_message(filters.command(["status", "boardinfo"]))
 async def handle_status_info_command(bot, message):
-    """Get system information."""
     await send_status_info_message(message)
     logging.info("Status info command invoked.")
 
-
 async def send_status_info_message(message):
-    if check_ollama_api() is False:
-        api_status = "`Unavailable`"
-    else:
-        api_status = "`Available`"
+    api_status = "`Available`" if check_ollama_api() else "`Unavailable`"
     try:
         queue = f"**Queued prompts:** `{queue_count}`"
         device = f"**Board:** `{BOARD}`"
@@ -225,11 +165,9 @@ async def send_status_info_message(message):
         debug = f"**Debug mode:** `{DEBUG}`"
         info = f"{queue}\n{device}\n{osname}\n{cpu_usage}\n{ram_usage}\n{ollama_api}\n{cpu_temp}\n{lite}\n{debug}\n{version}"
         await message.reply_text(info, quote=True)
-
     except Exception as e:
         await bot.send_message(ADMINS[0], f"An error occurred: {str(e)}")
         logging.error(f"Error fetching status info: {str(e)}")
-
 
 async def main():
     logging.info("Bot starting...")
@@ -240,7 +178,5 @@ async def main():
     await bot.stop()
     logging.info("Bot stopped.")
 
-
 if __name__ == "__main__":
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(main())
+    bot.run(main())
