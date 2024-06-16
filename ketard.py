@@ -120,7 +120,7 @@ async def handle_ket_command(bot, message):
 
     try:
         start_time = time.time()
-        response = ollama.invoke(prompt)
+        response = await ollama.ainvoke(prompt)
         end_time = time.time()
 
         generation_time = round(end_time - start_time, 2)
@@ -170,7 +170,7 @@ async def handle_sum_command(bot, message):
             # Summarize the transcript
             response_header = f"**Summarized Video:** `{url}`\n\n"
             start_time = time.time()
-            response = response_header + ollama.invoke(prompt)
+            response = response_header + await ollama.ainvoke(prompt)
             end_time = time.time()
             generation_time = round(end_time - start_time, 2)
             model_name = ollama.model
