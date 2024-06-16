@@ -133,7 +133,7 @@ async def handle_ket_command(bot, message):
     finally:
         queue_count -= 1
 
-
+# handle summarize command
 @bot.on_message(filters.command(["sum", "vid", "video", "youtube", "transcript", "summarize"]))
 async def handle_sum_command(bot, message):
     global queue_count
@@ -155,11 +155,11 @@ async def handle_sum_command(bot, message):
         return
 
     try:
-        # YouTube URL'sini mesajdan al
+        # Get URL
         url = message.text.split(" ")[1]
         video_id = None
         
-        # YouTube video ID'sini çözümleme
+        # Parse Youtube URL
         if "youtube.com" in url:
             video_id = url.split("v=")[1]
         elif "youtu.be" in url:
@@ -171,7 +171,7 @@ async def handle_sum_command(bot, message):
             return
 
         try:
-            # Videonun transkriptini al
+            # Get transcript
             transcript = YouTubeTranscriptApi.get_transcript(video_id)
             if not transcript:
                 await message.reply_text(
@@ -179,11 +179,11 @@ async def handle_sum_command(bot, message):
                 )
                 return
 
-            # Özetleme prompt'u oluşturma
+            # Prepare prompt
             lmm_prompt = "This is a transcript of a YouTube video: summarize and make it short. Exclude sponsored sections and intro/outro."
             prompt = lmm_prompt + " ".join([item["text"] for item in transcript])
 
-            # Transkripti özetleme
+            # summarize
             response_header = f"**Summarized Video:** `{url}`\n\n"
             start_time = time.time()
             response = response_header + ollama.invoke(prompt)
