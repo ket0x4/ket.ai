@@ -134,7 +134,6 @@ async def handle_ket_command(bot, message):
         queue_count -= 1
 
 
-# hanlde youtube transcript (sum) command
 @bot.on_message(filters.command(["sum", "vid", "video", "youtube", "transcript", "summarize"]))
 async def handle_sum_command(bot, message):
     global queue_count
@@ -154,40 +153,59 @@ async def handle_sum_command(bot, message):
             f"Unauthorized prompt command attempt by user {user_id} in chat {chat_id}."
         )
         return
-    try:
-        # video url format: https://www.youtube.com/watch?v=VIDEO_ID parse the video id from the message
-        # to-do: add support parsing https://youtu.be/50yz_BFL7ao?si=VIDEO_ID scheme
-        url = message.text.split(" ")[1]
-        try:
-            video_id = url.split("v=")[1]
-            # Get the transcript of the video
-            transcript = YouTubeTranscriptApi.get_transcript(video_id)
 
-            # Create a prompt for summarizing the transcript
-            lmm_prompt = ".. This is a transcript of a youtube video: summarize and make it short. I mean really short. exclude sponsored sections and inro/outro"
+    try:
+        # YouTube URL'sini mesajdan al
+        url = message.text.split(" ")[1]
+        video_id = None
+        
+        # YouTube video ID'sini çözümleme
+        if "youtube.com" in url:
+            video_id = url.split("v=")[1]
+        elif "youtu.be" in url:
+            video_id = url.split("/")[-1]
+        else:
+            await message.reply_text(
+                f"Invalid URL format. Please provide a valid YouTube URL.", quote=True
+            )
+            return
+
+        try:
+            # Videonun transkriptini al
+            transcript = YouTubeTranscriptApi.get_transcript(video_id)
+            if not transcript:
+                await message.reply_text(
+                    f"Unable to retrieve the transcript for the video.", quote=True
+                )
+                return
+
+            # Özetleme prompt'u oluşturma
+            lmm_prompt = "This is a transcript of a YouTube video: summarize and make it short. Exclude sponsored sections and intro/outro."
             prompt = lmm_prompt + " ".join([item["text"] for item in transcript])
 
-            # Summarize the transcript
+            # Transkripti özetleme
             response_header = f"**Summarized Video:** `{url}`\n\n"
             start_time = time.time()
-            response = response_header + await ollama.ainvoke(prompt)
+            response = response_header + ollama.invoke(prompt)
             end_time = time.time()
             generation_time = round(end_time - start_time, 2)
             model_name = ollama.model
             response += f"\n\nTook: `{generation_time}s` | Model: `{model_name}`"
 
             await message.reply_text(response, quote=True)
-        except:
+
+        except Exception as e:
             await message.reply_text(
-                f"Invalid URL or failed to parse video id. {NAME} can only parse `youtube.com/watch?v=VIDEO_ID` URL schema.", quote=True
+                f"Invalid URL or failed to parse video id. {NAME} can only parse `youtube.com/watch?v=VIDEO_ID` and `youtu.be/VIDEO_ID` URL schemes.", quote=True
             )
-            logging.error("Invalid URL or failed to parse video id. ID: {video_id} URL: {url}")
+            logging.error(f"Error parsing video ID or fetching transcript. ID: {video_id} URL: {url} Error: {str(e)}")
 
     except Exception as e:
         await bot.send_message(ADMINS[0], f"An error occurred: {str(e)}")
-        logging.error(f"Error fetching youtube transcript: {str(e)}")
+        logging.error(f"Error fetching YouTube transcript: {str(e)}")
         return
-    logging.info(f"Processed youtube transcript from user {user_id} in chat {chat_id}.")
+    logging.info(f"Processed YouTube Video: {video_id} transcript from user {user_id} in chat {chat_id}.")
+
 
 
 # Handle help command
