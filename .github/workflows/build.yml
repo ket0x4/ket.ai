@@ -34,6 +34,6 @@ jobs:
           file: ./Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: |
+          tags:
             ghcr.io/${{ github.repository_owner }}/ketard-ai:latest
 #             ${{ secrets.DOCKERHUB_USERNAME }}/ketard-ai:latest
