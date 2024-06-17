@@ -24,10 +24,10 @@ ADMINS = data.get("admins", [])
 NAME = data.get("bot", "Bot")
 DEBUG = data.get("debug", False)
 LITE = data.get("lite", False)
-VERSION = data.get("version", "1.0")
-API_URL = data.get("api_url", "http://localhost:8000")
-LLM_MODEL = data.get("llm_model", "default_model")
-GEN_COMMANDS = data.get("gen_commands", ["gen"])
+VERSION = data.get("version", "3.0")
+API_URL = data.get("api_url", "http://localhost:1134")
+LLM_MODEL = data.get("llm_model", "phi3")
+GEN_COMMANDS = data.get("gen_commands", ["ask"])
 
 # Set up logging
 logging.basicConfig(
@@ -76,9 +76,11 @@ try:
     if os.path.exists("/sys/devices/virtual/dmi/id/product_name"):
         with open("/sys/devices/virtual/dmi/id/product_name") as f:
             BOARD = f.read().strip()
-    if os.path.exists("/proc/device-tree/model"):
+    elif os.path.exists("/proc/device-tree/model"):
         with open("/proc/device-tree/model") as f:
             BOARD = f.read().strip()
+    else:
+        BOARD = "Unknown"
 except FileNotFoundError:
     BOARD = "Unknown"
 logging.info(f"Board: {BOARD}, Platform: {OS}")
@@ -94,7 +96,7 @@ async def handle_ket_command(bot, message):
     global queue_count
     if not check_ollama_api():
         await message.reply_text(
-            "Backend service is not responding. Please try again later.", quote=True
+            "API not responding. Please try again later.", quote=True
         )
         return
 
@@ -113,13 +115,13 @@ async def handle_ket_command(bot, message):
     queue_count += 1
     prompt = message.text.split(" ", 1)
     if len(prompt) < 2 or not prompt[1].strip():
-        await message.reply_text("Please enter a prompt after the command.", quote=True)
+        await message.reply_text("Please enter a prompt.", quote=True)
         queue_count -= 1
         return
 
     prompt = prompt[1].strip()
     await message.reply_text(
-        f"`{NAME}` Processing... Check `/status` for more info.", quote=True
+        f"`{NAME}` Processing your propmt...", quote=True
     )
 
     try:
@@ -143,10 +145,10 @@ async def handle_sum_command(bot, message):
     global queue_count
     if not check_ollama_api():
         await message.reply_text(
-            "Backend service is not responding. Please try again later.", quote=True
+            "API not responding pease try again later.", quote=True
         )
         return
-    await message.reply_text(f"Summarizing content... this may take a while depending on the video length.", quote=True)
+    await message.reply_text(f"Summarizing Video...", quote=True)
     chat_id, user_id = str(message.chat.id), str(message.from_user.id)
     if (
         user_id not in map(str, ADMINS)
@@ -184,13 +186,17 @@ async def handle_sum_command(bot, message):
                 return
 
             # Prepare prompt
-            lmm_prompt = "This is a transcript of a YouTube video: summarize and make it short. Exclude sponsored sections and intro/outro."
+            lmm_prompt = """This is a transcript of a YouTube video: summarize and make it short. 
+            I mean realy short. Maximum 4090 character. Exclude sponsored sections and intro/outro.
+            If its a tutorial, summarize the steps. If its a talk, summarize the key points.
+            If its a music video, just write the lyrics. If its a movie, summarize the plot.
+            """
             prompt = lmm_prompt + " ".join([item["text"] for item in transcript])
 
             # summarize
             response_header = f"**Summarized Video:** `{url}`\n\n"
             start_time = time.time()
-            response = response_header + ollama.invoke(prompt)
+            response = response_header + await ollama.invoke(prompt)
             end_time = time.time()
             generation_time = round(end_time - start_time, 2)
             model_name = ollama.model
@@ -200,7 +206,7 @@ async def handle_sum_command(bot, message):
 
         except Exception as e:
             await message.reply_text(
-                f"Invalid URL or failed to parse video id. {NAME} can only parse `youtube.com/watch?v=VIDEO_ID` and `youtu.be/VIDEO_ID` URL schemes.", quote=True
+                f"Failed to parse video id. Check `/help sum` for usage", quote=True
             )
             logging.error(f"Error parsing video ID or fetching transcript. ID: {video_id} URL: {url} Error: {str(e)}")
 
