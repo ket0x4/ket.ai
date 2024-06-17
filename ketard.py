@@ -192,15 +192,14 @@ async def handle_sum_command(bot, message):
             If its a music video, just write the lyrics. If its a movie, summarize the plot.
             """
             prompt = lmm_prompt + " ".join([item["text"] for item in transcript])
-
             # summarize
             response_header = f"**Summarized Video:** `{url}`\n\n"
             start_time = time.time()
-            response = response_header + await ollama.invoke(prompt)
+            ollama_response = await ollama.invoke(prompt)
             end_time = time.time()
             generation_time = round(end_time - start_time, 2)
             model_name = ollama.model
-            response += f"\n\nTook: `{generation_time}s` | Model: `{model_name}`"
+            response = f"{response_header}{ollama_response}\n\nTook: `{generation_time}s` | Model: `{model_name}`"
 
             await message.reply_text(response, quote=True)
 
