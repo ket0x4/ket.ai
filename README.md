@@ -50,6 +50,8 @@ Ensure that your `config.json` is correctly set up with the necessary API creden
 
 ## To-do
 - [x] Add `/sum` command
+- [x] Async `/sum` command
+- [x] Support other youtube url's 
 - [ ] Add speech-to-text support
 - [x] Check api response before sending
 - [x] Fix async `/status` command
@@ -58,5 +60,10 @@ Ensure that your `config.json` is correctly set up with the necessary API creden
 - [ ] split long messages
 - [ ] delete status message after sending prompt response
 - [ ] Add reply support
+- [ ] Refactor code
+- [ ] remove repeated code
+- [ ] Add `TR` lang support to `/sum command`
+- [ ] Better `/help` message
+- [ ] Add `/start command`
 ## License
 This project is licensed under the [MIT License](LICENSE).
