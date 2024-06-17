@@ -195,7 +195,7 @@ async def handle_sum_command(bot, message):
             # summarize
             response_header = f"**Summarized Video:** `{url}`\n\n"
             start_time = time.time()
-            ollama_response = await ollama.invoke(prompt)
+            ollama_response = await ollama.ainvoke(prompt)
             end_time = time.time()
             generation_time = round(end_time - start_time, 2)
             model_name = ollama.model
