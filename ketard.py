@@ -73,8 +73,12 @@ bot = Client(
 # Get OS name and BOARD
 OS = os.uname().sysname if os.name != "nt" else "Microsoft Windows"
 try:
-    with open("/sys/devices/virtual/dmi/id/product_name") as f:
-        BOARD = f.read().strip()
+    if os.path.exists("/sys/devices/virtual/dmi/id/product_name"):
+        with open("/sys/devices/virtual/dmi/id/product_name") as f:
+            BOARD = f.read().strip()
+    if os.path.exists("/proc/device-tree/model"):
+        with open("/proc/device-tree/model") as f:
+            BOARD = f.read().strip()
 except FileNotFoundError:
     BOARD = "Unknown"
 logging.info(f"Board: {BOARD}, Platform: {OS}")
