@@ -145,7 +145,7 @@ async def handle_sum_command(bot, message):
     global queue_count
     if not check_ollama_api():
         await message.reply_text(
-            "API not responding pease try again later.", quote=True
+            "API not responding please try again later.", quote=True
         )
         return
     await message.reply_text(f"Summarizing Video...", quote=True)
