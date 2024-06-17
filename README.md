@@ -57,5 +57,6 @@ Ensure that your `config.json` is correctly set up with the necessary API creden
 - [ ] log prompts and responses to db
 - [ ] split long messages
 - [ ] delete status message after sending prompt response
+- [ ] Add reply support
 ## License
 This project is licensed under the [MIT License](LICENSE).
