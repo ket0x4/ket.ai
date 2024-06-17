@@ -5,6 +5,7 @@
 Ketard AI Bot is a Telegram bot designed for interacting with users through a variety of commands. It leverages advanced APIs to provide features such as system status checks, text generation, and more. The bot can be integrated with different services to enhance functionality.
 
 ## Features
+- Summarize YouTube videos. just send /sum command with vail YouTube URL and hope it doesn't burn
 - **System Information**: Commands to check CPU usage, RAM usage, and system temperature.
 - **Text Generation**: Utilizes the Ollama API for generating responses based on user input.
 - **Debug and Status Modes**: Includes configurations for debug mode and system status reporting.
