@@ -22,18 +22,18 @@ jobs:
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
         with:
-          logout: false
           registry: ghcr.io
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
 #       - name: Login to Docker Hub
 #         uses: docker/login-action@v3
 #         with:
 #           username: ${{ secrets.DOCKERHUB_USERNAME }}
 #           password: ${{ secrets.DOCKERHUB_TOKEN }}
-
+#
       - name: Lowercase repository and user name
-        run: echo "REPO=${GITHUB_REPOSITORY,,}" >>${GITHUB_ENV}
+        run: echo "REPO=${GITHUB_REPOSITORY,,}" >> $GITHUB_ENV
 
       - name: Build & Push
         uses: docker/build-push-action@v5
@@ -46,3 +46,4 @@ jobs:
             ghcr.io/${{ env.REPO }}:latest
             ghcr.io/${{ env.REPO }}:${{ github.sha }}
 #             ${{ secrets.DOCKERHUB_USERNAME }}/ketard-ai:latest
+#             ${{ secrets.DOCKERHUB_USERNAME }}/ketard-ai:${{ github.sha }}
