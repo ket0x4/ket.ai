@@ -44,6 +44,4 @@ jobs:
           push: true
           tags: |
             ghcr.io/${{ env.REPO }}:latest
-            ghcr.io/${{ env.REPO }}:${{ github.sha }}
 #             ${{ secrets.DOCKERHUB_USERNAME }}/ketard-ai:latest
-#             ${{ secrets.DOCKERHUB_USERNAME }}/ketard-ai:${{ github.sha }}
