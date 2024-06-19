@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - main
+      - master
 
 jobs:
   build:
@@ -35,5 +35,5 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags:
-            ghcr.io/${{ github.repository_owner }}/ketard-ai:latest
+            ghcr.io/${{ github.repository }}:latest
 #             ${{ secrets.DOCKERHUB_USERNAME }}/ketard-ai:latest
