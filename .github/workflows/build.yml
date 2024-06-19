@@ -32,7 +32,7 @@ jobs:
 #           username: ${{ secrets.DOCKERHUB_USERNAME }}
 #           password: ${{ secrets.DOCKERHUB_TOKEN }}
 #
-      - name: Lowercase repository and user name
+      - name: Lowercase repository variable
         run: echo "REPO=${GITHUB_REPOSITORY,,}" >> $GITHUB_ENV
 
       - name: Build & Push
@@ -41,7 +41,8 @@ jobs:
           context: .
           file: ./Dockerfile
           platforms: linux/amd64,linux/arm64
-          push: true
+          provenance: false
+          push: ${{ github.event_name != 'pull_request' }}
           tags: |
             ghcr.io/${{ env.REPO }}:latest
             ghcr.io/${{ env.REPO }}:${{ github.sha }}
