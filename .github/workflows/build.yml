@@ -12,13 +12,17 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
         with:
+          logout: false
           registry: ghcr.io
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
@@ -27,6 +31,10 @@ jobs:
 #         with:
 #           username: ${{ secrets.DOCKERHUB_USERNAME }}
 #           password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Lowercase repository and user name
+        run: echo "REPO=${GITHUB_REPOSITORY,,}" >>${GITHUB_ENV}
+
       - name: Build & Push
         uses: docker/build-push-action@v5
         with:
@@ -35,5 +43,6 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags:
-            ghcr.io/${{ github.repository }}:latest
+            ghcr.io/${{ env.REPO }}:latest
+            ghcr.io/${{ env.REPO }}:${{ github.sha }}
 #             ${{ secrets.DOCKERHUB_USERNAME }}/ketard-ai:latest
