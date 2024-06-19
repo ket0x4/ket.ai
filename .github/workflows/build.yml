@@ -41,7 +41,6 @@ jobs:
           context: .
           file: ./Dockerfile
           platforms: linux/amd64,linux/arm64
-          provenance: false
           push: ${{ github.event_name != 'pull_request' }}
           tags: |
             ghcr.io/${{ env.REPO }}:latest
