@@ -55,5 +55,6 @@ jobs:
           token: ${{ secrets.PAT_TOKEN }}
           repository_owner: ${{ github.repository_owner }}
           repository: ${{ github.repository }}
+          package_name: ketard-ai
           untagged_only: true
           owner_type: user
