@@ -1,4 +1,3 @@
-
 import os
 import time
 import asyncio
@@ -11,20 +10,12 @@ from ketard import ollama
 from ketard.utils.stt import SpeechRecognizer
 
 
-async def split_text(
-    text: str, message: Message
-) -> Message:
+async def split_text(text: str, message: Message) -> Message:
     part_length = 4090
-    parts = [
-        text[
-            i:i + part_length
-        ] for i in range(0, len(text), part_length)
-    ]
+    parts = [text[i : i + part_length] for i in range(0, len(text), part_length)]
     for part in parts:
         message = await message.reply_text(
-            text=part,
-            quote=True,
-            disable_web_page_preview=True
+            text=part, quote=True, disable_web_page_preview=True
         )
     return message
 
@@ -41,10 +32,10 @@ async def ollama_invoke(prompt: str):
 
 async def get_prompt(message: Message):
     prompt_parts = []
-    
+
     if message.command and len(message.command) > 1:
         prompt_parts.append(" ".join(message.command[1:]))
-    
+
     if message.reply_to_message:
         if message.reply_to_message.voice:
             voice = await message.reply_to_message.download()
@@ -62,7 +53,7 @@ async def get_prompt(message: Message):
 async def send_log(client, error, message, name):
     try:
         error_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        
+
         msg = f"""#ERROR
 **Time:** `{error_time}`
 **User:** {message.from_user.mention} (`{message.from_user.id}`)
@@ -70,9 +61,7 @@ async def send_log(client, error, message, name):
 **Error:** ```{error}```
         """
         for user in DataConfig.ADMINS:
-            await client.send_message(
-                chat_id=user, text=msg
-            )
+            await client.send_message(chat_id=user, text=msg)
         LOGGER(name).error(str(error))
     except FloodWait as e:
         await asyncio.sleep(e.value)

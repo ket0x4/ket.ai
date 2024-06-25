@@ -1,4 +1,3 @@
-
 import os
 import sys
 import json
@@ -8,9 +7,9 @@ from ketard.logging import LOGGER
 
 def strtobool(val):
     val = val.lower()
-    if val in ('y', 'yes', 't', 'true', 'on', '1'):
+    if val in ("y", "yes", "t", "true", "on", "1"):
         return True
-    elif val in ('n', 'no', 'f', 'false', 'off', '0'):
+    elif val in ("n", "no", "f", "false", "off", "0"):
         return False
     else:
         raise ValueError("invalid truth value %r" % val)
@@ -29,20 +28,16 @@ def initialize_config(config):
         ("ApiConfig", "API_URL"),
         ("ApiConfig", "LLM_MODEL"),
         ("DataConfig", "ADMINS"),
-        ("DbConfig", "DB_NAME")
+        ("DbConfig", "DB_NAME"),
     ]
     for section, var_name in required_vars:
         try:
             if not config[section].get(var_name):
                 raise KeyError
         except KeyError:
-            LOGGER(__name__).error(
-                f"'{var_name}' not found in {section}!"
-            )
+            LOGGER(__name__).error(f"'{var_name}' not found in {section}!")
             sys.exit()
-    LOGGER(__name__).info(
-        "All required variables collected."
-    )
+    LOGGER(__name__).info("All required variables collected.")
 
 
 def get_config():
@@ -55,5 +50,5 @@ def get_config():
             "Please create a configuration file ('cp sample_config.json config.json') and fill in the necessary variables."
         )
         sys.exit()
-    
+
     return config

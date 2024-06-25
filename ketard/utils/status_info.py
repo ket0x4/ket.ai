@@ -6,13 +6,7 @@ from ketard.logging import LOGGER
 
 
 class SystemStatus:
-    def __init__(
-        self,
-        version,
-        lite,
-        debug,
-        api_url
-    ):
+    def __init__(self, version, lite, debug, api_url):
         self.version = version
         self.lite = lite
         self.debug = debug
@@ -22,19 +16,13 @@ class SystemStatus:
         try:
             response = requests.get(self.api_url)
             if response.status_code == 200:
-                LOGGER(__name__).info(
-                    "Ollama API is reachable."
-                )
+                LOGGER(__name__).info("Ollama API is reachable.")
                 return True
             else:
-                LOGGER(__name__).warning(
-                    "Ollama API is unreachable."
-                )
+                LOGGER(__name__).warning("Ollama API is unreachable.")
                 return False
         except requests.exceptions.RequestException as e:
-            LOGGER(__name__).error(
-                f"Error reaching Ollama API: {str(e)}"
-            )
+            LOGGER(__name__).error(f"Error reaching Ollama API: {str(e)}")
             return False
 
     def get_cpu_usage(self):
@@ -50,19 +38,12 @@ class SystemStatus:
         os_name = self.get_system_info()[1]
         if os_name == "Linux":
             try:
-                with open(
-                    "/sys/class/thermal/thermal_zone0/temp",
-                    "r"
-                ) as temp_file:
+                with open("/sys/class/thermal/thermal_zone0/temp", "r") as temp_file:
                     temp = int(temp_file.read()) / 1000.0
-                    LOGGER(__name__).info(
-                        f"CPU Temp: {temp:.2f}°C"
-                    )
+                    LOGGER(__name__).info(f"CPU Temp: {temp:.2f}°C")
                     return f"{temp:.2f}°C"
             except FileNotFoundError:
-                LOGGER(__name__).error(
-                    "Failed to read CPU temperature."
-                )
+                LOGGER(__name__).error("Failed to read CPU temperature.")
                 return "Failed to read"
         return "Unsupported OS"
 
@@ -76,7 +57,7 @@ class SystemStatus:
                 board_name = f.read().strip()
         else:
             board_name = "Unknown"
-                
+
         return board_name, os_name
 
     def status_info_message(self):
@@ -95,6 +76,4 @@ class SystemStatus:
 **Debug mode:** `{self.debug}`
             """
         except Exception as e:
-            LOGGER(__name__).error(
-                f"Error fetching status info: {str(e)}"
-            )
+            LOGGER(__name__).error(f"Error fetching status info: {str(e)}")
