@@ -6,3 +6,4 @@ debug.log
 Ket.ai.session
 __pycache__/
 ketard/__pycache__/
+config.json
