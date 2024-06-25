@@ -76,7 +76,7 @@ If its a music video, just write the lyrics. If its a movie, summarize the plot.
         )
         formatted_response = response_header + response + info
         if len(formatted_response) > 4090:
-            p_link = await paste(
+            p_link = await paste.dpaste(
                 text=response
             )
             formatted_response = f"{response_header}The output is too long, [click to see]({p_link}){info}"

@@ -80,7 +80,7 @@ Updates:
 
     final_updates = updates + _updates
     if len(final_updates) > 4096:
-        url = await paste(
+        url = await paste.dpaste(
             text=_updates
         )
         update_msg = await msg.edit(

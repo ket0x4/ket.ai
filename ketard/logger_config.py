@@ -5,18 +5,7 @@ from colorlog import ColoredFormatter
 
 from ketard.config import LogConfig
 
-formatter = ColoredFormatter(
-    "%(log_color)s[%(asctime)s - %(levelname)-8s] - %(name)s - %(message)s%(reset)s",
-    datefmt="%d-%b-%y %H:%M:%S",
-    log_colors={
-        'DEBUG': 'cyan',
-        'INFO': 'white',
-        'WARNING': 'yellow',
-        'ERROR': 'red',
-        'CRITICAL': 'red,bg_white',
-    },
-)
-
+formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger()
 logger.setLevel(
     logging.DEBUG if LogConfig.DEBUG else logging.INFO
