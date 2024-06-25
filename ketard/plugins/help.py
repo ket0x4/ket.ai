@@ -3,11 +3,15 @@ import random
 from pyrogram import Client, filters
 from pyrogram.types import Message
 
-from ketard import LOGGER
+from ketard import my_filters
 from ketard.config import DataConfig, BotConfig
+from ketard.logging import LOGGER
 
 
-@Client.on_message(filters.command(["help"]))
+@Client.on_message(
+    filters.command(["help"])
+    & my_filters.is_user_spamming()
+)
 async def handle_help_command(_, message: Message):
     rnd_comm = random.choice(DataConfig.GEN_COMMANDS)
     await message.reply_text(

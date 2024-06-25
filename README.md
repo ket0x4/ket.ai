@@ -24,8 +24,8 @@ Ketard AI Bot is a Telegram bot designed for interacting with users through a va
 ## Installation
 1. Clone the repository:
    ```bash
-   git clone https://github.com/yourusername/ketard-bot.git
-   cd ketard-bot
+   git clone https://github.com/ket0x4/ketard-ai.git
+   cd ketard-ai
    ```
 2. Create a virtual environment:
    ```bash
@@ -39,10 +39,14 @@ Ketard AI Bot is a Telegram bot designed for interacting with users through a va
    ```bash
    pip install -r requirements.txt
    ```
+5. Create a configuration file and fill in the required variables: 
+    ```bash
+    cp sample_config.json config.json
+    ```
 5. Configure the bot by editing the `config.json` file with the appropriate values for `BOT_NAME`, `API_ID`, `API_HASH`, `BOT_TOKEN`, ...
 6. Run the bot:
    ```bash
-   python -m ketard
+   bash start
    ```
 
 ## Configuration
@@ -54,5 +58,6 @@ Ensure that your `config.json` is correctly set up with the necessary API creden
 - [ ] log prompts and responses to db
 - [ ] split long messages
 - [ ] delete status message after sending prompt response
+
 ## License
 This project is licensed under the [MIT License](LICENSE).

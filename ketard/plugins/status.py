@@ -2,15 +2,21 @@
 from pyrogram import Client, filters
 from pyrogram.types import Message
 
-from ketard import LOGGER, system_status
+from ketard import (
+    permission_checker,
+    system_status,
+    my_filters
+)
+from ketard.logging import LOGGER
 
 
 @Client.on_message(
     filters.command(["status", "boardinfo"])
+    & my_filters.is_user_spamming()
 )
+@permission_checker
 async def handle_status_info_command(_, message: Message):
-    """Get system information."""
-    info = system_status.send_status_info_message()
+    info = system_status.status_info_message()
 
     await message.reply_text(info, quote=True)
     

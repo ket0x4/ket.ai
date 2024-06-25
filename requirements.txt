@@ -1,5 +1,10 @@
 langchain_community
 https://github.com/KurimuzonAkuma/pyrogram/archive/dev.zip
-psutil
 TgCrypto
+psutil
 colorlog
+httpx
+gitpython
+aiosqlite
+youtube-transcript-api
+SpeechRecognition
