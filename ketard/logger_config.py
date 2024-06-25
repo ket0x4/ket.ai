@@ -5,7 +5,6 @@ from colorlog import ColoredFormatter
 
 from ketard.config import LogConfig
 
-
 formatter = ColoredFormatter(
     "%(log_color)s[%(asctime)s - %(levelname)-8s] - %(name)s - %(message)s%(reset)s",
     datefmt="%d-%b-%y %H:%M:%S",
@@ -39,7 +38,3 @@ if LogConfig.LOG_TO_FILE:
 
 logging.getLogger("pyrogram").setLevel(logging.ERROR)
 logging.getLogger("langchain_community").setLevel(logging.ERROR)
-
-
-def LOGGER(name: str) -> logging.Logger:
-    return logging.getLogger(name)

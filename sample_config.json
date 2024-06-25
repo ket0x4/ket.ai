@@ -3,26 +3,25 @@
         "BOT_NAME": "",
         "API_ID": "",
         "API_HASH": "",
-        "BOT_TOKEN": ""
+        "BOT_TOKEN": "",
+        "UPSTREAM_BRANCH": ""
     },
     "LogConfig": {
         "DEBUG": "",
         "DEBUG_TOKEN": "",
         "LOG_TO_FILE": "",
-        "LOG_FILE_PATH": "",
-        "WORKERS": ""
+        "LOG_FILE_PATH": ""
     },
     "ApiConfig": {
         "API_URL": "",
         "LLM_MODEL": "",
-        "LITE": "",
-        "BOARD": ""
+        "LITE": ""
     },
     "DataConfig": {
-        "OWNER_ID": "",
         "ADMINS": [],
-        "USERS": [],
-        "GROUPS": [],
         "GEN_COMMANDS": []
+    },
+    "DbConfig": {
+        "DB_NAME": ""
     }
 }
