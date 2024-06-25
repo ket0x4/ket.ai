@@ -20,6 +20,8 @@ class LogConfig:
     LOG_TO_FILE = strtobool(config["LogConfig"]["LOG_TO_FILE"])
     if LOG_TO_FILE:
         LOG_FILE_PATH = Path(config["LogConfig"]["LOG_FILE_PATH"])
+        if LOG_FILE_PATH.suffix != ".log":
+            LOG_FILE_PATH = LOG_FILE_PATH.with_suffix(".log")
 
 class ApiConfig:
     API_URL = str(config["ApiConfig"]["API_URL"])
@@ -34,6 +36,8 @@ class DataConfig:
 
 class DbConfig:
     DB_NAME = Path(config["DbConfig"]["DB_NAME"])
+    if DB_NAME.suffix != ".db":
+        DB_NAME = DB_NAME.with_suffix(".db")
 
 
 import ketard.logger_config
