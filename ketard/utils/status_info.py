@@ -1,7 +1,6 @@
 import os
 import psutil
 import requests
-
 from ketard.logging import LOGGER
 
 
@@ -23,6 +22,19 @@ class SystemStatus:
                 return False
         except requests.exceptions.RequestException as e:
             LOGGER(__name__).error(f"Error reaching Ollama API: {str(e)}")
+            return False
+
+    def check_ddg_api(self):
+        try:
+            response = requests.get("https://duckduckgo.com/duckchat/v1/status")
+            if response.status_code == 200:
+                LOGGER(__name__).info("DdgChat API is reachable.")
+                return True
+            else:
+                LOGGER(__name__).warning("DdgChat API is unreachable.")
+                return False
+        except requests.exceptions.RequestException as e:
+            LOGGER(__name__).error(f"Error reaching DdgChat API: {str(e)}")
             return False
 
     def get_cpu_usage(self):
@@ -63,17 +75,19 @@ class SystemStatus:
     def status_info_message(self):
         try:
             board_name, os_name = self.get_system_info()
-            api_status = "Available" if self.check_ollama_api() else "Unavailable"
+            ollama_status = "Available" if self.check_ollama_api() else "Unavailable"
+            ddg_status = "Available" if self.check_ddg_api() else "Unavailable"
             return f"""
 **Board:** `{board_name}`
 **OS:** `{os_name}`
 **CPU Usage:** `{self.get_cpu_usage()}`
 **RAM Usage:** `{self.get_ram_usage()}`
 **CPU Temp:** `{self.get_cpu_temperature()}`
-**API Status:** `{api_status}`
+**Ollama Status:** `{ollama_status}`
+**DDG Status:** `{ddg_status}`
 **Version:** `{self.version}`
 **Lite mode:** `{self.lite}`
 **Debug mode:** `{self.debug}`
-            """
+"""
         except Exception as e:
             LOGGER(__name__).error(f"Error fetching status info: {str(e)}")
