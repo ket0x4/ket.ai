@@ -7,3 +7,6 @@ Ket.ai.session
 __pycache__/
 ketard/__pycache__/
 config.json
+Ket.ai.session-journal
+ketard.log
+database.db
