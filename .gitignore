@@ -1,13 +1,8 @@
-.env
-test.py
+.env/
 venv/
 .venv/
-bot.log
 settings.json
-llama.py
-start.sh
-pork/
-vision.py
-__pycache__/ketard.cpython-310.pyc
 debug.log
 Ket.ai.session
+__pycache__/
+ketard/__pycache__/
