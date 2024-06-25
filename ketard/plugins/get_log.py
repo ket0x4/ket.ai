@@ -1,5 +1,5 @@
 
-from pyrogram import Client, filters
+from pyrogram import Client, filters, os
 from pyrogram.types import Message
 
 from ketard import paste, my_filters
