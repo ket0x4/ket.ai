@@ -22,37 +22,42 @@ Ketard AI Bot is a Telegram bot designed for interacting with users through a va
 - **Custom Commands**: `{DataConfig.GEN_COMMANDS}` for generating responses based on specified commands.
 
 ## Installation
+<details><summary><b>Click to view installation steps.</b></summary>
+
 1. Clone the repository:
-   ```bash
-   git clone https://github.com/ket0x4/ketard-ai.git
-   cd ketard-ai
-   ```
+    ```bash
+    git clone https://github.com/ket0x4/ketard-ai.git && cd ketard-ai
+    ```
 2. Create a virtual environment:
-   ```bash
-   python -m venv venv
-   ```
+    ```bash
+    python -m venv venv
+    ```
 3. Activate the virtual environment:
-     ```bash
-     source venv/bin/activate
-     ```
+    ```bash
+    source venv/bin/activate
+    ```
 4. Install the dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
+    ```bash
+    pip install -r requirements.txt
+    ```
 5. Create a configuration file and fill in the required variables: 
     ```bash
     cp sample_config.json config.json
     ```
-5. Configure the bot by editing the `config.json` file with the appropriate values for `BOT_NAME`, `API_ID`, `API_HASH`, `BOT_TOKEN`, ...
-6. Run the bot:
-   ```bash
-   bash start
-   ```
+6. Configure the bot by editing the `config.json` file with the appropriate values for `BOT_NAME`, `API_ID`, `API_HASH`, `BOT_TOKEN`, ...
+7. Run the bot:
+    ```bash
+    bash start
+    ```
+
+</details>
 
 ## Configuration
 Ensure that your `config.json` is correctly set up with the necessary API credentials and configurations for bot behavior.
 
 ## To-do
+<details><summary><b>Click to expand!</b></summary>
+
 - [x] Add `/sum` command
 - [x] Async `/sum` command
 - [x] Support other youtube url's 
@@ -69,3 +74,5 @@ Ensure that your `config.json` is correctly set up with the necessary API creden
 - [ ] Add `TR` lang support to `/sum command`
 - [ ] Better `/help` message
 - [x] Add `/start command`
+
+</details>
