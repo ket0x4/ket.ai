@@ -1,9 +1,9 @@
 
 import logging
 from logging.handlers import RotatingFileHandler
-from colorlog import ColoredFormatter
 
 from ketard.config import LogConfig
+
 
 formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger()
