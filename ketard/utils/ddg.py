@@ -1,12 +1,9 @@
+
+import time
+import json
 import aiohttp
 import asyncio
-import json
-from pyrogram import Client, filters
-from pyrogram.types import Message
-from ketard import permission_checker, system_status, paste, my_filters
-from ketard.config import DataConfig, BotConfig
-from ketard.logging import LOGGER
-from ketard.utils.helper import ollama_invoke, get_prompt, send_log
+
 
 # experimental feature
 # avaible models: 
@@ -16,7 +13,7 @@ from ketard.utils.helper import ollama_invoke, get_prompt, send_log
 # gpt-3.5-turbo-0125
 
 
-async def get_ddg_message(finput):
+async def ddg_invoke(prompt):
     headers = {
         "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:127.0) Gecko/20100101 Firefox/127.0",
         "Accept": "text/event-stream",
@@ -36,6 +33,8 @@ async def get_ddg_message(finput):
         "Cache-Control": "no-store",
     }
 
+    start_time = time.time()
+
     async with aiohttp.ClientSession() as session:
         async with session.get(
             "https://duckduckgo.com/duckchat/v1/status", headers=headers
@@ -46,7 +45,7 @@ async def get_ddg_message(finput):
         url = "https://duckduckgo.com/duckchat/v1/chat"
         data = {
             "model": "gpt-3.5-turbo-0125",
-            "messages": [{"role": "user", "content": finput}],
+            "messages": [{"role": "user", "content": prompt}],
         }
 
         async with session.post(url, headers=headers, json=data) as response:
@@ -58,5 +57,10 @@ async def get_ddg_message(finput):
             dat = json.loads(line[6:])
             if "message" in dat:
                 ret += dat["message"].replace("\\n", "\n")
+    
+    end_time = time.time()
+    generation_time = round(end_time - start_time, 2)
+    model_name = "duckduckgo"
+    info = f"\n\nTook: `{generation_time}s` | Model: `{model_name}`"
 
-    return ret
+    return ret, info

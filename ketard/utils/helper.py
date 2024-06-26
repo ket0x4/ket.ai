@@ -1,12 +1,10 @@
 import os
-import time
 import asyncio
 from datetime import datetime
 
 from pyrogram.types import Message
 from pyrogram.errors import FloodWait
 
-from ketard import ollama
 from ketard.utils.stt import SpeechRecognizer
 
 
@@ -18,16 +16,6 @@ async def split_text(text: str, message: Message) -> Message:
             text=part, quote=True, disable_web_page_preview=True
         )
     return message
-
-
-async def ollama_invoke(prompt: str):
-    start_time = time.time()
-    response = await ollama.ainvoke(prompt)
-    end_time = time.time()
-    generation_time = round(end_time - start_time, 2)
-    model_name = ollama.model
-    info = f"\n\nTook: `{generation_time}s` | Model: `{model_name}`"
-    return response, info
 
 
 async def get_prompt(message: Message):
