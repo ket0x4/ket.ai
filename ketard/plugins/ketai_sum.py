@@ -12,7 +12,8 @@ from ketard import (
 )
 from ketard.config import DataConfig, BotConfig
 from ketard.logging import LOGGER
-from ketard.utils.helper import ollama_invoke, send_log
+from ketard.utils.helper import send_log
+from ketard.utils.ollama import ollama_invoke
 
 
 @Client.on_message(

@@ -2,24 +2,19 @@
 from pyrogram import Client, filters
 from pyrogram.types import Message
 
-from ketard import (
-    permission_checker,
-    system_status,
-    paste,
-    my_filters
-)
+from ketard import permission_checker, system_status, paste, my_filters
 from ketard.config import DataConfig, BotConfig
 from ketard.logging import LOGGER
-from ketard.utils.ollama import ollama_invoke
 from ketard.utils.helper import get_prompt, send_log
+from ketard.utils.ddg import ddg_invoke
 
 
 @Client.on_message(
-    filters.command(DataConfig.GEN_COMMANDS)
+    filters.command(["ddg"])
     & my_filters.is_user_spamming()
 )
 @permission_checker
-async def handle_ket_command(client: Client, message: Message):
+async def handle_ddg_command(client: Client, message: Message):
     prompt = await get_prompt(message=message)
     
     if prompt is None:
@@ -29,7 +24,7 @@ async def handle_ket_command(client: Client, message: Message):
         )
         
     try:
-        if not system_status.check_ollama_api():
+        if not system_status.check_ddg_api():
             return await message.reply_text(
                 "API not responding. Please try again later.",
                 quote=True
@@ -39,7 +34,7 @@ async def handle_ket_command(client: Client, message: Message):
             f"`{BotConfig.BOT_NAME}` Processing your prompt...",
             quote=True,
         )
-        response, info = await ollama_invoke(
+        response, info = await ddg_invoke(
             prompt=prompt
         )
         

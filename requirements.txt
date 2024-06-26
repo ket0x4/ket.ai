@@ -2,7 +2,6 @@ langchain_community
 https://github.com/KurimuzonAkuma/pyrogram/archive/dev.zip
 TgCrypto
 psutil
-colorlog
 httpx
 gitpython
 aiosqlite
