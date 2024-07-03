@@ -3,8 +3,6 @@ FROM alpine:edge
 # Install packages
 RUN apk update && \
     apk add --no-cache \
-        git \
-        curl \
         ffmpeg \
         flac \
         python3 \
@@ -14,17 +12,27 @@ RUN apk update && \
         musl-dev \
         linux-headers
 
-# Clone repo and install requirements
-RUN git clone https://github.com/ket0x4/ketard-ai && \
-    cd ketard-ai && \
-    python3 -m venv venv && \
-    source venv/bin/activate && \
-    pip install --upgrade pip && \
-    pip install -r requirements.txt
+# Copy files
+COPY ketard /ketard
+COPY start /start
+RUN chmod +x /start
 
-# install ollama and pull model
-RUN curl -fsSL https://ollama.com/install.sh | sh
-RUN ollama pull phi3-mini
+# Install python packages
+RUN python -m venv venv && source venv/bin/activate && \
+    pip install --no-cache-dir \
+    langchain_community \
+    TgCrypto \
+    packaging \
+    psutil \
+    httpx \
+    gitpython \
+    aiosqlite \
+    youtube-transcript-api \
+    SpeechRecognition \
+    https://github.com/KurimuzonAkuma/pyrogram/archive/dev.zip && \
+    rm -rf /root/.cache/pip
 
-WORKDIR /ketard-ai
-CMD ["/bin/sh", "start"]
+# Remove build dependencies
+RUN apk del gcc python3-dev musl-dev linux-headers py3-pip --purge -r
+
+CMD ["sh", "-c", "source venv/bin/activate && /bin/sh start"]
