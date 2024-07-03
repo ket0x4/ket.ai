@@ -60,7 +60,7 @@ async def ddg_invoke(prompt):
     
     end_time = time.time()
     generation_time = round(end_time - start_time, 2)
-    model_name = "duckduckgo"
+    model_name = "gpt-3.5-turbo"
     info = f"\n\nTook: `{generation_time}s` | Model: `{model_name}`"
 
     return ret, info
