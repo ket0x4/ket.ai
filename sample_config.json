@@ -1,27 +1,27 @@
 {
     "BotConfig": {
-        "BOT_NAME": "",
-        "API_ID": "",
-        "API_HASH": "",
-        "BOT_TOKEN": "",
-        "UPSTREAM_BRANCH": ""
+        "BOT_NAME": "ket.ai",
+        "API_ID": "94575",
+        "API_HASH": "a3406de8d171bb422bb6ddf3bbd800e2",
+        "BOT_TOKEN": "xxxxxx:xxxxxx",
+        "UPSTREAM_BRANCH": "dev"
     },
     "LogConfig": {
-        "DEBUG": "",
-        "DEBUG_TOKEN": "",
-        "LOG_TO_FILE": "",
-        "LOG_FILE_PATH": ""
+        "DEBUG": "false",
+        "DEBUG_TOKEN": "xxxxx:xxxxxx",
+        "LOG_TO_FILE": "true",
+        "LOG_FILE_PATH": "ketard.log"
     },
     "ApiConfig": {
-        "API_URL": "",
-        "LLM_MODEL": "",
-        "LITE": ""
+        "API_URL": "http://localhost:11434",
+        "LLM_MODEL": "phi3:latest",
+        "LITE": "true"
     },
     "DataConfig": {
-        "ADMINS": [],
-        "GEN_COMMANDS": []
+        "ADMINS": [12345, 67890, 54321],
+        "GEN_COMMANDS": ["gen", "ket", "ask"]
     },
     "DbConfig": {
-        "DB_NAME": ""
+        "DB_NAME": "database.db"
     }
 }
