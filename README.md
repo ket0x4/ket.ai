@@ -2,7 +2,7 @@
 # Ketard AI Bot
 
 ## Overview
-Ketard AI Bot is a Telegram bot designed for interacting with users through a variety of commands. It leverages advanced APIs to provide features such as system status checks, text generation, and more. The bot can be integrated with different services to enhance functionality.
+Ket.ai is an overengineered telegram bot that functions as a chatbot and system status monitor. It is built using the `pyrogram` library and includes a variety of commands for generating responses using various APIs and local LLMs. The bot is designed to be easily configurable and extensible, with support for custom commands and system information reporting.
 
 ## Features
 - **System Information**: Commands to check CPU usage, RAM usage, and system temperature.
@@ -13,13 +13,15 @@ Ketard AI Bot is a Telegram bot designed for interacting with users through a va
 ### Requirements
 * Python3
 * GNU+Linux
-* [Ollama](https://ollama.com/download/linux)
+* [Ollama](https://ollama.com/download/linux) (for local llm models)
+* ffmpeg and flac (for speech-to-text)
 
 ## Usage
 - **Start Command**: `/start` to get an introduction and available commands.
 - **Help Command**: `/help` provides information on how to use the bot and its commands.
 - **Status Command**: `/status` to get the current system status including CPU usage, RAM usage, and more.
 - **Custom Commands**: `{DataConfig.GEN_COMMANDS}` for generating responses based on specified commands.
+- **Sum Command**: `/sum` pass youtube video url to get a summary of the video.
 
 ## Installation
 <details><summary><b>Click to view installation steps.</b></summary>
@@ -74,5 +76,9 @@ Ensure that your `config.json` is correctly set up with the necessary API creden
 - [ ] Add `TR` lang support to `/sum command`
 - [ ] Better `/help` message
 - [x] Add `/start command`
+- [ ] Make llm backend configurable
+- [ ] Add `/model` command for changing llm model
+- [ ] Add `/debug` command for enabling debug mode
+- [ ] Fix `/update` command
 
 </details>
