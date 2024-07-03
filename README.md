@@ -82,3 +82,6 @@ Ensure that your `config.json` is correctly set up with the necessary API creden
 - [ ] Fix `/update` command
 
 </details>
+
+## License
+This project is licensed under the terms of the [GNU General Public License v3.0](LICENSE).
