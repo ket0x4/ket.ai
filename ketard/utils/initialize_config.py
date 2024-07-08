@@ -2,7 +2,7 @@ import os
 import sys
 import json
 
-from ketard.logging import LOGGER
+from ketard.logger.logging import LOGGER
 
 
 def strtobool(val):

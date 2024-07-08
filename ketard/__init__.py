@@ -17,7 +17,7 @@ VERSION = "3.0.0"
 
 def get_bot_token():
     if LogConfig.DEBUG:
-        from ketard.logging import LOGGER
+        from ketard.logger.logging import LOGGER
         LOGGER(__name__).info("Debug mode enabled.")
         if LogConfig.DEBUG_TOKEN:
             BOT_TOKEN = LogConfig.DEBUG_TOKEN

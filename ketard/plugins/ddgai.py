@@ -4,7 +4,7 @@ from pyrogram.types import Message
 
 from ketard import permission_checker, system_status, paste, my_filters
 from ketard.config import DataConfig, BotConfig
-from ketard.logging import LOGGER
+from ketard.logger.logging import LOGGER
 from ketard.utils.helper import get_prompt, send_log
 from ketard.utils.ddg import ddg_invoke
 

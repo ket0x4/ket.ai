@@ -2,8 +2,8 @@ from pyrogram import Client, filters
 from pyrogram.types import Message
 
 from ketard import VERSION, my_filters
-from ketard.config import DataConfig, BotConfig, ApiConfig, LogConfig
-from ketard.logging import LOGGER
+from ketard.config import DataConfig, BotConfig
+from ketard.logger.logging import LOGGER
 
 
 @Client.on_message(filters.command(["start"]) & my_filters.is_user_spamming())

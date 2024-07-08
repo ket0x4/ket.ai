@@ -2,7 +2,6 @@
 import time
 import json
 import aiohttp
-import asyncio
 
 
 # experimental feature

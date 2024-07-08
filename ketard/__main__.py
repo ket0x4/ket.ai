@@ -1,9 +1,8 @@
 
-import asyncio
 from pyrogram import idle
 
 from ketard import ketard
-from ketard.logging import LOGGER
+from ketard.logger.logging import LOGGER
 
 
 async def main():

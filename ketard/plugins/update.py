@@ -12,7 +12,7 @@ from pyrogram.types import Message
 
 from ketard import paste, my_filters
 from ketard.config import BotConfig, DataConfig
-from ketard.logging import LOGGER
+from ketard.logger.logging import LOGGER
 
 
 urllib3.disable_warnings(

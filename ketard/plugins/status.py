@@ -7,7 +7,7 @@ from ketard import (
     system_status,
     my_filters
 )
-from ketard.logging import LOGGER
+from ketard.logger.logging import LOGGER
 
 
 @Client.on_message(

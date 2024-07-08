@@ -6,7 +6,7 @@ from pyrogram.types import Message
 from pyrogram.errors import FloodWait
 
 from ketard.config import DataConfig
-from ketard.logging import LOGGER
+from ketard.logger.logging import LOGGER
 from ketard.utils.stt import SpeechRecognizer
 
 
