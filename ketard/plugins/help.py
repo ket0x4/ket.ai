@@ -5,7 +5,7 @@ from pyrogram.types import Message
 
 from ketard import my_filters
 from ketard.config import DataConfig, BotConfig
-from ketard.logging import LOGGER
+from ketard.logger.logging import LOGGER
 
 
 @Client.on_message(

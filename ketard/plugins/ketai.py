@@ -9,7 +9,7 @@ from ketard import (
     my_filters
 )
 from ketard.config import DataConfig, BotConfig
-from ketard.logging import LOGGER
+from ketard.logger.logging import LOGGER
 from ketard.utils.ollama import ollama_invoke
 from ketard.utils.helper import get_prompt, send_log
 

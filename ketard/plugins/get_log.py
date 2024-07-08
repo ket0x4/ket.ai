@@ -3,7 +3,7 @@ from pyrogram.types import Message
 import os
 from ketard import paste, my_filters
 from ketard.config import LogConfig, DataConfig
-from ketard.logging import LOGGER
+from ketard.logger.logging import LOGGER
 
 
 @Client.on_message(

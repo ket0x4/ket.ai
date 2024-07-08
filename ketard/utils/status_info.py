@@ -1,7 +1,7 @@
 import os
 import psutil
 import requests
-from ketard.logging import LOGGER
+from ketard.logger.logging import LOGGER
 
 
 class SystemStatus:

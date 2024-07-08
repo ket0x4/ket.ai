@@ -3,7 +3,7 @@ import os
 
 from speech_recognition import Recognizer, AudioFile
 
-from ketard.logging import LOGGER
+from ketard.logger.logging import LOGGER
 
 
 class SpeechRecognizer:

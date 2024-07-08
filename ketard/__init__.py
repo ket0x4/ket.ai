@@ -1,10 +1,10 @@
 
 import sys
+import ketard.logger.logger_config
 
 from pyrogram import Client, enums
 
 from langchain_community.llms import Ollama
-
 from ketard.config import BotConfig, LogConfig, ApiConfig
 from ketard.utils.paste import Paste
 from ketard.utils.filters import MyFilters
@@ -17,7 +17,7 @@ VERSION = "3.0.0"
 
 def get_bot_token():
     if LogConfig.DEBUG:
-        from ketard.logging import LOGGER
+        from ketard.logger.logging import LOGGER
         LOGGER(__name__).info("Debug mode enabled.")
         if LogConfig.DEBUG_TOKEN:
             BOT_TOKEN = LogConfig.DEBUG_TOKEN

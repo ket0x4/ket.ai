@@ -5,7 +5,7 @@ from pyrogram.enums import ChatType
 
 from ketard import my_filters
 from ketard.config import DataConfig
-from ketard.logging import LOGGER
+from ketard.logger.logging import LOGGER
 from ketard.database.d_b import db
 
 
