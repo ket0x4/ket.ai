@@ -1,10 +1,10 @@
 
 import sys
+import ketard.logger.logger_config
 
 from pyrogram import Client, enums
 
 from langchain_community.llms import Ollama
-
 from ketard.config import BotConfig, LogConfig, ApiConfig
 from ketard.utils.paste import Paste
 from ketard.utils.filters import MyFilters
