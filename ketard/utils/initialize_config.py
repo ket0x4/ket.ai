@@ -22,13 +22,14 @@ def initialize_config(config):
         ("BotConfig", "API_ID"),
         ("BotConfig", "API_HASH"),
         ("BotConfig", "BOT_TOKEN"),
-        ("BotConfig", "UPSTREAM_BRANCH"),
         ("LogConfig", "LOG_TO_FILE"),
         ("LogConfig", "DEBUG"),
         ("ApiConfig", "API_URL"),
         ("ApiConfig", "LLM_MODEL"),
         ("DataConfig", "ADMINS"),
         ("DbConfig", "DB_NAME"),
+        ("GitConfig", "UPSTREAM_REPO"),
+        ("GitConfig", "UPSTREAM_BRANCH"),
     ]
     for section, var_name in required_vars:
         try:

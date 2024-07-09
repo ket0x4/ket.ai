@@ -11,7 +11,6 @@ class BotConfig:
     API_ID = int(config["BotConfig"]["API_ID"])
     API_HASH = str(config["BotConfig"]["API_HASH"])
     BOT_TOKEN = str(config["BotConfig"]["BOT_TOKEN"])
-    UPSTREAM_BRANCH = str(config["BotConfig"]["UPSTREAM_BRANCH"])
 
 class LogConfig:
     DEBUG = strtobool(config["LogConfig"]["DEBUG"])
@@ -38,3 +37,8 @@ class DbConfig:
     DB_NAME = Path(config["DbConfig"]["DB_NAME"])
     if DB_NAME.suffix != ".db":
         DB_NAME = DB_NAME.with_suffix(".db")
+
+class GitConfig:
+    UPSTREAM_REPO = str(config["GitConfig"]["UPSTREAM_REPO"])
+    UPSTREAM_BRANCH = str(config["GitConfig"]["UPSTREAM_BRANCH"])
+    GIT_TOKEN = str(config["GitConfig"]["GIT_TOKEN"])

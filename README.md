@@ -79,7 +79,7 @@ Ensure that your `config.json` is correctly set up with the necessary API creden
 - [ ] Make llm backend configurable
 - [ ] Add `/model` command for changing llm model
 - [ ] Add `/debug` command for enabling debug mode
-- [ ] Fix `/update` command
+- [x] Fix `/update` command
 
 </details>
 

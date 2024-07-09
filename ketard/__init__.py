@@ -10,9 +10,13 @@ from ketard.utils.paste import Paste
 from ketard.utils.filters import MyFilters
 from ketard.utils.wrappers import permission_checker
 from ketard.utils.status_info import SystemStatus
+from ketard.utils.initialize_git import initialize_git
 
 
 VERSION = "3.0.0"
+
+
+initialize_git()
 
 
 def get_bot_token():
