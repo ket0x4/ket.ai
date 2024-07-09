@@ -11,7 +11,7 @@ from pyrogram import Client, filters
 from pyrogram.types import Message
 
 from ketard import paste, my_filters
-from ketard.config import BotConfig, DataConfig
+from ketard.config import BotConfig, DataConfig, GitConfig
 from ketard.logger.logging import LOGGER
 
 
@@ -39,7 +39,7 @@ async def update_(_, message: Message):
             "Invalid git repository!"
         )
 
-    to_exc = f"git fetch origin {BotConfig.UPSTREAM_BRANCH} &> /dev/null"
+    to_exc = f"git fetch origin {GitConfig.UPSTREAM_BRANCH} &> /dev/null"
 
     os.system(to_exc)
     await asyncio.sleep(8)
@@ -47,7 +47,7 @@ async def update_(_, message: Message):
     REPO_ = repo.remotes.origin.url.split(".git")[0]
 
     for checks in repo.iter_commits(
-        f"HEAD..origin/{BotConfig.UPSTREAM_BRANCH}"
+        f"HEAD..origin/{GitConfig.UPSTREAM_BRANCH}"
     ):
         verification = str(checks.count())
 
@@ -71,7 +71,7 @@ Updates:
         ],
     )
     for info in repo.iter_commits(
-        f"HEAD..origin/{BotConfig.UPSTREAM_BRANCH}"
+        f"HEAD..origin/{GitConfig.UPSTREAM_BRANCH}"
     ):
         _updates = f"""
 #{info.count()}: [{info.summary}]({REPO_}/commit/{info}) by -> {info.author}

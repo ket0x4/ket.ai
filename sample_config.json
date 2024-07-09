@@ -3,8 +3,7 @@
         "BOT_NAME": "ket.ai",
         "API_ID": "94575",
         "API_HASH": "a3406de8d171bb422bb6ddf3bbd800e2",
-        "BOT_TOKEN": "xxxxxx:xxxxxx",
-        "UPSTREAM_BRANCH": "dev"
+        "BOT_TOKEN": "xxxxxx:xxxxxx"
     },
     "LogConfig": {
         "DEBUG": "false",
@@ -23,5 +22,10 @@
     },
     "DbConfig": {
         "DB_NAME": "database.db"
+    },
+    "GitConfig": {
+        "UPSTREAM_REPO": "https://github.com/ket0x4/ketard-ai",
+        "UPSTREAM_BRANCH": "dev",
+        "GIT_TOKEN": ""
     }
 }
