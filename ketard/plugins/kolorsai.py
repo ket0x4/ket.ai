@@ -10,7 +10,7 @@ from ketard.logger.logging import LOGGER
 @Client.on_message(
     filters.command(["kolors"])
     & my_filters.is_user_spamming(
-        spam_limit=1, spam_time=60
+        spam_limit=3, spam_time=60
     )
 )
 @permission_checker
