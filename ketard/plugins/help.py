@@ -3,7 +3,7 @@ from pyrogram import Client, filters
 from pyrogram.types import Message
 
 from ketard import my_filters
-from ketard.config import DataConfig, BotConfig
+from ketard.config import DataConfig
 from ketard.logger.logging import LOGGER
 
 
@@ -13,12 +13,6 @@ from ketard.logger.logging import LOGGER
 )
 async def handle_help_command(_, message: Message):
     help_text = """
-**Hi, {USER}**
-
-{BOT_NAME} is LLM frontend for multiple backends.
-You can ask questions, describe images, summarize
-YouTube videos, OCR documents and images(soon) with me.
-
 **Available commands:**
 - `/ket`: Enter text after command or reply to message/audio file. Ask Questions, Request code samples and more.
 - {GEN_COMMANDS}: Alias for `/ket` command
@@ -47,9 +41,6 @@ YouTube videos, OCR documents and images(soon) with me.
 - `/ddg What is the smallest integer whose square is between 15 and 30?`
 - `/sum https://www.youtube.com/watch?v=uqK_8Qic5os`
 
-[Github Repo](https://github.com/ket0x4/ketard-ai/tree/dev)
-[Contributors](https://github.com/ket0x4/ketard-ai/graphs/contributors)
-
 **Note:** You must be on the list of allowed Users or Chats to use this bot.
     """
     if "ket" in DataConfig.GEN_COMMANDS:
@@ -58,8 +49,6 @@ YouTube videos, OCR documents and images(soon) with me.
     GEN_COMMANDS = ", ".join([f"`/{command}`" for command in DataConfig.GEN_COMMANDS])
     await message.reply_text(
         text=help_text.format(
-            USER=message.from_user.mention,
-            BOT_NAME=BotConfig.BOT_NAME,
             GEN_COMMANDS=GEN_COMMANDS
         ),
         quote=True,
