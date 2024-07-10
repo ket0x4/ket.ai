@@ -7,3 +7,4 @@ gitpython
 aiosqlite
 youtube-transcript-api
 SpeechRecognition
+gradio_client
