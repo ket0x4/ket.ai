@@ -1,4 +1,3 @@
-
 from pyrogram import Client, filters
 from pyrogram.types import Message
 from pyrogram.enums import ChatType
@@ -31,16 +30,7 @@ async def _handler(client: Client, message: Message):
             quote=True
         )
         entities = await db.get_collection(collection_name)
-        entity_list = []
-
-        for entity_id in entities.keys():
-            try:
-                chat = await client.get_chat(entity_id)
-                entity_name = chat.title if entity_type == "chat" else chat.full_name
-                entity_list.append(f"• `{entity_id}`: {entity_name}")
-            except:
-                entity_list.append(f"• `{entity_id}`: [Unknown {entity_type.capitalize()}]")
-
+        entity_list = [f"• `{entity_id}`: {entity_info['name']}" for entity_id, entity_info in entities.items()]
         text = f"**Allowed {entity_type.capitalize()}s** (`{len(entities)}`):\n"
         entity_list_text = "\n".join(entity_list)
         final_text = text + entity_list_text
@@ -91,12 +81,13 @@ async def _handler(client: Client, message: Message):
                 f"{entity_type.capitalize()} (`{_id}`) is already added.", quote=True
             )
         else:
-            await db.set(collection_name, _id, True)
+            entity_name = chat.title if entity_type == "chat" else chat.full_name
+            await db.set(collection_name, _id, {"name": entity_name})
             await message.reply_text(
                 f"{entity_type.capitalize()} (`{_id}`) added.", quote=True
             )
             LOGGER(__name__).info(
-                f"User {user_name} (ID: {user_id}) added {entity_type} ID: {_id}."
+                f"User {user_name} (ID: {user_id}) added {entity_type} ID: {_id} ({entity_name})."
             )
     elif cmd[0].startswith("del"):
         if not existing_entity:
