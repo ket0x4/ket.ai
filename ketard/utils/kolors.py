@@ -1,7 +1,7 @@
 
 from gradio_client import Client
 
-negative_prompt = """
+negative_portrait = """
 EasyNegative, duplicate, deformed, dehydrated, disfigured, lowres, 
 mutation, mutilated, poorly drawn face, unreal engine, unnatural pose, 
 poorly drawn hands, mutated hands, poorly drawn feet, signature, text, 
@@ -16,10 +16,15 @@ unnatural hair, unnatural eyes, unnatural bright,
 Fix Faces
 """
 
+negative_default = """
+deformed, lowres, error, worst quality, low quality, normal quality,
+jpeg artifacts, signature, watermark, username, blurry
+"""
+
 class KolorsClient:
     def __init__(self, model_name="gokaygokay/Kolors"):
         self.client = Client(model_name)
-        self.negative_prompt = negative_prompt
+        self.negative_prompt = negative_default
 
     def predict(
         self,
@@ -27,7 +32,7 @@ class KolorsClient:
         height=1024,
         width=1024,
         num_inference_steps=25,
-        guidance_scale=7,
+        guidance_scale=8,
         num_images_per_prompt=1,
         use_random_seed=True,
         seed=0
