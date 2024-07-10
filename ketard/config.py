@@ -29,8 +29,8 @@ class ApiConfig:
 
 class DataConfig:
     GEN_COMMANDS = config["DataConfig"]["GEN_COMMANDS"]
-    if GEN_COMMANDS:
-        GEN_COMMANDS = ["ket", "ask"]
+    if "ket" not in GEN_COMMANDS:
+        GEN_COMMANDS.append("ket")
     ADMINS = config["DataConfig"]["ADMINS"]
 
 class DbConfig:

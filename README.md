@@ -74,7 +74,7 @@ Ensure that your `config.json` is correctly set up with the necessary API creden
 - [ ] Refactor code
 - [ ] remove repeated code
 - [ ] Add `TR` lang support to `/sum command`
-- [ ] Better `/help` message
+- [x] Better `/help` message
 - [x] Add `/start command`
 - [ ] Make llm backend configurable
 - [ ] Add `/model` command for changing llm model
