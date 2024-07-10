@@ -1,9 +1,8 @@
-
 from pyrogram import Client, filters
 from pyrogram.types import Message
 from pyrogram.enums import ChatType
 
-from ketard import my_filters
+from ketard import my_filters, paste
 from ketard.config import DataConfig
 from ketard.logger.logging import LOGGER
 from ketard.database.d_b import db
@@ -26,16 +25,29 @@ async def _handler(client: Client, message: Message):
     invalid_id = f"Are you sure this ID belongs to a {entity_type}?"
 
     if "get" in cmd[0]:
+        sent_message = await message.reply_text(
+            text=f"Fetching allowed {entity_type}s...",
+            quote=True
+        )
         entities = await db.get_collection(collection_name)
-        entity_list = "\n".join([f"• `{entity_id}`" for entity_id in entities.keys()])
-        await message.reply_text(
-            f"**Allowed {entity_type.capitalize()}s** (`{len(entities)}`):\n{entity_list}", quote=True
+        entity_list = [f"• `{entity_id}`: {entity_info['name']}" for entity_id, entity_info in entities.items()]
+        text = f"**Allowed {entity_type.capitalize()}s** (`{len(entities)}`):\n"
+        entity_list_text = "\n".join(entity_list)
+        final_text = text + entity_list_text
+
+        if len(final_text) > 4096:
+            url = await paste.dpaste(
+                text=entity_list_text
+            )
+            final_text = f"{text}[Click here to see the list]({url})"
+        await sent_message.edit_text(
+            text=final_text
         )
         LOGGER(__name__).info(
             f"User {user_name} (ID: {user_id}) executed {cmd[0]}."
         )
         return
-    
+
     if len(cmd) != 1:
         _id = cmd[1]
     elif entity_type == "user" and message.reply_to_message:
@@ -69,12 +81,13 @@ async def _handler(client: Client, message: Message):
                 f"{entity_type.capitalize()} (`{_id}`) is already added.", quote=True
             )
         else:
-            await db.set(collection_name, _id, True)
+            entity_name = chat.title if entity_type == "chat" else chat.full_name
+            await db.set(collection_name, _id, {"name": entity_name})
             await message.reply_text(
                 f"{entity_type.capitalize()} (`{_id}`) added.", quote=True
             )
             LOGGER(__name__).info(
-                f"User {user_name} (ID: {user_id}) added {entity_type} ID: {_id}."
+                f"User {user_name} (ID: {user_id}) added {entity_type} ID: {_id} ({entity_name})."
             )
     elif cmd[0].startswith("del"):
         if not existing_entity:
