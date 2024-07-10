@@ -8,7 +8,7 @@ from ketard.logger.logging import LOGGER
 
 
 @Client.on_message(
-    filters.command(["kolors"])
+    filters.command(["kolors", "sd", "dif"])
     & my_filters.is_user_spamming(
         spam_limit=3, spam_time=60
     )
@@ -25,7 +25,7 @@ async def handle_kolors_command(client: Client, message: Message):
         
     try:
         msg = await message.reply_text(
-            "Processing your prompt...",
+            "Generating Image...",
             quote=True,
         )
         result = kolors_client.predict(positive_prompt=prompt)
