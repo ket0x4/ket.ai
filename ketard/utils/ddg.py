@@ -10,9 +10,10 @@ import aiohttp
 # Llama-3-70b-chat-hf
 # claude-3-haiku-20240307
 # gpt-3.5-turbo-0125
+# gpt-4o-mini
 
 
-async def ddg_invoke(prompt):
+async def ddg_invoke(prompt, model="gpt-4o-mini"):
     headers = {
         "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:127.0) Gecko/20100101 Firefox/127.0",
         "Accept": "text/event-stream",
@@ -43,7 +44,7 @@ async def ddg_invoke(prompt):
 
         url = "https://duckduckgo.com/duckchat/v1/chat"
         data = {
-            "model": "gpt-3.5-turbo-0125",
+            "model": model,
             "messages": [{"role": "user", "content": prompt}],
         }
 
@@ -59,7 +60,6 @@ async def ddg_invoke(prompt):
     
     end_time = time.time()
     generation_time = round(end_time - start_time, 2)
-    model_name = "gpt-3.5-turbo"
-    info = f"\n\nTook: `{generation_time}s` | Model: `{model_name}`"
+    info = f"\n\nTook: `{generation_time}s` | Model: `{model}`"
 
     return ret, info
