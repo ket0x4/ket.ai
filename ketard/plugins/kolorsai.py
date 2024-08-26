@@ -4,6 +4,7 @@ from pyrogram.types import Message
 
 from ketard import my_filters, permission_checker
 from ketard.utils.kolors import kolors_client
+from ketard.utils.helper import get_prompt, send_log
 from ketard.logger.logging import LOGGER
 
 
@@ -15,14 +16,14 @@ from ketard.logger.logging import LOGGER
 )
 @permission_checker
 async def handle_kolors_command(client: Client, message: Message):
-    prompt = message.text.split(maxsplit=1)[1] if len(message.text.split()) > 1 else None
-    
-    if not prompt:
+    prompt = await get_prompt(message=message)
+
+    if prompt is None:
         return await message.reply_text(
-            "Please enter a prompt after the command.",
+            "Please enter a message after the command.",
             quote=True
         )
-        
+
     try:
         msg = await message.reply_text(
             "Generating Image...",
@@ -33,7 +34,7 @@ async def handle_kolors_command(client: Client, message: Message):
         image_url = result[0][0]["image"]
         await message.reply_document(
             document=image_url,
-            caption=f"Generated Image for: `{prompt}`",
+            caption=f"**Generated Image for:**\n`{prompt}`",
             force_document=True,
             quote=True
         )
@@ -43,10 +44,9 @@ async def handle_kolors_command(client: Client, message: Message):
         )
 
     except Exception as e:
-        await message.reply_text(
-            f"An error occurred: {e}",
-            quote=True
-        )
-        LOGGER(__name__).error(
-            f"Error processing Kolors prompt from user {message.from_user.id} in chat {message.chat.id}: {e}"
+        await send_log(
+            client=client,
+            error=e,
+            message=message,
+            name=__name__
         )
