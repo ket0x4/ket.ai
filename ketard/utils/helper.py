@@ -35,7 +35,7 @@ async def get_prompt(message: Message):
             os.remove(voice)
             os.remove(f"{voice}.wav")
         else:
-            prompt_parts.append(message.reply_to_message.text)
+            prompt_parts.append(message.reply_to_message.text or message.reply_to_message.caption)
 
     return "\n".join(prompt_parts) if prompt_parts else None
 
