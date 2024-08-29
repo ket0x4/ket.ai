@@ -2,6 +2,7 @@ import os
 import asyncio
 from datetime import datetime
 
+from pyrogram import enums
 from pyrogram.types import Message
 from pyrogram.errors import FloodWait
 
@@ -48,10 +49,12 @@ async def send_log(client, error, message, name):
 **Time:** `{error_time}`
 **User:** {message.from_user.mention} (`{message.from_user.id}`)
 **Chat:** {message.chat.id}
-**Error:** ```{error}```
+**Error:** ```\n{error}```
         """
         for user in DataConfig.ADMINS:
-            await client.send_message(chat_id=user, text=msg)
+            await client.send_message(
+                chat_id=user, text=msg, parse_mode=enums.ParseMode.MARKDOWN
+            )
         LOGGER(name).error(str(error))
     except FloodWait as e:
         await asyncio.sleep(e.value)
