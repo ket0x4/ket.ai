@@ -32,9 +32,8 @@ class KolorsClient:
         height=1024,
         width=1024,
         num_inference_steps=25,
-        guidance_scale=8,
-        num_images_per_prompt=1,
-        use_random_seed=True,
+        guidance_scale=5,
+        randomize_seed=True,
         seed=0
     ):
         result = self.client.predict(
@@ -44,8 +43,7 @@ class KolorsClient:
             width=width,
             num_inference_steps=num_inference_steps,
             guidance_scale=guidance_scale,
-            num_images_per_prompt=num_images_per_prompt,
-            use_random_seed=use_random_seed,
+            randomize_seed=randomize_seed,
             seed=seed,
             api_name="/infer"
         )
