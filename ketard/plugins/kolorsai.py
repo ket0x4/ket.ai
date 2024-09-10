@@ -31,7 +31,7 @@ async def handle_kolors_command(client: Client, message: Message):
         )
         result = kolors_client.predict(positive_prompt=prompt)
         
-        image_url = result[0][0]["image"]
+        image_url = result[0]
         await message.reply_document(
             document=image_url,
             caption=f"**Generated Image for:**\n`{prompt}`",
