@@ -22,7 +22,7 @@ jpeg artifacts, signature, watermark, username, blurry
 """
 
 class KolorsClient:
-    def __init__(self, model_name="gokaygokay/Kolors"):
+    def __init__(self, model_name="stabilityai/stable-diffusion-3-medium"):
         self.client = Client(model_name)
         self.negative_prompt = negative_default
 
@@ -47,7 +47,7 @@ class KolorsClient:
             num_images_per_prompt=num_images_per_prompt,
             use_random_seed=use_random_seed,
             seed=seed,
-            api_name="/predict"
+            api_name="/infer"
         )
         return result
 
