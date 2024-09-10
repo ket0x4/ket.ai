@@ -42,7 +42,7 @@ async def get_prompt(message: Message):
     return "\n".join(prompt_parts) if prompt_parts else None
 
 
-async def send_log(client: Clinet, error: Exception, message: Message, name: str):
+async def send_log(client: Client, error: Exception, message: Message, name: str):
     try:
         error_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         error = format_exception(error)
