@@ -1,8 +1,9 @@
 import os
 import asyncio
 from datetime import datetime
+from traceback import format_exception
 
-from pyrogram import enums
+from pyrogram import Client, enums
 from pyrogram.types import Message
 from pyrogram.errors import FloodWait
 
@@ -41,9 +42,10 @@ async def get_prompt(message: Message):
     return "\n".join(prompt_parts) if prompt_parts else None
 
 
-async def send_log(client, error, message, name):
+async def send_log(client: Clinet, error: Exception, message: Message, name: str):
     try:
         error_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        error = format_exception(error)
 
         msg = f"""#ERROR
 **Time:** `{error_time}`
