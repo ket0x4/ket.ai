@@ -10,7 +10,7 @@ from ketard.utils.ddg import ddg_invoke
 
 
 @Client.on_message(
-    filters.command(["ddg", "ddc", "duck", "duckchat"])
+    filters.command(["ddg", "ddc", "duck", "duckchat", "ket"])
     & my_filters.is_user_spamming()
 )
 @permission_checker
