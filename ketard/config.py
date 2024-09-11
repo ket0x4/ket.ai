@@ -16,6 +16,7 @@ class LogConfig:
     DEBUG = strtobool(config["LogConfig"]["DEBUG"])
     if DEBUG:
         DEBUG_TOKEN = str(config["LogConfig"]["DEBUG_TOKEN"])
+        BotConfig.BOT_NAME = str(config["BotConfig"]["BOT_NAME"]) + "-debug"
     LOG_TO_FILE = strtobool(config["LogConfig"]["LOG_TO_FILE"])
     if LOG_TO_FILE:
         LOG_FILE_PATH = Path(config["LogConfig"]["LOG_FILE_PATH"])
