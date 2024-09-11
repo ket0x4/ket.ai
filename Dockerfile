@@ -15,6 +15,7 @@ RUN apk update && \
 # Copy files
 COPY ketard /ketard
 COPY start /start
+COPY config.json /config.json
 RUN chmod +x /start
 
 # Install python packages
