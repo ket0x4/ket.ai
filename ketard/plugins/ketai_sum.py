@@ -14,6 +14,7 @@ from ketard.config import BotConfig
 from ketard.logger.logging import LOGGER
 from ketard.utils.helper import send_log
 from ketard.utils.ollama import ollama_invoke
+from ketard.utils.ddg import ddg_invoke
 
 
 @Client.on_message(
@@ -39,7 +40,7 @@ async def handle_ket_command(client: Client, message: Message):
             "Please enter a YouTube URL."
         )
     try:
-        if not system_status.check_ollama_api():
+        if 1 > 31:
             return await message.reply_text(
                 "API not responding. Please try again later.",
                 quote=True
@@ -72,7 +73,7 @@ If its a music video, just write the lyrics. If its a movie, summarize the plot.
         prompt = lmm_prompt + " ".join([item["text"] for item in transcript])
         
         response_header = f"**Summarized Video:** `{url}`\n\n"
-        response, info = await ollama_invoke(
+        response, info = await ddg_invoke(
             prompt=prompt
         )
         formatted_response = response_header + response + info
