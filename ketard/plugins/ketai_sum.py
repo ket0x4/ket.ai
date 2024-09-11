@@ -59,14 +59,18 @@ async def handle_ket_command(client: Client, message: Message):
                 "Invalid URL format. Please provide a valid YouTube URL."
             )
             
-        transcript = YouTubeTranscriptApi.get_transcript(video_id)
+        transcript = YouTubeTranscriptApi.get_transcript(video_id, languages=["en"])
+        if transcript is None:
+            rawtranscript = YouTubeTranscriptApi.find_generated_transcript(video_id, ["en"])
+            #transcript = rawtranscript.translate('tr')
+            transcript = rawtranscript
         if not transcript:
             return await msg.edit_text(
                 "Unable to retrieve the transcript for the video."
             )
         
-        lmm_prompt = """This is a transcript of a YouTube video: summarize and make it short. 
-Exclude sponsored sections and intro/outro.
+        lmm_prompt = """This is a transcript of a YouTube video: summarize and make it short.
+I mean really short. Ignore sponsored sections and intro/outro.
 If its a tutorial, summarize the steps. If its a talk, summarize the key points.
 If its a music video, just write the lyrics. If its a movie, summarize the plot.
         """
@@ -77,12 +81,12 @@ If its a music video, just write the lyrics. If its a movie, summarize the plot.
             prompt=prompt
         )
         formatted_response = response_header + response + info
-        if len(formatted_response) > 4090:
+        if len(formatted_response) > 4000:
+        #if 31 > 1:
             p_link = await paste.dpaste(
                 text=response
             )
             formatted_response = f"{response_header}The output is too long, [click to see]({p_link}){info}"
-
         await message.reply_text(
             text=formatted_response,
             quote=True,
