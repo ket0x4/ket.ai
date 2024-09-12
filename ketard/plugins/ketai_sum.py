@@ -40,11 +40,12 @@ async def handle_ket_command(client: Client, message: Message):
             "Please enter a YouTube URL."
         )
     try:
-        if 1 > 31:
+        if not system_status.check_ddg_api():
             return await message.reply_text(
                 "API not responding. Please try again later.",
                 quote=True
             )
+
         msg = await message.reply_text(
             f"`{BotConfig.BOT_NAME}` Summarizing Video...",
             quote=True,
@@ -62,7 +63,6 @@ async def handle_ket_command(client: Client, message: Message):
         transcript = YouTubeTranscriptApi.get_transcript(video_id, languages=["en"])
         if transcript is None:
             rawtranscript = YouTubeTranscriptApi.find_generated_transcript(video_id, ["en"])
-            #transcript = rawtranscript.translate('tr')
             transcript = rawtranscript
         if not transcript:
             return await msg.edit_text(
