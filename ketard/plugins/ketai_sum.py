@@ -70,11 +70,17 @@ async def handle_ket_command(client: Client, message: Message):
             )
         
         lmm_prompt = """This is a transcript of a YouTube video: summarize and make it short.
-I mean really short. Ignore sponsored sections and intro/outro.
-If its a tutorial, summarize the steps. If its a talk, summarize the key points.
-If its a music video, just write the lyrics. If its a movie, summarize the plot.
+        I mean really short. Ignore sponsored sections and intro/outro.
+        If its a tutorial, summarize the steps. If its a talk, summarize the key points.
+        If its a music video, just write the lyrics. If its a movie, summarize the plot."""
+
+        llm_prompt_tr = """Bu, bir YouTube videosunun transkriptidir: özetle ve kısa tut.
+        Sakın uzatma. Sponsorlu bölümleri ve başlangıç/bitiş kısımlarını yok say
+        Eğer bir eğitim videosuysa, adımları özetle. Bir konuşma ise, ana noktaları özetle.
+        Eğer bir müzik videosuysa, sadece sözleri yaz. Bir film ise, hikayeyi özetle.
+        Eğer trankript Türkçe değilse, önce çevir.
         """
-        prompt = lmm_prompt + " ".join([item["text"] for item in transcript])
+        prompt = llm_prompt_tr + " ".join([item["text"] for item in transcript])
         
         response_header = f"**Summarized Video:** `{url}`\n\n"
         response, info = await ddg_invoke(
