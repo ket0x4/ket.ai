@@ -28,10 +28,10 @@ class SystemStatus:
         try:
             response = requests.get("https://duckduckgo.com/duckchat/v1/status")
             if response.status_code == 200:
-                LOGGER(__name__).info("DdgChat API is reachable.")
+                LOGGER(__name__).info("DuckChat API is reachable.")
                 return True
             else:
-                LOGGER(__name__).warning("DdgChat API is unreachable.")
+                LOGGER(__name__).warning("DuckChat API is unreachable.")
                 return False
         except requests.exceptions.RequestException as e:
             LOGGER(__name__).error(f"Error reaching DdgChat API: {str(e)}")
@@ -75,19 +75,20 @@ class SystemStatus:
     def status_info_message(self):
         try:
             board_name, os_name = self.get_system_info()
-            ollama_status = "Available" if self.check_ollama_api() else "Unavailable"
-            ddg_status = "Available" if self.check_ddg_api() else "Unavailable"
+            ollama_status = "OK" if self.check_ollama_api() else "Unavailable"
+            ddg_status = "OK" if self.check_ddg_api() else "Unavailable"
             return f"""
-**Board:** `{board_name}`
-**OS:** `{os_name}`
-**CPU Usage:** `{self.get_cpu_usage()}`
-**RAM Usage:** `{self.get_ram_usage()}`
-**CPU Temp:** `{self.get_cpu_temperature()}`
-**Ollama Status:** `{ollama_status}`
-**DDG Status:** `{ddg_status}`
-**Version:** `{self.version}`
-**Lite mode:** `{self.lite}`
-**Debug mode:** `{self.debug}`
+**System**
+Board: `{board_name}`
+OS: `{os_name}`
+CPU Usage: `{self.get_cpu_usage()}`
+RAM Usage: `{self.get_ram_usage()}`
+CPU Temp: `{self.get_cpu_temperature()}\n`
+**Backend**
+DuckChat: `{ddg_status}`
+Fallback: `{ollama_status}\n`
+Version: `{self.version}`
+Debug mode: `{self.debug}`
 """
         except Exception as e:
             LOGGER(__name__).error(f"Error fetching status info: {str(e)}")
