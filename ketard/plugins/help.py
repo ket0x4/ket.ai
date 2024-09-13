@@ -38,8 +38,8 @@ async def handle_help_command(_, message: Message):
     help_text += """
 **Examples:**
 - `/ket Should I kill myself?`
-- `/ddg What is the smallest integer whose square is between 15 and 30?`
-- `/sum https://www.youtube.com/watch?v=uqK_8Qic5os`
+- `/ket What is the smallest integer whose square is between 15 and 30?`
+- `/sum youtube.com/watch?v=uqK_8Qic5os`
 
 **Note:** You must be on the list of allowed Users or Chats to use this bot.
     """

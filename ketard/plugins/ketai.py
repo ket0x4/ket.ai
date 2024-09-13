@@ -15,7 +15,7 @@ from ketard.utils.helper import get_prompt, send_log
 
 
 @Client.on_message(
-    filters.command(DataConfig.GEN_COMMANDS)
+    filters.command("/ket")
     & my_filters.is_user_spamming()
 )
 @permission_checker

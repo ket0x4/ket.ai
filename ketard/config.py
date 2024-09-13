@@ -29,9 +29,6 @@ class ApiConfig:
     LITE = strtobool(config["ApiConfig"]["LITE"])
 
 class DataConfig:
-    GEN_COMMANDS = config["DataConfig"]["GEN_COMMANDS"]
-    if "ket" not in GEN_COMMANDS:
-        GEN_COMMANDS.append("ket")
     ADMINS = config["DataConfig"]["ADMINS"]
 
 class DbConfig:

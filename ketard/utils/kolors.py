@@ -1,4 +1,3 @@
-
 from gradio_client import Client
 
 negative_portrait = """
