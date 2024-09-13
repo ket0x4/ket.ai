@@ -57,9 +57,9 @@ async def update_(_, message: Message):
     updates = f"""
 A new update is available for the {BotConfig.BOT_NAME}!
 
-Pushing Updates Now
+Pulling Updates Now
 
-Updates:
+Changes:
     """
     ordinal = lambda format: "%d%s" % (
         format,
@@ -99,9 +99,7 @@ Updates:
         f"""
 {update_msg.text.markdown}
 
-{BotConfig.BOT_NAME} was updated successfully!
-
-Now, wait for 1 - 2 mins until the {BotConfig.BOT_NAME} reboots!
+{BotConfig.BOT_NAME} was updated successfully! Rebooting...
         """,
         disable_web_page_preview=True
     )
