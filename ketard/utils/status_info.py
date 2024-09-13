@@ -37,6 +37,12 @@ class SystemStatus:
             LOGGER(__name__).error(f"Error reaching DdgChat API: {str(e)}")
             return False
 
+    def check_hf_api(self):
+        response = requests.get("http://huggingface.co")
+        if response.status_code == 200:
+            LOGGER(__name__).info("HuggingFace API is reachable.")
+            return True
+
     def get_cpu_usage(self):
         return f"{psutil.cpu_percent(interval=1):.2f}%"
 
@@ -77,6 +83,7 @@ class SystemStatus:
             board_name, os_name = self.get_system_info()
             ollama_status = "OK" if self.check_ollama_api() else "Unavailable"
             ddg_status = "OK" if self.check_ddg_api() else "Unavailable"
+            hf_status = "OK" if self.check_hf_api() else "Unavailable"
             return f"""
 **System**
 Board: `{board_name}`
@@ -86,6 +93,7 @@ RAM Usage: `{self.get_ram_usage()}`
 CPU Temp: `{self.get_cpu_temperature()}\n`
 **Backend**
 DuckChat: `{ddg_status}`
+HuggingFace: `{hf_status}`
 Fallback: `{ollama_status}\n`
 Version: `{self.version}`
 Debug mode: `{self.debug}`

@@ -11,12 +11,11 @@ async def handle_start_command(_, message: Message):
     start_text = """
 **Hello, {USER}!**
 
-Welcome to {BOT_NAME}! I'm here to assist you with various tasks. Here are a few things you can do with me:
+I'm here to assist you with various tasks. Here are a few things you can do with me:
 
 - Ask questions on any topic.
 - Get code samples and snippets.
 - Summarize YouTube videos.
-- Describe images and more (work in progress)!
 
 To get started, simply type a command or ask me a question.
 For a list of available commands, type `/help`.

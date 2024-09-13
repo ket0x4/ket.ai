@@ -1,6 +1,4 @@
-
 import time
-
 from ketard import ollama
 
 

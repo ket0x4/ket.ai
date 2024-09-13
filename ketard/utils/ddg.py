@@ -1,10 +1,7 @@
-
 import time
 import json
 import aiohttp
 
-
-# experimental feature
 # avaible models: 
 # Mixtral-8x7B-Instruct-v0.1
 # Llama-3-70b-chat-hf
