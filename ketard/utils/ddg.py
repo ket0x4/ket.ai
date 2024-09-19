@@ -2,7 +2,7 @@ import time
 import json
 import aiohttp
 
-# avaible models: 
+# avaible models:
 # Mixtral-8x7B-Instruct-v0.1
 # Llama-3-70b-chat-hf
 # claude-3-haiku-20240307
@@ -54,7 +54,7 @@ async def ddg_invoke(prompt, model="gpt-4o-mini"):
             dat = json.loads(line[6:])
             if "message" in dat:
                 ret += dat["message"].replace("\\n", "\n")
-    
+
     end_time = time.time()
     generation_time = round(end_time - start_time, 2)
     info = f"\n\nTook: `{generation_time}s` | Model: `{model}`"

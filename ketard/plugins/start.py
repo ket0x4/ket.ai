@@ -32,7 +32,7 @@ Happy exploring!
             BOT_NAME=BotConfig.BOT_NAME,
         ),
         quote=True,
-        disable_web_page_preview=True
+        disable_web_page_preview=True,
     )
-    
+
     LOGGER(__name__).info("Start command invoked.")

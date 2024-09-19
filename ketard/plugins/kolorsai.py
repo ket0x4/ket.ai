@@ -9,9 +9,7 @@ from ketard.logger.logging import LOGGER
 
 @Client.on_message(
     filters.command(["kolors", "sd", "dif"])
-    & my_filters.is_user_spamming(
-        spam_limit=3, spam_time=60
-    )
+    & my_filters.is_user_spamming(spam_limit=3, spam_time=60)
 )
 @permission_checker
 async def handle_kolors_command(client: Client, message: Message):
@@ -19,8 +17,7 @@ async def handle_kolors_command(client: Client, message: Message):
 
     if prompt is None:
         return await message.reply_text(
-            "Please enter a message after the command.",
-            quote=True
+            "Please enter a message after the command.", quote=True
         )
 
     try:
@@ -29,13 +26,13 @@ async def handle_kolors_command(client: Client, message: Message):
             quote=True,
         )
         result = kolors_client.predict(positive_prompt=prompt)
-        
+
         image_url = result[0]
         await message.reply_document(
             document=image_url,
             caption=f"**Generated Image for:**\n`{prompt}`",
             force_document=True,
-            quote=True
+            quote=True,
         )
         await msg.delete()
         LOGGER(__name__).info(
@@ -43,9 +40,4 @@ async def handle_kolors_command(client: Client, message: Message):
         )
 
     except Exception as e:
-        await send_log(
-            client=client,
-            error=e,
-            message=message,
-            name=__name__
-        )
+        await send_log(client=client, error=e, message=message, name=__name__)

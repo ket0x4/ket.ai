@@ -1,4 +1,3 @@
-
 import sys
 import ketard.logger.logger_config
 
@@ -22,6 +21,7 @@ initialize_git()
 def get_bot_token():
     if LogConfig.DEBUG:
         from ketard.logger.logging import LOGGER
+
         LOGGER(__name__).info("Debug mode enabled.")
         if LogConfig.DEBUG_TOKEN:
             BOT_TOKEN = LogConfig.DEBUG_TOKEN
@@ -33,7 +33,7 @@ def get_bot_token():
             sys.exit()
     else:
         BOT_TOKEN = BotConfig.BOT_TOKEN
-    
+
     return BOT_TOKEN
 
 
@@ -43,21 +43,18 @@ ketard: Client = Client(
     api_hash=BotConfig.API_HASH,
     bot_token=get_bot_token(),
     parse_mode=enums.ParseMode.MARKDOWN,
-    plugins=dict(root="ketard.plugins")
+    plugins=dict(root="ketard.plugins"),
 )
 
 
-ollama: Ollama = Ollama(
-    base_url=ApiConfig.API_URL,
-    model=ApiConfig.LLM_MODEL
-)
+ollama: Ollama = Ollama(base_url=ApiConfig.API_URL, model=ApiConfig.LLM_MODEL)
 
 
 system_status = SystemStatus(
     version=VERSION,
     lite=ApiConfig.LITE,
     debug=LogConfig.DEBUG,
-    api_url=ApiConfig.API_URL
+    api_url=ApiConfig.API_URL,
 )
 
 

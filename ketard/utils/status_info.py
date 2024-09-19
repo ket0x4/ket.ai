@@ -11,6 +11,19 @@ class SystemStatus:
         self.debug = debug
         self.api_url = api_url
 
+    # Universal API check
+    def check_api(url, name):
+        try:
+            response = requests.get(url)
+            if response.status_code == 200:
+                LOGGER(__name__).info(f"{name} API is reachable.")
+                return True
+            else:
+                LOGGER(__name__).warning(f"{name} API is unreachable.")
+                return False
+        except requests.exceptions.RequestException as e:
+            LOGGER(__name__).error(f"Error reaching {name} API: {str(e)}")
+
     def check_ollama_api(self):
         try:
             response = requests.get(self.api_url)
@@ -24,18 +37,9 @@ class SystemStatus:
             LOGGER(__name__).error(f"Error reaching Ollama API: {str(e)}")
             return False
 
-    def check_ddg_api(self):
-        try:
-            response = requests.get("https://duckduckgo.com/duckchat/v1/status")
-            if response.status_code == 200:
-                LOGGER(__name__).info("DuckChat API is reachable.")
-                return True
-            else:
-                LOGGER(__name__).warning("DuckChat API is unreachable.")
-                return False
-        except requests.exceptions.RequestException as e:
-            LOGGER(__name__).error(f"Error reaching DdgChat API: {str(e)}")
-            return False
+    # DuckDuckGo API check
+    duck_chat_url = "https://duckduckgo.com/duckchat/v1/status"
+    check_api(duck_chat_url, "DuckChat")
 
     def check_hf_api(self):
         response = requests.get("http://huggingface.co")

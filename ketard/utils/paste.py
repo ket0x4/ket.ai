@@ -1,5 +1,6 @@
 from httpx import AsyncClient
 
+
 class Paste:
     def __init__(self) -> None:
         self.dpaste_api = "https://dpaste.org/api/"

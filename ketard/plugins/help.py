@@ -1,4 +1,3 @@
-
 from pyrogram import Client, filters
 from pyrogram.types import Message
 
@@ -7,10 +6,7 @@ from ketard.config import DataConfig
 from ketard.logger.logging import LOGGER
 
 
-@Client.on_message(
-    filters.command(["help"])
-    & my_filters.is_user_spamming()
-)
+@Client.on_message(filters.command(["help"]) & my_filters.is_user_spamming())
 async def handle_help_command(_, message: Message):
     help_text = """
 **Available commands:**
@@ -34,7 +30,7 @@ async def handle_help_command(_, message: Message):
 - `/getlog [n]`: Retrieves the last `n` lines from the log file. If `-f` is provided, the entire log file will be sent as a document.
 - `/update`: Checks for available updates and applies them if found.
         """
-    
+
     help_text += """
 **Examples:**
 - `/ket Should I kill myself?`
@@ -48,11 +44,9 @@ async def handle_help_command(_, message: Message):
 
     GEN_COMMANDS = ", ".join([f"`/{command}`" for command in DataConfig.GEN_COMMANDS])
     await message.reply_text(
-        text=help_text.format(
-            GEN_COMMANDS=GEN_COMMANDS
-        ),
+        text=help_text.format(GEN_COMMANDS=GEN_COMMANDS),
         quote=True,
-        disable_web_page_preview=True
+        disable_web_page_preview=True,
     )
 
     LOGGER(__name__).info("Help command invoked.")

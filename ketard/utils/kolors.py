@@ -20,6 +20,7 @@ deformed, lowres, error, worst quality, low quality, normal quality,
 jpeg artifacts, signature, watermark, username, blurry
 """
 
+
 class KolorsClient:
     def __init__(self, model_name="stabilityai/stable-diffusion-3-medium"):
         self.client = Client(model_name)
@@ -33,7 +34,7 @@ class KolorsClient:
         num_inference_steps=25,
         guidance_scale=5,
         randomize_seed=True,
-        seed=0
+        seed=0,
     ):
         result = self.client.predict(
             prompt=positive_prompt,
@@ -44,7 +45,7 @@ class KolorsClient:
             guidance_scale=guidance_scale,
             randomize_seed=randomize_seed,
             seed=seed,
-            api_name="/infer"
+            api_name="/infer",
         )
         return result
 

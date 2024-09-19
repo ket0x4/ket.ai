@@ -10,8 +10,7 @@ from ketard.database.d_b import db
 
 @Client.on_message(
     filters.command(
-        ["add_chat", "del_chat", "get_chats",
-        "add_user", "del_user", "get_users"]
+        ["add_chat", "del_chat", "get_chats", "add_user", "del_user", "get_users"]
     )
     & filters.user(DataConfig.ADMINS)
     & my_filters.is_user_spamming()
@@ -26,26 +25,22 @@ async def _handler(client: Client, message: Message):
 
     if "get" in cmd[0]:
         sent_message = await message.reply_text(
-            text=f"Fetching allowed {entity_type}s...",
-            quote=True
+            text=f"Fetching allowed {entity_type}s...", quote=True
         )
         entities = await db.get_collection(collection_name)
-        entity_list = [f"• `{entity_id}`: {entity_info['name']}" for entity_id, entity_info in entities.items()]
+        entity_list = [
+            f"• `{entity_id}`: {entity_info['name']}"
+            for entity_id, entity_info in entities.items()
+        ]
         text = f"**Allowed {entity_type.capitalize()}s** (`{len(entities)}`):\n"
         entity_list_text = "\n".join(entity_list)
         final_text = text + entity_list_text
 
         if len(final_text) > 4096:
-            url = await paste.dpaste(
-                text=entity_list_text
-            )
+            url = await paste.dpaste(text=entity_list_text)
             final_text = f"{text}[Click here to see the list]({url})"
-        await sent_message.edit_text(
-            text=final_text
-        )
-        LOGGER(__name__).info(
-            f"User {user_name} (ID: {user_id}) executed {cmd[0]}."
-        )
+        await sent_message.edit_text(text=final_text)
+        LOGGER(__name__).info(f"User {user_name} (ID: {user_id}) executed {cmd[0]}.")
         return
 
     if len(cmd) != 1:
@@ -64,15 +59,12 @@ async def _handler(client: Client, message: Message):
         chat = await client.get_chat(_id)
         _id = chat.id
     except:
-        return await message.reply_text(
-            text=invalid_id, quote=True
-        )
+        return await message.reply_text(text=invalid_id, quote=True)
 
-    if (entity_type == "chat" and chat.type not in [ChatType.SUPERGROUP, ChatType.GROUP]) or \
-       (entity_type == "user" and chat.type != ChatType.PRIVATE):
-        return await message.reply_text(
-            text=invalid_id, quote=True
-        )
+    if (
+        entity_type == "chat" and chat.type not in [ChatType.SUPERGROUP, ChatType.GROUP]
+    ) or (entity_type == "user" and chat.type != ChatType.PRIVATE):
+        return await message.reply_text(text=invalid_id, quote=True)
 
     existing_entity = await db.get(collection_name, _id)
     if cmd[0].startswith("add"):

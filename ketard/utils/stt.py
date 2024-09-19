@@ -1,4 +1,3 @@
-
 import os
 
 from speech_recognition import Recognizer, AudioFile
@@ -16,8 +15,6 @@ class SpeechRecognizer:
         with AudioFile(wav) as source:
             audio = self.recognizer.record(source)
         try:
-            return self.recognizer.recognize_google(
-                audio, language="tr-TR"
-            )
+            return self.recognizer.recognize_google(audio, language="tr-TR")
         except Exception as er:
             LOGGER(__name__).info(str(er))
