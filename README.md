@@ -73,7 +73,7 @@ Ensure that your `config.json` is correctly set up with the necessary API creden
 - [x] Add reply support
 - [ ] Refactor code
 - [ ] remove repeated code
-- [ ] Add `TR` lang support to `/sum command`
+- [x] Add `TR` lang support to `/sum command`
 - [x] Better `/help` message
 - [x] Add `/start command`
 - [ ] Make llm backend configurable
