@@ -11,7 +11,6 @@ async def handle_help_command(_, message: Message):
     help_text = """
 **Available commands:**
 - `/ket`: Enter text after command or reply to message/audio file. Ask Questions, Request code samples and more.
-- {GEN_COMMANDS}: Alias for `/ket` command
 - `/ddg`: Same as `/ket` command but uses Duckduckgo's DuckChat backend
 - `/sum`: Enter YouTube URL after command. Summarize YouTube videos(WIP)
 - `/status`: Get host server and api status information.
@@ -39,14 +38,4 @@ async def handle_help_command(_, message: Message):
 
 **Note:** You must be on the list of allowed Users or Chats to use this bot.
     """
-    if "ket" in DataConfig.GEN_COMMANDS:
-        DataConfig.GEN_COMMANDS.remove("ket")
-
-    GEN_COMMANDS = ", ".join([f"`/{command}`" for command in DataConfig.GEN_COMMANDS])
-    await message.reply_text(
-        text=help_text.format(GEN_COMMANDS=GEN_COMMANDS),
-        quote=True,
-        disable_web_page_preview=True,
-    )
-
     LOGGER(__name__).info("Help command invoked.")
