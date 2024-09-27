@@ -38,4 +38,10 @@ async def handle_help_command(_, message: Message):
 
 **Note:** You must be on the list of allowed Users or Chats to use this bot.
     """
+    await message.reply_text(
+        text=help_text,
+        quote=True,
+        disable_web_page_preview=True,
+    )
+
     LOGGER(__name__).info("Help command invoked.")
