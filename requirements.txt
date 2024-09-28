@@ -3,6 +3,7 @@ https://github.com/KurimuzonAkuma/pyrogram/archive/dev.zip
 TgCrypto
 psutil
 httpx
+packaging
 gitpython
 aiosqlite
 youtube-transcript-api

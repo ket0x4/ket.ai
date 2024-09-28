@@ -1,39 +1,40 @@
-FROM alpine:edge
+FROM alpine
 
 # Install packages
-RUN apk update && \
-    apk add --no-cache \
-        ffmpeg \
-        flac \
-        python3 \
-        py3-pip \
-        gcc \
-        python3-dev \
-        musl-dev \
-        linux-headers
+RUN apk add --no-cache \
+    ffmpeg \
+    flac \
+    python3 \
+    py3-pip \
+    gcc \
+    git \
+    python3-dev \
+    musl-dev \
+    linux-headers
 
 # Copy files
 COPY ketard /ketard
 COPY start /start
 COPY config.json /config.json
+COPY database.db /database.db
 RUN chmod +x /start
 
 # Install python packages
-RUN python -m venv venv && source venv/bin/activate && \
-    pip install --no-cache-dir \
+RUN pip install --no-cache-dir \
+    --break-system-packages \
     langchain_community \
     TgCrypto \
-    packaging \
     psutil \
     httpx \
+    packaging \
     gitpython \
     aiosqlite \
     youtube-transcript-api \
     SpeechRecognition \
-    https://github.com/KurimuzonAkuma/pyrogram/archive/dev.zip && \
-    rm -rf /root/.cache/pip
+    gradio_client \
+    https://github.com/KurimuzonAkuma/pyrogram/archive/dev.zip \
+    && rm -rf /root/.cache/pip
 
 # Remove build dependencies
-RUN apk del gcc python3-dev musl-dev linux-headers py3-pip --purge -r
-
-CMD ["sh", "-c", "source venv/bin/activate && /bin/sh start"]
+RUN apk del gcc python3-dev musl-dev linux-headers --purge -r
+CMD ["sh", "-c", "/bin/sh start"]
