@@ -46,19 +46,20 @@ async def handle_ket_command(client: Client, message: Message):
                 "Invalid URL format. Please provide a valid YouTube URL."
             )
         # Temp fix for lang support
-        transcript = YouTubeTranscriptApi.get_transcript(video_id, languages=["en"])
-        if transcript is None:
+        try:
+            transcript = YouTubeTranscriptApi.get_transcript(video_id, languages=["tr"])
+        except Exception:
             try:
-                transcript = YouTubeTranscriptApi.find_generated_transcript(
-                    video_id, ["en"]
-                )   
-            except Exception as e:
+                transcript = YouTubeTranscriptApi.get_transcript(video_id, languages=["en"])
+            except Exception:
                 try:
-                    transcript = YouTubeTranscriptApi.find_generated_transcript(
-                        video_id, ["tr"]
-                    ) 
-                except Exception as e:
-                    return await msg.edit_text("Unable to process the video transcript.")
+                    transcript = YouTubeTranscriptApi.find_generated_transcript(video_id, ["tr"])
+                except Exception:
+                    try:
+                        transcript = YouTubeTranscriptApi.find_generated_transcript(video_id, ["en"])
+                    except Exception as e:
+                        return await msg.edit_text("Unable to process the video transcript.")
+
         else:
             lmm_prompt = """This is a transcript of a YouTube video: summarize and make it short.
             I mean really short. Ignore sponsored sections and intro/outro.
