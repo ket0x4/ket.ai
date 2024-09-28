@@ -11,10 +11,8 @@ async def handle_help_command(_, message: Message):
     help_text = """
 **Available commands:**
 - `/ket`: Enter text after command or reply to message/audio file. Ask Questions, Request code samples and more.
-- `/ddg`: Same as `/ket` command but uses Duckduckgo's DuckChat backend
-- `/sum`: Enter YouTube URL after command. Summarize YouTube videos(WIP)
+- `/sum`: Enter YouTube URL after command. Summarize YouTube videos
 - `/status`: Get host server and api status information.
-- `/help`: Displays this message.
     """
 
     if message.from_user.id in DataConfig.ADMINS:
