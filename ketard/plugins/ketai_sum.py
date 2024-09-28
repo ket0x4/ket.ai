@@ -46,19 +46,27 @@ async def handle_ket_command(client: Client, message: Message):
                 "Invalid URL format. Please provide a valid YouTube URL."
             )
         # Temp fix for lang support
-        try:
-            transcript = YouTubeTranscriptApi.get_transcript(video_id, languages=["tr"])
-        except Exception:
+        languages = ["tr", "en"]
+        transcript = None
+
+        for lang in languages:
             try:
-                transcript = YouTubeTranscriptApi.get_transcript(video_id, languages=["en"])
+                transcript = YouTubeTranscriptApi.get_transcript(video_id, languages=[lang])
+                break
             except Exception:
+                continue
+
+        if not transcript:
+            for lang in languages:
                 try:
-                    transcript = YouTubeTranscriptApi.find_generated_transcript(video_id, ["tr"])
-                except Exception:
-                    try:
-                        transcript = YouTubeTranscriptApi.find_generated_transcript(video_id, ["en"])
-                    except Exception as e:
-                        return await msg.edit_text("Unable to process the video transcript.")
+                    transcript = YouTubeTranscriptApi.find_generated_transcript(video_id, [lang])
+                    break
+                except Exception as e:
+                    continue
+
+        if not transcript:
+            return await msg.edit_text("Unable to process the video.")
+
 
         else:
             lmm_prompt = """This is a transcript of a YouTube video: summarize and make it short.
