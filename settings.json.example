@@ -3,12 +3,7 @@
   "token": "bot token",
   "api_id": "api_id",
   "api_hash": "api_hash",
-  "debug_token": "optional. debug token for testing purposes",
-  "api_url": "http://localhost:11434",
-  "llm_model": "phi3:mini",
-  "version": "3.0",
-  "debug": false,
-  "lite": false,
+  "api_url": "http://localhost:8080",
   "admins": [
     123456789,
     123456789,
@@ -25,9 +20,6 @@
     -100123456789
   ],
   "gen_commands": [
-    "zirlamıcan",
-    "ket",
-    "sor",
-    "ask"
+    "ket"
   ]
 }
