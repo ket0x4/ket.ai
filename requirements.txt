@@ -3,4 +3,3 @@ langchain_community
 psutil
 pyrofork
 TgCrypto
-youtube-transcript-api
