@@ -47,34 +47,38 @@ bot = Client(
 # Check llama-server health
 async def llama_health_check():
     url = API_URL + "/health"
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url) as response:
-            status = response.status
-            response_json = await response.json()
-            if status == 503:
-                logging.error(
-                    "[Backend-Llama] Unable to reach service: %s", response_json
-                )
-                return False
-            elif status == 200:
-                logging.info("[Backend-Llama] Service is ok: %s", response_json)
-                return True
-            else:
-                logging.error(
-                    "[Backend-Llama] Unexpected status code: %s", response_json
-                )
-                return False
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url) as response:
+                status = response.status
+                response_json = await response.json()
+                if status == 200:
+                    logging.info("Llama-server Service is ok: %s", response_json)
+                    return True
+                else:
+                    logging.error(
+                        "Llama-server: Unexpected status code: %s", response_json
+                    )
+                    return False
+    except Exception as e:
+        logging.error("Llama-server: %s", e)
+        return False
 
 
 # Check llama-server properties
 async def llama_props():
-    global model_name
-    url = API_URL + "/props"
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url) as response:
-            response_json = await response.json()
-            model_name = response_json["default_generation_settings"]["model"]
-            logging.info(f"[Backend-Llama] Loaded LLM Model: {model_name}")
+    if await llama_health_check() == True:
+        global model_name
+        url = API_URL + "/props"
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url) as response:
+                response_json = await response.json()
+                model_name = response_json["default_generation_settings"]["model"]
+                logging.info(f"Llama-server Loaded LLM Model: {model_name}")
+    else:
+        logging.error("Llama-server: Error loading LLM Model")
+        model_name = "Error"
+        return False
 
 
 async def llama_completion(prompt):
@@ -95,7 +99,9 @@ async def llama_completion(prompt):
                 # print(f"Response: {result}")
                 return result
             else:
-                logging.error("Unexpected response format: %s", response_json)
+                logging.error(
+                    "Llama-server: Unexpected response format: %s", response_json
+                )
                 return "`Failed to Process prompt`"
 
 
@@ -103,7 +109,9 @@ async def llama_completion(prompt):
 @bot.on_message(filters.command(GEN_COMMANDS))
 async def handle_ket_command(bot, message):
     if not await llama_health_check():
-        await message.reply_text("Cannot reach backend.", quote=True)
+        await message.reply_text(
+            "`Backend not responding. Try again later`", quote=True
+        )
         logging.error(
             f"UserID: {message.from_user.id} tried to use /ket command but backend is unreachable."
         )
@@ -191,14 +199,14 @@ async def handle_help_command(bot, message):
 
 
 async def main():
-    logging.info("[Main] Checking Backends")
+    logging.info("Checking Backends")
     await llama_health_check()
     await llama_props()
     # await llama_completion("Hi, how are you?")
-    logging.info("[Main] Starting Bot")
+    logging.info("Starting Bot")
     await bot.start()
     await idle()
-    logging.info("[Main] Starting Bot")
+    logging.info("Starting Bot")
     await bot.stop()
 
 
