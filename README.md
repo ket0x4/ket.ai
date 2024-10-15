@@ -2,27 +2,24 @@
 # Ketard AI Bot
 
 ## Overview
-Ketard AI Bot is a Telegram bot designed for interacting with users through a variety of commands. It leverages advanced APIs to provide features such as system status checks, text generation, and more. The bot can be integrated with different services to enhance functionality.
+Legacy version for those who want to use on low-end devices like Raspberry pi. Uses Llama.cpp server for text generation.
 
 ## Features
-- Summarize YouTube videos. just send /sum command with vail YouTube URL and hope it doesn't burn
 - **System Information**: Commands to check CPU usage, RAM usage, and system temperature.
 - **Text Generation**: Utilizes the Ollama API for generating responses based on user input.
-- **Debug and Status Modes**: Includes configurations for debug mode and system status reporting.
-- **Command Handling**: Custom commands for different functionalities, including help and start commands.
 
 ### Requirements
 * Python3
-* GNU+Linux
-* [Ollama](https://ollama.com/download/linux)
+* [llama.cpp server](https://github.com/ggerganov/llama.cpp)
 
 ## Usage
 - **Start Command**: `/start` to get an introduction and available commands.
 - **Help Command**: `/help` provides information on how to use the bot and its commands.
 - **Status Command**: `/status` to get the current system status including CPU usage, RAM usage, and more.
-- **Custom Commands**: `{DataConfig.GEN_COMMANDS}` for generating responses based on specified commands.
+- **Custom Commands**: `/ket` for generating responses based on specified commands.
 
 ## Installation
+Note: You have to setup & run the [llama.cpp server](https://github.com/ggerganov/llama.cpp) before running the bot.
 1. Clone the repository:
    ```bash
    git clone --depth=1 --single-branch https://github.com/ket0x4/ketard-ai && cd ketard-ai
@@ -48,22 +45,5 @@ Ketard AI Bot is a Telegram bot designed for interacting with users through a va
 ## Configuration
 Ensure that your `config.json` is correctly set up with the necessary API credentials and configurations for bot behavior.
 
-## To-do
-- [x] Add `/sum` command
-- [x] Async `/sum` command
-- [x] Support other youtube url's 
-- [ ] Add speech-to-text support
-- [x] Check api response before sending
-- [x] Fix async `/status` command
-- [ ] Add blacklist support
-- [ ] log prompts and responses to db
-- [ ] split long messages
-- [ ] delete status message after sending prompt response
-- [ ] Add reply support
-- [ ] Refactor code
-- [ ] remove repeated code
-- [ ] Add `TR` lang support to `/sum command`
-- [ ] Better `/help` message
-- [ ] Add `/start command`
 ## License
 This project is licensed under the [MIT License](LICENSE).
