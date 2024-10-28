@@ -1,7 +1,7 @@
 from pyrogram import Client, filters
 from pyrogram.types import Message
 
-from ketard import my_filters, permission_checker
+from ketard import my_filters, permission_checker, paste
 from ketard.utils.kolors import kolors_client
 from ketard.utils.helper import get_prompt, send_log
 from ketard.logger.logging import LOGGER
@@ -28,9 +28,15 @@ async def handle_kolors_command(client: Client, message: Message):
         result = kolors_client.predict(positive_prompt=prompt)
 
         image_url = result[0]
+
+        caption = f"**Generated Image for:**\n`{prompt}`"
+        if len(caption) > 4090:
+            p_link = await paste.dpaste(text=prompt)
+            caption = f"**Generated Image for:** [click to see]({p_link})"
+
         await message.reply_document(
             document=image_url,
-            caption=f"**Generated Image for:**\n`{prompt}`",
+            caption=caption,
             force_document=True,
             quote=True,
         )
