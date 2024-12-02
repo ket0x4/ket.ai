@@ -63,7 +63,7 @@ Changes:
 
     final_updates = updates + _updates
     if len(final_updates) > 4096:
-        url = await paste.dpaste(text=_updates)
+        url = await paste.paste(text=_updates)
         update_msg = await msg.edit(
             f"{updates}[Click here to checkout updates]({url})",
             disable_web_page_preview=True,

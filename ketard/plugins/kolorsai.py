@@ -31,7 +31,7 @@ async def handle_kolors_command(client: Client, message: Message):
 
         caption = f"**Generated Image for:**\n`{prompt}`"
         if len(caption) > 4090:
-            p_link = await paste.dpaste(text=prompt)
+            p_link = await paste.paste(text=prompt)
             caption = f"**Generated Image for:** [click to see]({p_link})"
 
         await message.reply_document(

@@ -31,7 +31,7 @@ async def get_log(_, message: Message):
 
                 for x in lines[-num_line:]:
                     data += x
-                link = await paste.dpaste(text=data, lexer="_code")
+                link = await paste.paste(text=data)
                 await message.reply_text(
                     text=link, quote=True, disable_web_page_preview=True
                 )
