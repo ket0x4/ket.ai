@@ -87,7 +87,7 @@ async def handle_ket_command(client: Client, message: Message):
             formatted_response = response_header + response + info
             if len(formatted_response) > 4000:
                 # if 31 > 1:
-                p_link = await paste.dpaste(text=response)
+                p_link = await paste.paste(text=response)
                 formatted_response = f"{response_header}The output is too long, [click to see]({p_link}){info}"
             await message.reply_text(
                 text=formatted_response, quote=True, disable_web_page_preview=True

@@ -35,7 +35,7 @@ async def handle_ddg_command(client: Client, message: Message):
 
         formatted_response = response + info
         if len(formatted_response) > 4090:
-            p_link = await paste.dpaste(text=response)
+            p_link = await paste.paste(text=response)
             formatted_response = (
                 f"The output is too long, [click to see]({p_link}){info}"
             )

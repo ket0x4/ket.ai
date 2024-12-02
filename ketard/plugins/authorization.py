@@ -37,7 +37,7 @@ async def _handler(client: Client, message: Message):
         final_text = text + entity_list_text
 
         if len(final_text) > 4096:
-            url = await paste.dpaste(text=entity_list_text)
+            url = await paste.paste(text=entity_list_text)
             final_text = f"{text}[Click here to see the list]({url})"
         await sent_message.edit_text(text=final_text)
         LOGGER(__name__).info(f"User {user_name} (ID: {user_id}) executed {cmd[0]}.")
