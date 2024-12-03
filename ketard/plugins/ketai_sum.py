@@ -36,7 +36,23 @@ async def handle_ket_command(client: Client, message: Message):
             f"`{BotConfig.BOT_NAME}` Summarizing Video...",
             quote=True,
         )
+        
         video_id = None
+        if "watch?v=" in url:
+            video_id = url[url.find("=") + 1 :]
+            find_and = video_id.find("&")
+
+            if find_and >= 0:
+                video_id = video_id[:find_and]
+        elif "/shorts/" in url or "/youtu.be/" in url:
+            video_id = url[url.rfind("/") + 1 :]
+            find_qs = video_id.find("?")
+
+            if find_qs >= 0:
+                video_id = video_id[:find_qs]
+        else:
+            return await msg.edit_text("Invalid URL format. Please provide a valid YouTube URL.")
+        """
         if "youtube.com" in url:
             video_id = url.split("v=")[1]
         elif "youtu.be" in url:
@@ -45,6 +61,7 @@ async def handle_ket_command(client: Client, message: Message):
             return await msg.edit_text(
                 "Invalid URL format. Please provide a valid YouTube URL."
             )
+        """
         # Temp fix for lang support
         languages = ["tr", "en"]
         transcript = None
@@ -66,8 +83,6 @@ async def handle_ket_command(client: Client, message: Message):
 
         if not transcript:
             return await msg.edit_text("Unable to process the video.")
-
-
         else:
             lmm_prompt = """This is a transcript of a YouTube video: summarize and make it short.
             I mean really short. Ignore sponsored sections and intro/outro.
