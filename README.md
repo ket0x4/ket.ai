@@ -15,17 +15,16 @@ Ket.ai is an telegram bot that functions as a chatbot.
 ```bash
 export TELEGRAM_BOT_TOKEN="YOUR_TELEGRAM_BOT_TOKEN"
 go mod tidy
-go build -o ket.ai main.go
+CCGO_ENABLED=0 go build -ldflags '-w -s' -o ketai main.go
+upx -9 -q -f --ultra-brute -o ketai ketai # Optional, too slow
 ./ket.ai
 ```
 
 ### Docker
 ```bash
 export TELEGRAM_BOT_TOKEN="YOUR_TELEGRAM_BOT_TOKEN"
-go mod tidy
-go build -o ket.ai main.go
 docker build -t ket.ai .
-docker run -d --name ket.ai -e TELEGRAM_BOT_TOKEN
+docker run -d --name ketai -e TELEGRAM_BOT_TOKEN
 ```
 
 ## License

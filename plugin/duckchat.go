@@ -15,6 +15,11 @@ import (
 // gpt-3.5-turbo-0125
 // gpt-4o-mini
 
+// Preprompt
+var Preprompt = "keep your response short & simple. api doesn't support >3500 chars. User prompt:"
+
+var httpClient = &http.Client{}
+
 type Message struct {
 	Role    string `json:"role"`
 	Content string `json:"content"`
@@ -25,8 +30,14 @@ type RequestData struct {
 	Messages []Message `json:"messages"`
 }
 
+/* text size limit check
+func CharLimit(text string, limit int) bool {
+	return len(text) > limit
+}
+
+*/
+
 func ddgInvoke(prompt, model string) (string, error) {
-	client := &http.Client{}
 	headers := map[string]string{
 		"User-Agent":      "Mozilla/5.0 (X11; Linux x86_64; rv:127.0) Gecko/20100101 Firefox/127.0",
 		"Accept":          "text/event-stream",
@@ -57,13 +68,16 @@ func ddgInvoke(prompt, model string) (string, error) {
 		req.Header.Set(key, value)
 	}
 
-	resp, err := client.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return "", err
 	}
 	defer resp.Body.Close()
 
 	token := resp.Header.Get("x-vqd-4")
+	if token == "" {
+		return "", err
+	}
 	headers["x-vqd-4"] = token
 
 	// Prepare request data
@@ -87,7 +101,7 @@ func ddgInvoke(prompt, model string) (string, error) {
 		req.Header.Set(key, value)
 	}
 
-	resp, err = client.Do(req)
+	resp, err = httpClient.Do(req)
 	if err != nil {
 		return "", err
 	}
@@ -123,24 +137,24 @@ func ddgInvoke(prompt, model string) (string, error) {
 	return ret, nil
 }
 
-/*
-func DuckChat(prompt, model string) {
-	result, err := ddgInvoke(prompt, model)
-	if err != nil {
-		fmt.Println("Error:", err)
-		return
-	}
-	fmt.Println(result)
-}
-*/
-
 // new function to return the response to the telegram bot
 func DuckChat(prompt, model string) (string, error) {
 	log.Printf("DuckChat called with model %s", model)
+	prompt = Preprompt + prompt // inject preprompt
 	result, err := ddgInvoke(prompt, model)
 	if err != nil {
-		log.Fatal("Error:", err)
+		log.Println("Error:", err)
 		return "", err
 	}
-	return result, nil
+
+	switch {
+	case len(result) == 0:
+		log.Println("No response from the model")
+		return "No response from the model", nil
+	case len(result) > 3500:
+		log.Println("Response exceeds telegram message limit")
+		return "Response too long", nil
+	default:
+		return result, nil
+	}
 }
