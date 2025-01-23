@@ -52,7 +52,7 @@ func HandleMessage(c tele.Context) error {
 		if err != nil {
 			return c.Send("Error: " + err.Error())
 		}
-		log.Println("User:", userid, "Prompt:", text, "Response:", response)
+		log.Println("User:", userid, ", Prompt:", text, ", Response:", response)
 
 		//response = response + duckchat.Info
 		return c.Send(response, tele.ModeMarkdown)

@@ -34,6 +34,6 @@ func InitBot() *tele.Bot {
 }
 
 func Start(bot *tele.Bot) {
-	log.Println("Listening for commands")
+	//log.Println("Listening for commands")
 	bot.Start()
 }
