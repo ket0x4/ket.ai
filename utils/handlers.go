@@ -15,7 +15,7 @@ func HandleStart(c tele.Context) error {
 
 func HandleHelp(c tele.Context) error {
 	log.Println("Handling /help command")
-	return c.Reply("Uhh, I'm not sure what I'm supposed to do. I'm a bot.")
+	return c.Reply("Uhh, Just use /ket <prompt> to get a response or idk do whatever you want")
 }
 
 func getResponse(text string) (string, error) {
