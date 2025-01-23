@@ -3,19 +3,18 @@ package utils
 import (
 	"log"
 	"time"
-	"os"
 
 	tele "gopkg.in/telebot.v4"
 )
 
 var pref = tele.Settings{
-	Token: os.Getenv("TELEGRAM_TOKEN"),
+	Token:  LoadToken(),
 	Poller: &tele.LongPoller{Timeout: 10 * time.Second},
 }
 
 func InitBot() *tele.Bot {
 	if pref.Token == "" {
-		log.Println("TELEGRAM_TOKEN not set")
+		log.Println("BOT_TOKEN not set")
 		return nil
 	}
 
