@@ -17,8 +17,8 @@ BOT_TOKEN='Your Telegram Bot Token'
 
 ### Build
 ```bash
-CCGO_ENABLED=0 go build -ldflags '-w -s' -o ketai main.go
-upx -9 -q -f --ultra-brute -o ketai ketai # Optional, too slow
+CCGO_ENABLED=0 go build -ldflags '-w -s' main.go
+upx -9 -q -f --ultra-brute -o ketai main # Optional, too slow
 ```
 
 ### Docker
