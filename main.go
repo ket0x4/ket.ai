@@ -2,6 +2,7 @@ package main
 
 import (
 	"io"
+	"ket/plugin"
 	"ket/utils"
 	"log"
 	"os"
@@ -16,6 +17,16 @@ func init() {
 	}
 	mw := io.MultiWriter(os.Stdout, logFile)
 	log.SetOutput(mw)
+
+	// Inıtialize llama-server health check
+	if !plugin.LlamaHealthCheck() {
+		log.Fatal("Llama-server is not running")
+	} else {
+		log.Println("Llama-server is running")
+	}
+
+	// Get llama-cpp model name
+	plugin.LlamaProps()
 }
 
 func main() {
