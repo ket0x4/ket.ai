@@ -50,26 +50,10 @@ func LlamaHealthCheck() bool {
 	return statusCode == http.StatusOK
 }
 
-// Get the model name from the llama-server
-func LlamaProps() bool {
+func init() {
 	if !LlamaHealthCheck() {
-		log.Println("Llama-server: Error loading LLM Model")
-		ModelName = "Error"
-		return false
+		log.Fatal("Llama-server is not running")
+	} else {
+		log.Println("Llama-server is running")
 	}
-	var props PropsResponse
-	statusCode, err := doHTTPGet(API_URL+"/props", 5*time.Second, &props)
-	if err != nil {
-		log.Printf("Llama-server: %v", err)
-		ModelName = "Error"
-		return false
-	}
-	if statusCode == http.StatusOK {
-		ModelName = props.DefaultGenerationSettings.Model
-		log.Printf("Llama-server Loaded LLM Model: %s", ModelName)
-		return true
-	}
-	log.Printf("Llama-server: Unexpected status code: %d", statusCode)
-	ModelName = "Error"
-	return false
 }
