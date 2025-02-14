@@ -7,12 +7,14 @@ import (
 	"net/http"
 )
 
-// Available models:
+// Available models for DuckChat:
+// Last changed on 14.02.2025
 // Mixtral-8x7B-Instruct-v0.1
 // Llama-3-70b-chat-hf
 // claude-3-haiku-20240307
 // gpt-3.5-turbo-0125
 // gpt-4o-mini
+// o3-mini
 
 // Preprompt
 var Preprompt = "keep your response short & simple. api doesn't support >3500 chars. User prompt:"

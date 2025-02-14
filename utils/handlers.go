@@ -22,7 +22,7 @@ You can use @ketailegacy_bot to access the old version.`,
 }
 
 func getResponse(text string) (string, error) {
-	response, err := duckchat.DuckChat(text, "gpt-4o-mini")
+	response, err := duckchat.DuckChat(text, loadedConfig.DUCK_CHAT_DEFAULT_MODEL)
 	if err != nil {
 		log.Println("Error:", err)
 		return "", err
@@ -33,14 +33,18 @@ func getResponse(text string) (string, error) {
 func HandlePrompt(c tele.Context) error {
 	log.Println("/ket command issued")
 	text := c.Message().Text
-	userid := c.Message().Chat.ID
-	args := strings.TrimPrefix(text, "/ket ")
+	var args string
+	if c.Message().ReplyTo != nil {
+		args = c.Message().ReplyTo.Text
+	} else {
+		args = strings.TrimPrefix(text, "/ket ")
+	}
 
 	response, err := getResponse(args)
 	if err != nil {
 		return c.Send("Error: " + err.Error())
 	}
-	log.Println("User:", userid, "Prompt:", args, "Response:", response)
+	log.Println("User:", c.Message().Chat.ID, "Prompt:", args, "Response:", response)
 
 	return c.Reply(response, tele.ModeMarkdown)
 }
