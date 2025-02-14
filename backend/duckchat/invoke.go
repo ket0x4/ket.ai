@@ -12,6 +12,7 @@ func DuckChat(prompt, model string) (string, error) {
 		return "", err
 	}
 
+	// to-do: fix this bullshit
 	switch {
 	case len(result) == 0:
 		log.Println("No response from the model")
