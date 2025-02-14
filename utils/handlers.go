@@ -1,25 +1,28 @@
 package utils
 
 import (
-	"ket/plugin"
+	"ket/backend/duckchat"
 	"log"
 	"strings"
 
 	tele "gopkg.in/telebot.v4"
 )
 
-func HandleStart(c tele.Context) error {
-	log.Println("Handling /start command")
-	return c.Reply("work in progress")
-}
-
 func HandleHelp(c tele.Context) error {
-	log.Println("Handling /help command")
+	log.Println("/help command issued")
 	return c.Reply("Uhh, Just use /ket <prompt> to get a response or idk do whatever you want")
 }
 
+func HandleStartCommad(c tele.Context) error {
+	log.Println("/start command issued")
+	return c.Reply(
+		`This version of Ket.ai is still in development.
+You can use @ketailegacy_bot to access the old version.`,
+	)
+}
+
 func getResponse(text string) (string, error) {
-	response, err := plugin.DuckChat(text, "gpt-4o-mini")
+	response, err := duckchat.DuckChat(text, "gpt-4o-mini")
 	if err != nil {
 		log.Println("Error:", err)
 		return "", err
@@ -28,7 +31,7 @@ func getResponse(text string) (string, error) {
 }
 
 func HandlePrompt(c tele.Context) error {
-	log.Println("Handling /ket command")
+	log.Println("/ket command issued")
 	text := c.Message().Text
 	userid := c.Message().Chat.ID
 	args := strings.TrimPrefix(text, "/ket ")

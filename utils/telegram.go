@@ -26,7 +26,7 @@ func InitBot() *tele.Bot {
 
 	log.Println("Telegram bot created successfully")
 
-	Bot.Handle("/start", HandleStart)
+	Bot.Handle("/start", HandleStartCommad)
 	Bot.Handle("/help", HandleHelp)
 	Bot.Handle("/ket", HandlePrompt)
 	Bot.Handle(tele.OnText, HandleMessage)

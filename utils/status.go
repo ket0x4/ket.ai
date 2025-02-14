@@ -12,9 +12,11 @@ import (
 	"github.com/shirou/gopsutil/mem"
 )
 
-const VERSION = "1.0.0"
+// to-do: make it variable after implementing the config
+const VERSION = "Next"
 
 var modelName = "Llama"
+var currentBackend = "Llama.cpp"
 
 func getCPUUsage() float64 {
 	percentages, err := cpu.Percent(1, false)
@@ -86,9 +88,9 @@ OS: "%s"
 CPU Usage: "%.2f%%"
 Memory Usage: "%.2f%%"
 CPU Temperature: "%s"
-Backend: "Llama.cpp"
+Backend: "%s"
 LLM Model: "%s"
-`, VERSION, boardName, osName, cpuUsage, memoryUsage, cpuTemp, modelName)
+`, VERSION, boardName, osName, cpuUsage, memoryUsage, cpuTemp, currentBackend, modelName)
 }
 
 func GetStatus() {

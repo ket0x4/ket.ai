@@ -9,7 +9,7 @@ import (
 
 func LoadToken() string {
 	if _, err := os.Stat(".env"); os.IsNotExist(err) {
-		sample := "BOT_TOKEN='YourTokenHere'\n"
+		sample := "BOT_TOKEN='YourTokenHere'\n API_URL='http://127.0.0.1:8080'\n"
 		os.WriteFile(".env", []byte(sample), 0644)
 	}
 	if err := godotenv.Load(".env"); err != nil {
