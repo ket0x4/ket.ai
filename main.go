@@ -19,6 +19,7 @@ func init() {
 }
 
 func main() {
+	utils.ReadConfig()
 	// Initialize the telegram bot
 	bot := utils.InitBot()
 	go utils.Start(bot)

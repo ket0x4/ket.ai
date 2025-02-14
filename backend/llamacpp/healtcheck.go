@@ -3,12 +3,11 @@ package backend
 import (
 	"encoding/json"
 	"io"
+	"ket/utils"
 	"log"
 	"net/http"
 	"time"
 )
-
-const API_URL = "http://127.0.0.1:8080"
 
 type HealthResponse struct{} // to-do: define the response
 
@@ -21,7 +20,7 @@ type PropsResponse struct {
 }
 
 func LlamaHealthCheck() bool {
-	url := API_URL + "/health"
+	url := utils.GetConfig().LLAMA_CPP_API_URL + "/health"
 
 	client := http.Client{
 		Timeout: 5 * time.Second,

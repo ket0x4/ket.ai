@@ -8,7 +8,7 @@ import (
 )
 
 var pref = tele.Settings{
-	Token:  LoadToken(),
+	Token:  GetConfig().BOT_TOKEN,
 	Poller: &tele.LongPoller{Timeout: 10 * time.Second},
 }
 

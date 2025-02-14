@@ -1,0 +1,9 @@
+{
+    "token": "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11",
+    "admins": [2087606991],
+    "allowed_chats": [-1001122334455, -1005566778899],
+    "lcpp_api_url": "https://api.telegram.org/bot",
+    "lcpp_model": "phi3-mini",
+    "dc_model": "o3-mini",
+    "version": "Next"
+}

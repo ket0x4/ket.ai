@@ -1,3 +1,4 @@
 *.sum
 *.env
 *.log
+config.json
