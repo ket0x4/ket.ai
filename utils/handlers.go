@@ -70,23 +70,9 @@ func HandlePrompt(c tele.Context) error {
 	}
 	log.Println("User:", c.Message().Chat.ID, "Prompt:", args, ". Response:", response)
 
-	return c.Reply(response, tele.ModeMarkdown)
-}
-
-/* listen message if not in group and reply with the response
-func HandleMessage(c tele.Context) error {
 	if c.Message().Chat.Type == tele.ChatPrivate {
-		text := c.Message().Text
-		userid := c.Message().Chat.ID
-		response, err := getResponse(text)
-		if err != nil {
-			return c.Send("Error: " + err.Error())
-		}
-		log.Println("User:", userid, ", Prompt:", text, ", Response:", response)
-
-		//response = response + duckchat.Info
 		return c.Send(response, tele.ModeMarkdown)
+	} else {
+		return c.Reply(response, tele.ModeMarkdown)
 	}
-	return nil
 }
-*/
