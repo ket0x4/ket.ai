@@ -10,6 +10,7 @@ import (
 
 	"github.com/shirou/gopsutil/cpu"
 	"github.com/shirou/gopsutil/mem"
+	tele "gopkg.in/telebot.v4"
 )
 
 // to-do: make it variable after implementing the config
@@ -96,4 +97,11 @@ LLM Model: "%s"
 func GetStatus() {
 	stats := getSystemStats()
 	fmt.Println(stats)
+}
+
+func HandleStatusCommand(c tele.Context) error {
+	stats := getSystemStats()
+	// Send the stats to the user
+	log.Println("User:", c.Message().Chat.ID, "command:", c.Message())
+	return c.Reply(stats, tele.ModeMarkdown)
 }

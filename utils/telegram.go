@@ -7,18 +7,20 @@ import (
 	tele "gopkg.in/telebot.v4"
 )
 
-var pref = tele.Settings{
-	Token:  GetConfig().BOT_TOKEN,
-	Poller: &tele.LongPoller{Timeout: 10 * time.Second},
-}
-
 func InitBot() *tele.Bot {
-	if pref.Token == "" {
+	cfg := GetConfig()
+
+	settings := tele.Settings{
+		Token:  cfg.TOKEN,
+		Poller: &tele.LongPoller{Timeout: 10 * time.Second},
+	}
+
+	if settings.Token == "" {
 		log.Println("BOT_TOKEN not set")
 		return nil
 	}
 
-	Bot, err := tele.NewBot(pref)
+	bot, err := tele.NewBot(settings)
 	if err != nil {
 		log.Fatal(err)
 		return nil
@@ -26,11 +28,12 @@ func InitBot() *tele.Bot {
 
 	log.Println("Telegram bot created successfully")
 
-	Bot.Handle("/start", HandleStartCommad)
-	Bot.Handle("/help", HandleHelp)
-	Bot.Handle("/ket", HandlePrompt)
-	Bot.Handle(tele.OnText, HandleMessage)
-	return Bot
+	bot.Handle("/start", HandleStartCommad)
+	bot.Handle("/help", HandleHelp)
+	bot.Handle("/ket", HandlePrompt)
+	bot.Handle("/status", HandleStatusCommand)
+	//bot.Handle(tele.OnText, HandleMessage)
+	return bot
 }
 
 func Start(bot *tele.Bot) {

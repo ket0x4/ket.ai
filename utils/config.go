@@ -8,13 +8,13 @@ import (
 )
 
 type Config struct {
-	BOT_TOKEN               string  `json:"token"`
-	ADMIN_IDS               []int64 `json:"admins"`
-	ALLOWED_CHAT_IDS        []int64 `json:"allowed_chats"`
-	LLAMA_CPP_API_URL       string  `json:"lcpp_api_url"`
-	LLAMA_CPP_DEFAULT_MODEL string  `json:"lcpp_model"`
-	DUCK_CHAT_DEFAULT_MODEL string  `json:"dc_model"`
-	VERSION                 string  `json:"version"`
+	TOKEN         string  `json:"token"`
+	ADMINS        []int64 `json:"admins"`
+	ALLOWED_CHATS []int64 `json:"allowed_chats"`
+	LCPP_API_URL  string  `json:"lcpp_api_url"`
+	LCPP_MODEL    string  `json:"lcpp_model"`
+	DC_MODEL      string  `json:"dc_model"`
+	VERSION       string  `json:"version"`
 }
 
 var loadedConfig Config
@@ -50,13 +50,14 @@ func ReadConfig() {
 }
 
 func LogConfig() {
+	log.Println("Loading config.json...")
 	log.Println("Version:", loadedConfig.VERSION)
-	log.Println("Bot Token:", loadedConfig.BOT_TOKEN)
-	log.Println("Admins:", loadedConfig.ADMIN_IDS)
-	log.Println("Allowed Chats:", loadedConfig.ALLOWED_CHAT_IDS)
-	log.Println("llama.cpp API URL:", loadedConfig.LLAMA_CPP_API_URL)
-	log.Println("llama.cpp Model:", loadedConfig.LLAMA_CPP_DEFAULT_MODEL)
-	log.Println("DuckChat Model:", loadedConfig.DUCK_CHAT_DEFAULT_MODEL)
+	log.Println("Bot Token:", loadedConfig.TOKEN)
+	log.Println("Admins:", loadedConfig.ADMINS)
+	log.Println("Allowed Chats:", loadedConfig.ALLOWED_CHATS)
+	log.Println("llama.cpp API URL:", loadedConfig.LCPP_API_URL)
+	log.Println("llama.cpp Model:", loadedConfig.LCPP_MODEL)
+	log.Println("DuckChat Model:", loadedConfig.DC_MODEL)
 }
 
 func GetConfig() Config {

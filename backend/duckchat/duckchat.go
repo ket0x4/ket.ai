@@ -1,139 +1,103 @@
 package duckchat
 
 import (
-	"bytes"
+	"bufio"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
+	"strings"
+	"time"
 )
 
-// Available models for DuckChat:
-// Last changed on 14.02.2025
-// Mixtral-8x7B-Instruct-v0.1
-// Llama-3-70b-chat-hf
-// claude-3-haiku-20240307
-// gpt-3.5-turbo-0125
-// gpt-4o-mini
-// o3-mini
-
-// Preprompt
-var Preprompt = "keep your response short & simple. api doesn't support >3500 chars. User prompt:"
-
-var httpClient = &http.Client{}
-
-type Message struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
+// ResponseData represents the structure within each streamed line of the response
+type ResponseData struct {
+	Message string `json:"message,omitempty"`
 }
 
-type RequestData struct {
-	Model    string    `json:"model"`
-	Messages []Message `json:"messages"`
-}
-
-/* text size limit check
-func CharLimit(text string, limit int) bool {
-	return len(text) > limit
-}
-
-*/
-
-func ddgInvoke(prompt, model string) (string, error) {
+func Quack(prompt, model string) (string, string, error) {
+	// HTTP headers for the request
 	headers := map[string]string{
 		"User-Agent":      "Mozilla/5.0 (X11; Linux x86_64; rv:127.0) Gecko/20100101 Firefox/127.0",
 		"Accept":          "text/event-stream",
 		"Accept-Language": "en-US;q=0.7,en;q=0.3",
-		"Accept-Encoding": "gzip, deflate, br",
 		"Referer":         "https://duckduckgo.com/",
 		"Content-Type":    "application/json",
 		"Origin":          "https://duckduckgo.com",
-		"Connection":      "keep-alive",
 		"Cookie":          "dcm=1",
-		"Sec-Fetch-Dest":  "empty",
-		"Sec-Fetch-Mode":  "cors",
-		"Sec-Fetch-Site":  "same-origin",
-		"Pragma":          "no-cache",
-		"TE":              "trailers",
-		"x-vqd-accept":    "1",
 		"Cache-Control":   "no-store",
+		"x-vqd-accept":    "1",
 	}
 
-	//startTime := time.Now()
+	client := &http.Client{}
+	start := time.Now()
 
-	// Get token
-	req, err := http.NewRequest("GET", "https://duckduckgo.com/duckchat/v1/status", nil)
+	// Step 1: Retrieve token from x-vqd-4 header
+	statusReq, err := http.NewRequest("GET", "https://duckduckgo.com/duckchat/v1/status", nil)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
-	for key, value := range headers {
-		req.Header.Set(key, value)
+	for k, v := range headers {
+		statusReq.Header.Set(k, v)
 	}
 
-	resp, err := httpClient.Do(req)
+	statusResp, err := client.Do(statusReq)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
-	defer resp.Body.Close()
+	defer statusResp.Body.Close()
 
-	token := resp.Header.Get("x-vqd-4")
+	token := statusResp.Header.Get("x-vqd-4")
 	if token == "" {
-		return "", err
+		return "", "", fmt.Errorf("failed to retrieve token from x-vqd-4 header")
 	}
 	headers["x-vqd-4"] = token
 
-	// Prepare request data
-	data := RequestData{
-		Model: model,
-		Messages: []Message{
-			{Role: "user", Content: prompt},
-		},
-	}
-	jsonData, err := json.Marshal(data)
+	// Step 2: Send POST request with model and prompt
+	postBody := fmt.Sprintf(`{
+		"model": "%s",
+		"messages": [{"role": "user", "content": "%s"}]
+	}`, model, strings.ReplaceAll(prompt, `"`, `\"`))
+
+	req, err := http.NewRequest("POST", "https://duckduckgo.com/duckchat/v1/chat", strings.NewReader(postBody))
 	if err != nil {
-		return "", err
+		return "", "", err
+	}
+	for k, v := range headers {
+		req.Header.Set(k, v)
 	}
 
-	// Send request
-	req, err = http.NewRequest("POST", "https://duckduckgo.com/duckchat/v1/chat", bytes.NewBuffer(jsonData))
+	resp, err := client.Do(req)
 	if err != nil {
-		return "", err
-	}
-	for key, value := range headers {
-		req.Header.Set(key, value)
-	}
-
-	resp, err = httpClient.Do(req)
-	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", err
-	}
+	// Step 3: Process the response, extracting all lines starting with JSON data
+	var resultBuilder strings.Builder
+	reader := bufio.NewReader(resp.Body)
 
-	// Process response
-	ret := ""
-	lines := bytes.Split(body, []byte("\n"))
-	for _, line := range lines {
-		if len(line) > 0 && line[6] == '{' {
-			var dat map[string]interface{}
-			if err := json.Unmarshal(line[6:], &dat); err != nil {
-				return "", err
+	for {
+		line, err := reader.ReadString('\n')
+		if err != nil && err != io.EOF {
+			return "", "", err
+		}
+
+		if len(line) > 6 && strings.HasPrefix(line, "data: ") {
+			dataStr := line[6:]
+			var responseData ResponseData
+			if json.Unmarshal([]byte(dataStr), &responseData) == nil && responseData.Message != "" {
+				cleanMsg := strings.ReplaceAll(responseData.Message, "\\n", "\n")
+				resultBuilder.WriteString(cleanMsg)
 			}
-			if message, ok := dat["message"].(string); ok {
-				ret += message
-			}
+		}
+		if err == io.EOF {
+			break
 		}
 	}
 
-	//endTime := time.Now()
-	//generationTime := endTime.Sub(startTime).Seconds()
-	//Info := fmt.Sprintf("Took: `%.2fs` | Model: `%s`", generationTime, model)
-	//Info := fmt.Sprintf("\n\nTook: `%.2fs` | Model: `%s`", generationTime, model)
-	//return ret + Info, nil
-	//log.Printf(Info)
+	elapsed := time.Since(start).Seconds()
+	info := fmt.Sprintf("\n\nTook: %.2fs | Model: %s", elapsed, model)
 
-	return ret, nil
+	return resultBuilder.String(), info, nil
 }
