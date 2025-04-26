@@ -3,7 +3,7 @@ package backend
 import (
 	"encoding/json"
 	"io"
-	"ket/utils"
+	"ket/config"
 	"log"
 	"net/http"
 	"time"
@@ -20,7 +20,7 @@ type PropsResponse struct {
 }
 
 func LlamaHealthCheck() bool {
-	url := utils.GetConfig().LCPP_API_URL + "/health"
+	url := config.GetConfig().LCPP_API_URL + "/health"
 
 	client := http.Client{
 		Timeout: 5 * time.Second,

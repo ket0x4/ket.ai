@@ -3,7 +3,7 @@ package backend
 import (
 	"encoding/json"
 	"io"
-	"ket/utils"
+	"ket/config"
 	"log"
 	"net/http"
 	"time"
@@ -12,7 +12,7 @@ import (
 // Get the model name from the llama-server
 func LlamaProps() bool {
 	if LlamaHealthCheck() {
-		url := utils.GetConfig().LCPP_API_URL + "/props"
+		url := config.GetConfig().LCPP_API_URL + "/props"
 		client := http.Client{
 			Timeout: 5 * time.Second,
 		}

@@ -16,8 +16,9 @@ import (
 // to-do: make it variable after implementing the config
 const VERSION = "Next"
 
-var modelName = "Llama"
-var currentBackend = "Llama.cpp"
+// to-do: make it dynamic after implementing llamacpp backend
+var modelName = "Unknown"
+var currentBackend = "Unknown"
 
 func getCPUUsage() float64 {
 	percentages, err := cpu.Percent(1, false)
@@ -82,15 +83,15 @@ func getSystemStats() string {
 	boardName := getBoardName()
 
 	return fmt.Sprintf(`
-**System Status**
-Version: "%s"
-Board: "%s"
-OS: "%s"
-CPU Usage: "%.2f%%"
-Memory Usage: "%.2f%%"
-CPU Temperature: "%s"
-Backend: "%s"
-LLM Model: "%s"
+<b>System Status</b>
+<b>Version:</b> <code>%s</code>
+<b>Board:</b> <code>%s</code>
+<b>OS:</b> <code>%s</code>
+<b>CPU Usage:</b> <code>%.2f%%</code>
+<b>Memory Usage:</b> <code>%.2f%%</code>
+<b>CPU Temperature:</b> <code>%s</code>
+<b>Backend:</b> <code>%s</code>
+<b>LLM Model:</b> <code>%s</code>
 `, VERSION, boardName, osName, cpuUsage, memoryUsage, cpuTemp, currentBackend, modelName)
 }
 
@@ -102,6 +103,6 @@ func GetStatus() {
 func HandleStatusCommand(c tele.Context) error {
 	stats := getSystemStats()
 	// Send the stats to the user
-	log.Println("User:", c.Message().Chat.ID, "command:", c.Message())
-	return c.Reply(stats, tele.ModeMarkdown)
+	//log.Println("User:", c.Message().Chat.ID, "command:", c.Message())
+	return c.Reply(stats, tele.ModeHTML)
 }

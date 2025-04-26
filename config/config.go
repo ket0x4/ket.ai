@@ -1,4 +1,4 @@
-package utils
+package config
 
 import (
 	"encoding/json"
@@ -62,4 +62,13 @@ func LogConfig() {
 
 func GetConfig() Config {
 	return loadedConfig
+}
+
+// Add a function to provide the DC_MODEL value
+func GetDCModel() string {
+	return loadedConfig.DC_MODEL
+}
+
+func init() {
+	ReadConfig()
 }

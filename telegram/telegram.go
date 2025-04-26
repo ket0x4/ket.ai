@@ -1,6 +1,8 @@
-package utils
+package telegram
 
 import (
+	"ket/config"
+	"ket/utils"
 	"log"
 	"time"
 
@@ -8,7 +10,7 @@ import (
 )
 
 func InitBot() *tele.Bot {
-	cfg := GetConfig()
+	cfg := config.GetConfig()
 
 	settings := tele.Settings{
 		Token:  cfg.TOKEN,
@@ -28,15 +30,20 @@ func InitBot() *tele.Bot {
 
 	log.Println("Telegram bot created successfully")
 
-	bot.Handle("/start", HandleStartCommad)
+	bot.Handle("/start", HandleStartCommand)
 	bot.Handle("/help", HandleHelp)
 	bot.Handle("/ket", HandlePrompt)
-	bot.Handle("/status", HandleStatusCommand)
+	bot.Handle("/status", utils.HandleStatusCommand)
 	//bot.Handle(tele.OnText, HandleMessage)
 	return bot
 }
 
 func Start(bot *tele.Bot) {
-	//log.Println("Listening for commands")
 	bot.Start()
+}
+
+func Run() {
+	bot := InitBot()
+	go Start(bot)
+	select {}
 }

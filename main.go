@@ -1,28 +1,11 @@
 package main
 
-import (
-	"io"
-	"ket/utils"
-	"log"
-	"os"
-)
+import "ket/telegram"
 
 func init() {
-	// Initialize the logger
-	log.Println("Starting Ket.ai Next")
-	logFile, err := os.OpenFile("ket.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0666)
-	if err != nil {
-		log.Fatal(err)
-	}
-	mw := io.MultiWriter(os.Stdout, logFile)
-	log.SetOutput(mw)
+	// Logging is automatically initialized by the config package's init function
 }
 
 func main() {
-	utils.ReadConfig()
-	// Initialize the telegram bot
-	bot := utils.InitBot()
-	go utils.Start(bot)
-	// Keep the main thread running
-	select {}
+	telegram.Run()
 }
