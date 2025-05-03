@@ -4,7 +4,6 @@ import (
 	"ket/backend"
 	"ket/config"
 	"log"
-	"strings"
 
 	tele "gopkg.in/telebot.v4"
 )
@@ -24,6 +23,8 @@ You can use @ketailegacy_bot to access the old version.`,
 	)
 }
 
+// This function is now unused and will be removed. Better function used in prompt.go
+/*
 func HandlePrompt(c tele.Context) error {
 	text := c.Message().Text
 	var args string
@@ -41,6 +42,7 @@ func HandlePrompt(c tele.Context) error {
 	log.Println("User:", c.Message().Chat.ID, "Prompt:", args, ". Response:", response)
 	return c.Send(response, tele.ModeMarkdown)
 }
+*/
 
 // HandleMessage handles all text messages
 func HandleMessage(c tele.Context) error {

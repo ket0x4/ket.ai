@@ -32,7 +32,7 @@ func InitBot() *tele.Bot {
 
 	bot.Handle("/start", HandleStartCommand)
 	bot.Handle("/help", HandleHelp)
-	bot.Handle("/ket", HandlePrompt)
+	bot.Handle("/ket", HandlePrompt2)
 	bot.Handle("/status", utils.HandleStatusCommand)
 	//bot.Handle(tele.OnText, HandleMessage)
 	return bot

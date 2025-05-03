@@ -16,7 +16,7 @@ func GetResponse(prompt string, dcModel string) (string, error) {
 	}
 
 	// Check if the prompt is too long
-	if len(prompt) > 100 {
+	if len(prompt) > 1000 {
 		return "Prompt too long. Please try a shorter prompt.", nil
 	}
 
