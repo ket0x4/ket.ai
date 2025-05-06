@@ -8,20 +8,7 @@ Ket.ai is an telegram bot that functions as a chatbot.
 - **Start Command**: `/start` to get an introduction and available commands.
 - **Help Command**: `/help` provides information on how to use the bot and its commands.
 
-## Usage
-
-### Create `.env` with the following content
-```bash
-BOT_TOKEN='Your Telegram Bot Token'
-```
-
-### Build
-```bash
-CCGO_ENABLED=0 go build -ldflags '-w -s' main.go
-upx -9 -q -f --ultra-brute -o ketai main # Optional, too slow
-```
-
-### Docker
+### Build image
 ```bash
 docker build -t ket.ai .
 docker run -d --name ketai

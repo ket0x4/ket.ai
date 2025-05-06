@@ -13,7 +13,7 @@ RUN apk --no-cache add go upx && \
     rm -rf /build && \
     apk del --purge go upx
 
-COPY .env /app/.env
+COPY sample.config.json /app/config.json
 
 WORKDIR /app
 CMD ["sh", "-c", "/app/ketai"]
