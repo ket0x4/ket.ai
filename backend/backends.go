@@ -6,10 +6,13 @@ import (
 	"strings"
 )
 
+var system_prompt = "You are a helpful assistant named Ket. always keep anwsers short. limit is 3000 char. User prompt is:"
+
 func GetResponse(prompt string, dcModel string) (string, error) {
 	// Remove /ket from the prompt if it exists
 	prompt = strings.TrimPrefix(prompt, "/ket ")
 	prompt = strings.TrimSpace(prompt)
+	prompt = system_prompt + prompt
 
 	if strings.TrimSpace(prompt) == "" {
 		return "Please provide a prompt.", nil
@@ -32,7 +35,7 @@ func GetResponse(prompt string, dcModel string) (string, error) {
 	if ret == "" {
 		return "No response from the model. (Unreliable Network)", nil
 	}
-	if len(ret) > 4096 {
+	if len(ret) > 4000 {
 		return "Response too long. Please try a shorter prompt.", nil
 	}
 	return ret, nil
