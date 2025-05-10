@@ -86,7 +86,7 @@ func getSystemStats() string {
 <b>System Status</b>
 <b>Version:</b> <code>%s</code>
 <b>Board:</b> <code>%s</code>
-<b>OS:</b> <code>%s</code>
+<b>Platform:</b> <code>%s</code>
 <b>CPU Usage:</b> <code>%.2f%%</code>
 <b>Memory Usage:</b> <code>%.2f%%</code>
 <b>CPU Temperature:</b> <code>%s</code>
@@ -97,7 +97,7 @@ func getSystemStats() string {
 
 func GetStatus() {
 	stats := getSystemStats()
-	fmt.Println(stats)
+	log.Println(stats)
 }
 
 func HandleStatusCommand(c tele.Context) error {

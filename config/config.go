@@ -1,6 +1,7 @@
 package config
 
 import (
+	"embed"
 	"encoding/json"
 	"io"
 	"log"
@@ -18,6 +19,7 @@ type Config struct {
 }
 
 var loadedConfig Config
+var configFile embed.FS
 
 func parseConfigFile(filePath string) (Config, error) {
 	var config Config

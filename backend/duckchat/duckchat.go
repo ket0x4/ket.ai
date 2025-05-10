@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -47,6 +48,11 @@ func Quack(prompt, model string) (string, string, error) {
 	}
 	defer statusResp.Body.Close()
 
+	if statusResp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(statusResp.Body)
+		return "", "", fmt.Errorf("failed to get status, status code: %d, body: %s", statusResp.StatusCode, string(bodyBytes))
+	}
+
 	token := statusResp.Header.Get("x-vqd-4")
 	if token == "" {
 		return "", "", fmt.Errorf("failed to retrieve token from x-vqd-4 header")
@@ -73,6 +79,17 @@ func Quack(prompt, model string) (string, string, error) {
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		bodyString := string(bodyBytes)
+		if strings.Contains(bodyString, "ERR_BN_LIMIT") {
+			log.Println("Rate limit error:", bodyString)
+			return "", "", fmt.Errorf("`request failed due to rate limit`")
+		}
+		log.Println("Error:", bodyString)
+		return "", "", fmt.Errorf("`failed to send chat request`")
+	}
+
 	// Step 3: Process the response, extracting all lines starting with JSON data
 	var resultBuilder strings.Builder
 	reader := bufio.NewReader(resp.Body)
@@ -97,7 +114,7 @@ func Quack(prompt, model string) (string, string, error) {
 	}
 
 	elapsed := time.Since(start).Seconds()
-	info := fmt.Sprintf("\n\nTook: %.2fs | Model: %s", elapsed, model)
+	info := fmt.Sprintf("\n\nTook: `%.2fs` | Model: ` %s`", elapsed, model)
 
 	return resultBuilder.String(), info, nil
 }

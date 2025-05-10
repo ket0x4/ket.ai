@@ -30,7 +30,6 @@ func GetResponse(prompt string, dcModel string) (string, error) {
 		return "", err
 	}
 	_ = info
-
 	ret = strings.TrimSpace(ret)
 	if ret == "" {
 		return "No response from the model. (Unreliable Network)", nil

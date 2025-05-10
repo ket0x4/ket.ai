@@ -10,6 +10,8 @@ import (
 // var dcModel = config.GetDCModel()
 var Text string
 
+// to-do: Reduce repetition of code
+
 func HandlePrompt2(c tele.Context) error {
 	// Get the text from the message
 	var repliedMsg *tele.Message
@@ -20,22 +22,35 @@ func HandlePrompt2(c tele.Context) error {
 		repliedMsg = c.Message().ReplyTo
 		repliedText := repliedMsg.Text
 		prompt = repliedText
-		//isReply = true
+
+		// get response from backend
+		response, err := backend.GetResponse(prompt, dcModel)
+		if err != nil {
+			log.Panicln("Error:", err)
+			return c.Reply("Error: " + err.Error())
+		}
+		// Log the user ID, prompt, and response
+		log.Println("User:", c.Message().Chat.ID, "Prompt:", prompt, ". Response:", response)
+
+		// Send the response to the user
+		_, err = c.Bot().Reply(repliedMsg, response, tele.ModeMarkdown)
+
 	} else {
 		prompt = c.Message().Text
+
+		// get response from backend
+		response, err := backend.GetResponse(prompt, dcModel)
+		if err != nil {
+			log.Println("Error:", err)
+			return c.Reply("Error: " + err.Error())
+		}
+
+		// Log the user ID, prompt, and response
+		log.Println("User:", c.Message().Chat.ID, "Prompt:", prompt, ". Response:", response)
+
+		// Send the response to the user
+		_, err = c.Bot().Reply(c.Message(), response, tele.ModeMarkdown)
 	}
 
-	// Get the response from the backend
-	response, err := backend.GetResponse(prompt, dcModel)
-	if err != nil {
-		return c.Send("Error: " + err.Error())
-	}
-	// Log the user ID, prompt, and response
-	log.Println("User:", c.Message().Chat.ID, "Prompt:", prompt, ". Response:", response)
-	_, err = c.Bot().Reply(repliedMsg, response, tele.ModeMarkdown)
-	return err
+	return nil
 }
-
-// to-do: handle /ket without reply
-// to-do: handle /ket <model> <text>
-// to-do: Use tele.options to set default send options
