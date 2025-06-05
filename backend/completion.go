@@ -12,7 +12,7 @@ import (
 // Get the model name from the llama-server
 func LlamaProps() bool {
 	if LlamaHealthCheck() {
-		url := config.GetConfig().LCPP_API_URL + "/props"
+		url := config.GetConfig().API_URL + "/props"
 		client := http.Client{
 			Timeout: 5 * time.Second,
 		}

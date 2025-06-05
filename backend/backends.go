@@ -1,14 +1,13 @@
 package backend
 
 import (
-	"ket/backend/duckchat"
 	"log"
 	"strings"
 )
 
 var system_prompt = "You are a helpful assistant named Ket. always keep anwsers short. limit is 3000 char. User prompt is:"
 
-func GetResponse(prompt string, dcModel string) (string, error) {
+func GetResponse(prompt string) (string, error) {
 	// Remove /ket from the prompt if it exists
 	prompt = strings.TrimPrefix(prompt, "/ket ")
 	prompt = strings.TrimSpace(prompt)
@@ -23,8 +22,8 @@ func GetResponse(prompt string, dcModel string) (string, error) {
 		return "Prompt too long. Please try a shorter prompt.", nil
 	}
 
-	// Invoke DuckChat API
-	ret, info, err := duckchat.Quack(prompt, dcModel)
+	// Invoke Prompt
+	ret, info, err := InvokePrompt(prompt)
 	if err != nil {
 		log.Println("Error:", err)
 		return "", err
@@ -32,7 +31,7 @@ func GetResponse(prompt string, dcModel string) (string, error) {
 	_ = info
 	ret = strings.TrimSpace(ret)
 	if ret == "" {
-		return "No response from the model. (Unreliable Network)", nil
+		return "No response from the model.", nil
 	}
 	if len(ret) > 4000 {
 		return "Response too long. Please try a shorter prompt.", nil

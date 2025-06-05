@@ -2,13 +2,10 @@ package telegram
 
 import (
 	"ket/backend"
-	"ket/config"
 	"log"
 
 	tele "gopkg.in/telebot.v4"
 )
-
-var dcModel = config.GetDCModel()
 
 func HandleHelp(c tele.Context) error {
 	log.Println("User:", c.Message().Chat.ID, "requested help")
@@ -48,7 +45,7 @@ func HandlePrompt(c tele.Context) error {
 func HandleMessage(c tele.Context) error {
 	if c.Message().Chat.Type == tele.ChatPrivate {
 		text := c.Message().Text
-		response, err := backend.GetResponse(text, dcModel)
+		response, err := backend.GetResponse(text)
 		if err != nil {
 			return c.Send("Error: " + err.Error())
 		}

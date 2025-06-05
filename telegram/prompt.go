@@ -24,7 +24,7 @@ func HandlePrompt2(c tele.Context) error {
 		prompt = repliedText
 
 		// get response from backend
-		response, err := backend.GetResponse(prompt, dcModel)
+		response, err := backend.GetResponse(prompt)
 		if err != nil {
 			log.Panicln("Error:", err)
 			return c.Reply("Error: " + err.Error())
@@ -39,7 +39,7 @@ func HandlePrompt2(c tele.Context) error {
 		prompt = c.Message().Text
 
 		// get response from backend
-		response, err := backend.GetResponse(prompt, dcModel)
+		response, err := backend.GetResponse(prompt)
 		if err != nil {
 			log.Println("Error:", err)
 			return c.Reply("Error: " + err.Error())

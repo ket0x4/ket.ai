@@ -20,7 +20,7 @@ type PropsResponse struct {
 }
 
 func LlamaHealthCheck() bool {
-	url := config.GetConfig().LCPP_API_URL + "/health"
+	url := config.GetConfig().API_URL + "/health"
 
 	client := http.Client{
 		Timeout: 5 * time.Second,

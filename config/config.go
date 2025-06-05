@@ -12,9 +12,8 @@ type Config struct {
 	TOKEN         string  `json:"token"`
 	ADMINS        []int64 `json:"admins"`
 	ALLOWED_CHATS []int64 `json:"allowed_chats"`
-	LCPP_API_URL  string  `json:"lcpp_api_url"`
-	LCPP_MODEL    string  `json:"lcpp_model"`
-	DC_MODEL      string  `json:"dc_model"`
+	API_URL       string  `json:"api_url"`
+	MODEL         string  `json:"model"`
 	VERSION       string  `json:"version"`
 }
 
@@ -57,18 +56,12 @@ func LogConfig() {
 	log.Println("Bot Token:", loadedConfig.TOKEN)
 	log.Println("Admins:", loadedConfig.ADMINS)
 	log.Println("Allowed Chats:", loadedConfig.ALLOWED_CHATS)
-	log.Println("llama.cpp API URL:", loadedConfig.LCPP_API_URL)
-	log.Println("llama.cpp Model:", loadedConfig.LCPP_MODEL)
-	log.Println("DuckChat Model:", loadedConfig.DC_MODEL)
+	log.Println("llama.cpp API URL:", loadedConfig.API_URL)
+	log.Println("llama.cpp Model:", loadedConfig.MODEL)
 }
 
 func GetConfig() Config {
 	return loadedConfig
-}
-
-// Add a function to provide the DC_MODEL value
-func GetDCModel() string {
-	return loadedConfig.DC_MODEL
 }
 
 func init() {
