@@ -13,6 +13,7 @@ type Config struct {
 	ADMINS        []int64 `json:"admins"`
 	ALLOWED_CHATS []int64 `json:"allowed_chats"`
 	API_URL       string  `json:"api_url"`
+	API_KEY       string  `json:"api_key"`
 	MODEL         string  `json:"model"`
 	VERSION       string  `json:"version"`
 }
@@ -56,7 +57,8 @@ func LogConfig() {
 	log.Println("Bot Token:", loadedConfig.TOKEN)
 	log.Println("Admins:", loadedConfig.ADMINS)
 	log.Println("Allowed Chats:", loadedConfig.ALLOWED_CHATS)
-	log.Println("llama.cpp API URL:", loadedConfig.API_URL)
+	log.Println("llama.cpp API URL:", loadedConfig.API_URL+"/v1")
+	log.Println("llama.cpp API Key:", "[REDACTED]")
 	log.Println("llama.cpp Model:", loadedConfig.MODEL)
 }
 

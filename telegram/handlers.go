@@ -1,7 +1,6 @@
 package telegram
 
 import (
-	"ket/backend"
 	"log"
 
 	tele "gopkg.in/telebot.v4"
@@ -41,7 +40,7 @@ func HandlePrompt(c tele.Context) error {
 }
 */
 
-// HandleMessage handles all text messages
+/* HandleMessage handles all text messages
 func HandleMessage(c tele.Context) error {
 	if c.Message().Chat.Type == tele.ChatPrivate {
 		text := c.Message().Text
@@ -54,3 +53,5 @@ func HandleMessage(c tele.Context) error {
 	}
 	return nil
 }
+
+*/
