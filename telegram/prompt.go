@@ -16,46 +16,29 @@ func HandlePrompt2(c tele.Context) error {
 	// Get the text from the message
 	var repliedMsg *tele.Message
 	prompt := c.Message().Text
+	targetMessage := c.Message()
+
 	// Check if the message is a reply
 	if c.Message().ReplyTo != nil {
 		// Get the text from the replied message
 		repliedMsg = c.Message().ReplyTo
-		repliedText := repliedMsg.Text
-		prompt = repliedText
+		prompt = repliedMsg.Text
+		targetMessage = repliedMsg
+	}
 
-		// get response from backend
-		response, err := backend.GetResponse(prompt)
-		if err != nil {
-			log.Println("Error:", err)
-			return c.Reply("Error: " + err.Error())
-		}
-		// Log the user ID, prompt, and response
-		log.Println("User:", c.Message().Chat.ID, "Prompt:", prompt, ". Response:", response)
+	// get response from backend
+	response, err := backend.GetResponse(prompt)
+	if err != nil {
+		log.Println("Error:", err)
+		return c.Reply("Error: " + err.Error())
+	}
+	// Log the user ID, prompt, and response
+	log.Println("User:", c.Message().Chat.ID, "Prompt:", prompt, ". Response:", response)
 
-		// Send the response to the user
-		_, err = c.Bot().Reply(repliedMsg, response)
-		if err != nil {
-			return err
-		}
-
-	} else {
-
-		// get response from backend
-		response, err := backend.GetResponse(prompt)
-		if err != nil {
-			log.Println("Error:", err)
-			return c.Reply("Error: " + err.Error())
-		}
-
-		// Log the user ID, prompt, and response
-		log.Println("User:", c.Message().Chat.ID, "Prompt:", prompt, ". Response:", response)
-
-		// Send the response to the user
-		_, err = c.Bot().Reply(c.Message(), response)
-		if err != nil {
-			return err
-		}
-
+	// Send the response to the user
+	_, err = c.Bot().Reply(targetMessage, response)
+	if err != nil {
+		return err
 	}
 
 	return nil
