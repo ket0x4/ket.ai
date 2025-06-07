@@ -3,9 +3,7 @@ package config
 import (
 	"embed"
 	"encoding/json"
-	"io"
 	"log"
-	"os"
 )
 
 type Config struct {
@@ -16,20 +14,17 @@ type Config struct {
 	API_KEY       string  `json:"api_key"`
 	MODEL         string  `json:"model"`
 	VERSION       string  `json:"version"`
+	SYS_PROMPT    string  `json:"sys_prompt"`
 }
 
 var loadedConfig Config
+
+//go:embed config.json
 var configFile embed.FS
 
 func parseConfigFile(filePath string) (Config, error) {
 	var config Config
-	file, err := os.Open(filePath)
-	if err != nil {
-		return config, err
-	}
-	defer file.Close()
-
-	bytes, err := io.ReadAll(file)
+	bytes, err := configFile.ReadFile(filePath)
 	if err != nil {
 		return config, err
 	}
@@ -54,12 +49,13 @@ func ReadConfig() {
 func LogConfig() {
 	log.Println("Loading config.json...")
 	log.Println("Version:", loadedConfig.VERSION)
-	log.Println("Bot Token:", loadedConfig.TOKEN)
+	//log.Println("Bot Token:", loadedConfig.TOKEN)
 	log.Println("Admins:", loadedConfig.ADMINS)
 	log.Println("Allowed Chats:", loadedConfig.ALLOWED_CHATS)
 	log.Println("llama.cpp API URL:", loadedConfig.API_URL+"/v1")
-	log.Println("llama.cpp API Key:", "[REDACTED]")
+	//log.Println("llama.cpp API Key:", loadedConfig.API_KEY)
 	log.Println("llama.cpp Model:", loadedConfig.MODEL)
+	log.Println("System Prompt:", loadedConfig.SYS_PROMPT)
 }
 
 func GetConfig() Config {

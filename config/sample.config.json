@@ -5,5 +5,6 @@
     "api_url": "http://127.0.0.1:8080",
     "api_key": "your_api_key_here",
     "model": "phi3-mini",
-    "version": "Next"
+    "version": "Next",
+    "sys_prompt": "You are a helpful assistant."
 }

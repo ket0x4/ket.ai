@@ -18,7 +18,7 @@ const VERSION = "Next"
 
 // to-do: make it dynamic after implementing llamacpp backend
 var modelName = "Unknown"
-var currentBackend = "Unknown"
+var currentBackend = "llama.cpp"
 
 func getCPUUsage() float64 {
 	percentages, err := cpu.Percent(1, false)

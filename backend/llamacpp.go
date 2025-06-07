@@ -14,12 +14,15 @@ import (
 var client openai.Client
 var cfg config.Config
 
+var system_prompt = config.GetConfig().SYS_PROMPT
+
 func init() {
 	cfg = config.GetConfig()
 	client = openai.NewClient(
 		option.WithBaseURL(cfg.API_URL+"/v1"),
 		option.WithAPIKey(cfg.API_KEY),
 	)
+	// fmt.Println(system_prompt)
 }
 
 func GetResponse(prompt string) (string, error) {
@@ -32,6 +35,7 @@ func GetResponse(prompt string) (string, error) {
 
 	chatCompletion, err := client.Chat.Completions.New(context.TODO(), openai.ChatCompletionNewParams{
 		Messages: []openai.ChatCompletionMessageParamUnion{
+			openai.SystemMessage(system_prompt),
 			openai.UserMessage(prompt),
 		},
 		Model: openai.ChatModel(cfg.MODEL),
