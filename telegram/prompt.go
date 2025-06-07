@@ -26,7 +26,7 @@ func HandlePrompt2(c tele.Context) error {
 		// get response from backend
 		response, err := backend.GetResponse(prompt)
 		if err != nil {
-			log.Panicln("Error:", err)
+			log.Println("Error:", err)
 			return c.Reply("Error: " + err.Error())
 		}
 		// Log the user ID, prompt, and response
@@ -34,9 +34,11 @@ func HandlePrompt2(c tele.Context) error {
 
 		// Send the response to the user
 		_, err = c.Bot().Reply(repliedMsg, response)
+		if err != nil {
+			return err
+		}
 
 	} else {
-		prompt = c.Message().Text
 
 		// get response from backend
 		response, err := backend.GetResponse(prompt)
@@ -50,6 +52,10 @@ func HandlePrompt2(c tele.Context) error {
 
 		// Send the response to the user
 		_, err = c.Bot().Reply(c.Message(), response)
+		if err != nil {
+			return err
+		}
+
 	}
 
 	return nil

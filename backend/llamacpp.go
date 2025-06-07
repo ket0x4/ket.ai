@@ -14,7 +14,7 @@ import (
 var client openai.Client
 var cfg config.Config
 
-var system_prompt = config.GetConfig().SYS_PROMPT
+var system_prompt string
 
 func init() {
 	cfg = config.GetConfig()
@@ -22,7 +22,7 @@ func init() {
 		option.WithBaseURL(cfg.API_URL+"/v1"),
 		option.WithAPIKey(cfg.API_KEY),
 	)
-	// fmt.Println(system_prompt)
+	system_prompt = cfg.SYS_PROMPT
 }
 
 func GetResponse(prompt string) (string, error) {
