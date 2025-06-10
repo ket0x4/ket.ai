@@ -25,7 +25,7 @@ func init() {
 	system_prompt = cfg.SYS_PROMPT
 }
 
-func GetResponse(prompt string) (string, error) {
+func GetResponse(ctx context.Context, prompt string) (string, error) {
 	// Check prompt for empty or too long before processing
 	valid, errorMsg := CheckPrompt(prompt)
 	if !valid {
@@ -33,7 +33,7 @@ func GetResponse(prompt string) (string, error) {
 		return "", fmt.Errorf("%s", errorMsg)
 	}
 
-	chatCompletion, err := client.Chat.Completions.New(context.TODO(), openai.ChatCompletionNewParams{
+	chatCompletion, err := client.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
 		Messages: []openai.ChatCompletionMessageParamUnion{
 			openai.SystemMessage(system_prompt),
 			openai.UserMessage(prompt),

@@ -1,6 +1,7 @@
 package telegram
 
 import (
+	"context"
 	"ket/backend"
 	"log"
 
@@ -27,7 +28,7 @@ func HandlePrompt2(c tele.Context) error {
 	}
 
 	// get response from backend
-	response, err := backend.GetResponse(prompt)
+	response, err := backend.GetResponse(context.Background(), prompt)
 	if err != nil {
 		log.Println("Error:", err)
 		return c.Reply("Error: " + err.Error())

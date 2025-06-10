@@ -41,31 +41,39 @@ func getMemoryUsage() float64 {
 func getCPUTemperature() string {
 	if runtime.GOOS == "linux" {
 		tempFile := "/sys/class/thermal/thermal_zone0/temp"
-		if data, err := os.ReadFile(tempFile); err == nil {
-			temp, err := strconv.Atoi(strings.TrimSpace(string(data)))
-			if err == nil {
-				return fmt.Sprintf("%.2f°C", float64(temp)/1000.0)
-			}
-		} else {
-			log.Printf("[Status] Error reading CPU Temp: %v", err)
+		data, err := os.ReadFile(tempFile)
+		if err != nil {
+			log.Printf("[Status] Error reading CPU Temp file %s: %v", tempFile, err)
 			return "`I/O error`"
 		}
+
+		temp, err := strconv.Atoi(strings.TrimSpace(string(data)))
+		if err != nil {
+			log.Printf("[Status] Error parsing CPU Temp from file %s: %v", tempFile, err)
+			return "`Invalid temp format`"
+		}
+		return fmt.Sprintf("%.2f°C", float64(temp)/1000.0)
 	}
 	return "Unsupported OS/Board"
 }
 
 func getBoardName() string {
 	if runtime.GOOS == "linux" {
-		boardFile := "/sys/devices/virtual/dmi/id/product_name"
-		if _, err := os.Stat(boardFile); err == nil {
-			if data, err := os.ReadFile(boardFile); err == nil {
-				return strings.TrimSpace(string(data))
+		// Try reading from DMI product name first
+		boardFileDMI := "/sys/devices/virtual/dmi/id/product_name"
+		if data, err := os.ReadFile(boardFileDMI); err == nil {
+			name := strings.TrimSpace(string(data))
+			if name != "" {
+				return name
 			}
 		}
-		boardFile = "/proc/device-tree/model"
-		if _, err := os.Stat(boardFile); err == nil {
-			if data, err := os.ReadFile(boardFile); err == nil {
-				return strings.TrimSpace(string(data))
+
+		// Fallback to device-tree model
+		boardFileDeviceTree := "/proc/device-tree/model"
+		if data, err := os.ReadFile(boardFileDeviceTree); err == nil {
+			name := strings.TrimSpace(string(data))
+			if name != "" {
+				return name
 			}
 		}
 	}
