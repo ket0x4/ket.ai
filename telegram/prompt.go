@@ -3,6 +3,7 @@ package telegram
 import (
 	"context"
 	"ket/backend"
+	"ket/permissions" // Added import for utils package
 	"log"
 
 	tele "gopkg.in/telebot.v4"
@@ -14,6 +15,12 @@ var Text string
 // to-do: Reduce repetition of code
 
 func HandlePrompt2(c tele.Context) error {
+	// Check permissions first
+	if !permissions.IsAllowed(c.Chat().ID) {
+		log.Printf("Unauthorized access attempt by chat ID: %d", c.Chat().ID)
+		return c.Reply("You are not authorized to use this bot.")
+	}
+
 	// Get the text from the message
 	var repliedMsg *tele.Message
 	prompt := c.Message().Text

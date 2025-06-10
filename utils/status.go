@@ -2,6 +2,7 @@ package utils
 
 import (
 	"fmt"
+	"ket/permissions"
 	"log"
 	"os"
 	"runtime"
@@ -109,6 +110,12 @@ func GetStatus() {
 }
 
 func HandleStatusCommand(c tele.Context) error {
+	// Check permissions first
+	if !permissions.IsAllowed(c.Chat().ID) { // IsAllowed is in the same package
+		log.Printf("Unauthorized access attempt for /status by chat ID: %d", c.Chat().ID)
+		return c.Reply("You are not authorized to use this bot.")
+	}
+
 	stats := getSystemStats()
 	// Send the stats to the user
 	//log.Println("User:", c.Message().Chat.ID, "command:", c.Message())

@@ -35,6 +35,15 @@ func InitBot() *tele.Bot {
 	bot.Handle("/ket", HandlePrompt2)
 	bot.Handle("/status", utils.HandleStatusCommand)
 	//bot.Handle(tele.OnText, HandleMessage)
+
+	/* Permission commands
+	bot.Handle("/adduser", utils.HandleAddUserCommand)
+	bot.Handle("/rmuser", utils.HandleRemoveUserCommand)
+	bot.Handle("/addchat", utils.HandleAddChatCommand)
+	bot.Handle("/rmchat", utils.HandleRemoveChatCommand)
+	bot.Handle("/listusers", utils.HandleListUsersCommand)
+	*/
+
 	return bot
 }
 
