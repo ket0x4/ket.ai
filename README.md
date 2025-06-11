@@ -13,9 +13,6 @@ Ket.ai is an telegram bot that functions as a chatbot powered by an OpenAI compa
 ```json
 {
     "token": "TELEGRAM_BOT_TOKEN",
-    "admins": [ADMIN_USER_ID, ADMIN_USER_ID_2],
-    "allowed_users": [ALLOWED_USER_ID, ALLOWED_USER_ID_2],
-    "allowed_chats": [ALLOWED_CHAT_ID_1, ALLOWED_CHAT_ID_2],
     "api_url": "OpenAI Compatible API URL",
     "api_key": "OpenAI API Key (optional)",
     "model": "Model Name",
@@ -24,6 +21,33 @@ Ket.ai is an telegram bot that functions as a chatbot powered by an OpenAI compa
     "max_queue": 4
 }
 ```
+
+### `chats.json` structure:
+```json
+{
+    "allowed_users": [
+        207588255,
+        2087606991
+    ],
+    "allowed_chats": [
+        -1001541497652,
+        -1001253259500,
+        -1001054130924
+    ],
+    "allowed_groups": [
+        -1001234567890,
+        -1001253259500,
+        -1009876543210
+    ]
+}
+```
+
+## Installation
+### Prerequisites
+- Go 1.20 or later
+- Docker (optional, for containerization)
+- Telegram Bot Token (create a bot using [BotFather](https://t.me/botfather))
+
 
 ### Build image
 ```bash
