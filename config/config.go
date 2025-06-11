@@ -7,15 +7,14 @@ import (
 )
 
 type Config struct {
-	TOKEN         string  `json:"token"`
-	ADMINS        []int64 `json:"admins"`
-	ALLOWED_CHATS []int64 `json:"allowed_chats"`
-	API_URL       string  `json:"api_url"`
-	API_KEY       string  `json:"api_key"`
-	MODEL         string  `json:"model"`
-	VERSION       string  `json:"version"`
-	SYS_PROMPT    string  `json:"sys_prompt"`
-	MAX_QUEUE     int     `json:"max_queue"`
+	TOKEN      string `json:"token"`
+	BACKEND    string `json:"backend"`
+	API_URL    string `json:"api_url"`
+	API_KEY    string `json:"api_key"`
+	MODEL      string `json:"model"`
+	VERSION    string `json:"version"`
+	SYS_PROMPT string `json:"sys_prompt"`
+	MAX_QUEUE  int    `json:"max_queue"`
 }
 
 var loadedConfig Config
@@ -51,15 +50,14 @@ func ReadConfig() {
 
 func LogConfig() {
 	log.Println("Loading config.json...")
+	log.Println("------------------------------------------")
 	log.Println("Version:", loadedConfig.VERSION)
-	//log.Println("Bot Token:", loadedConfig.TOKEN)
-	log.Println("Admins:", loadedConfig.ADMINS)
-	log.Println("Allowed Chats:", loadedConfig.ALLOWED_CHATS)
-	log.Println("llama.cpp API URL:", loadedConfig.API_URL+"/v1")
-	//log.Println("llama.cpp API Key:", loadedConfig.API_KEY)
-	log.Println("llama.cpp Model:", loadedConfig.MODEL)
+	log.Println("Backend:", loadedConfig.BACKEND)
+	log.Println("API URL:", loadedConfig.API_URL+"/v1")
+	log.Println("Model:", loadedConfig.MODEL)
 	log.Println("System Prompt:", loadedConfig.SYS_PROMPT)
 	log.Println("Max Queue Size:", loadedConfig.MAX_QUEUE)
+	log.Println("------------------------------------------")
 	log.Println("Config loaded successfully.")
 }
 
