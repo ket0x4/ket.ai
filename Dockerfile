@@ -7,7 +7,7 @@ WORKDIR /build
 # Build the Go app
 RUN apk --no-cache add go upx && \
     go mod tidy && \
-    CCGO_ENABLED=0 go build -ldflags '-w -s' -o main main.go && \
+    CCGO_ENABLED=0 go build -ldflags '-w -s' -o ket main.go && \
     upx -9 -f --ultra-brute -o ketai main && \
     mkdir /app && mv ketai /app/ketai &&\
     rm -rf /build && \

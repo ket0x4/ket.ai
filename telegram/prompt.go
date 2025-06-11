@@ -2,6 +2,7 @@ package telegram
 
 import (
 	"fmt" // Added for fmt.Sprintf
+	"ket/config"
 	"ket/permissions"
 	"log"
 	"strings" // Added for strings.HasPrefix and strings.TrimSpace
@@ -23,7 +24,8 @@ var promptQueue chan PromptTask
 
 // MaxQueueSize defines the maximum number of prompts that can be queued.
 // It will be used in telegram.go for initializing the queue.
-const MaxQueueSize = 4
+// const MaxQueueSize = 4
+var MaxQueueSize = config.GetConfig().MAX_QUEUE
 
 func HandlePrompt2(c tele.Context) error {
 	// Check permissions first

@@ -15,9 +15,12 @@ type Config struct {
 	MODEL         string  `json:"model"`
 	VERSION       string  `json:"version"`
 	SYS_PROMPT    string  `json:"sys_prompt"`
+	MAX_QUEUE     int     `json:"max_queue"`
 }
 
 var loadedConfig Config
+
+const configFilePath = "config.json"
 
 //go:embed config.json
 var configFile embed.FS
@@ -56,6 +59,8 @@ func LogConfig() {
 	//log.Println("llama.cpp API Key:", loadedConfig.API_KEY)
 	log.Println("llama.cpp Model:", loadedConfig.MODEL)
 	log.Println("System Prompt:", loadedConfig.SYS_PROMPT)
+	log.Println("Max Queue Size:", loadedConfig.MAX_QUEUE)
+	log.Println("Config loaded successfully.")
 }
 
 func GetConfig() Config {

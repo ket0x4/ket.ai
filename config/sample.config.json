@@ -6,5 +6,6 @@
     "api_key": "your_api_key_here",
     "model": "phi3-mini",
     "version": "Next",
-    "sys_prompt": "You are a helpful assistant."
+    "sys_prompt": "You are a helpful assistant.",
+    "max_queue": 4
 }
