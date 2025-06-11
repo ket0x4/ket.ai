@@ -1,18 +1,29 @@
 package telegram
 
 import (
-	"context"
-	"ket/backend"
-	"ket/permissions" // Added import for utils package
+	"fmt" // Added for fmt.Sprintf
+	"ket/permissions"
 	"log"
+	"strings" // Added for strings.HasPrefix and strings.TrimSpace
 
 	tele "gopkg.in/telebot.v4"
 )
 
-// var dcModel = config.GetDCModel()
-var Text string
+// PromptTask holds the necessary information for processing a prompt.
+type PromptTask struct {
+	ChatID          int64
+	Prompt          string
+	TargetMessage   *tele.Message
+	OriginalContext tele.Context // To use c.Bot().Reply and other context methods
+}
 
-// to-do: Reduce repetition of code
+// promptQueue is the channel acting as a queue for prompt processing tasks.
+// It will be initialized in telegram.go.
+var promptQueue chan PromptTask
+
+// MaxQueueSize defines the maximum number of prompts that can be queued.
+// It will be used in telegram.go for initializing the queue.
+const MaxQueueSize = 4
 
 func HandlePrompt2(c tele.Context) error {
 	// Check permissions first
@@ -21,33 +32,54 @@ func HandlePrompt2(c tele.Context) error {
 		return c.Reply("You are not authorized to use this bot.")
 	}
 
-	// Get the text from the message
-	var repliedMsg *tele.Message
-	prompt := c.Message().Text
-	targetMessage := c.Message()
+	promptText := ""
+	targetMessage := c.Message() // Default to current message
 
-	// Check if the message is a reply
-	if c.Message().ReplyTo != nil {
-		// Get the text from the replied message
-		repliedMsg = c.Message().ReplyTo
-		prompt = repliedMsg.Text
-		targetMessage = repliedMsg
+	// Determine the prompt text and the message to reply to
+	if c.Message().IsReply() && c.Message().ReplyTo != nil && c.Message().ReplyTo.Text != "" {
+		// If replying to a message with text, use that text as the prompt
+		promptText = c.Message().ReplyTo.Text
+		targetMessage = c.Message().ReplyTo
+	} else {
+		// Not a reply, or reply is to a message without text.
+		// Use the text from the current message, stripping the /ket command.
+		rawText := c.Message().Text
+		if strings.HasPrefix(rawText, "/ket") {
+			trimmedText := strings.TrimSpace(strings.TrimPrefix(rawText, "/ket"))
+			// Only use if there's actual text after /ket
+			if trimmedText != "" {
+				promptText = trimmedText
+			}
+		} //else if c.Message().Chat.Type == tele.ChatPrivate {
+		// In private chats, if not a /ket command, consider the whole message as a prompt.
+		// This part might need adjustment based on whether non-command messages should be processed.
+		// For now, assuming /ket is the primary trigger.
+		// If HandlePrompt2 is only for /ket, this 'else if' might be redundant.
+		// Keeping it simple: /ket command is the focus.
+		//}
 	}
 
-	// get response from backend
-	response, err := backend.GetResponse(context.Background(), prompt)
-	if err != nil {
-		log.Println("Error:", err)
-		return c.Reply("Error: " + err.Error())
-	}
-	// Log the user ID, prompt, and response
-	log.Println("User:", c.Message().Chat.ID, "Prompt:", prompt, ". Response:", response)
-
-	// Send the response to the user
-	_, err = c.Bot().Reply(targetMessage, response)
-	if err != nil {
-		return err
+	if promptText == "" {
+		return c.Reply("The prompt is empty. Usage: /ket <your prompt> or reply to a message with /ket.")
 	}
 
-	return nil
+	task := PromptTask{
+		ChatID:          c.Chat().ID,
+		Prompt:          promptText,
+		TargetMessage:   targetMessage,
+		OriginalContext: c,
+	}
+
+	// Try to send the task to the queue
+	select {
+	case promptQueue <- task:
+		queueLen := len(promptQueue)
+		log.Printf("Prompt from chat ID %d queued. Current queue length: %d/%d.", c.Chat().ID, queueLen, MaxQueueSize)
+		// Updated reply to include queue length
+		replyMsg := fmt.Sprintf("Your request has been queued <code>(position %d/%d)</code>", queueLen, MaxQueueSize)
+		return c.Reply(replyMsg, tele.ModeHTML)
+	default: // This case is hit if the promptQueue is full (channel buffer is at capacity)
+		log.Printf("Prompt queue full for chat ID %d. Max size: %d.", c.Chat().ID, MaxQueueSize)
+		return c.Reply("I'm currently processing a lot of requests, and the queue is full. Please try again in a moment.")
+	}
 }
