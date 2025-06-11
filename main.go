@@ -1,6 +1,8 @@
 package main
 
-import "ket/telegram"
+import (
+	"ket/telegram"
+)
 
 func init() {
 	// Logging and configuration are automatically initialized by the
@@ -8,6 +10,7 @@ func init() {
 }
 
 func main() {
+
 	telegram.Run()
 }
 

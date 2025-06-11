@@ -118,6 +118,6 @@ func HandleStatusCommand(c tele.Context) error {
 
 	stats := getSystemStats()
 	// Send the stats to the user
-	//log.Println("User:", c.Message().Chat.ID, "command:", c.Message())
+	log.Printf("User %d requested system status", c.Message().Chat.ID)
 	return c.Reply(stats, tele.ModeHTML)
 }

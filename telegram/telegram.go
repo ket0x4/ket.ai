@@ -4,6 +4,7 @@ import (
 	"ket/config"
 	"ket/utils"
 	"log"
+	"os"
 	"time"
 
 	tele "gopkg.in/telebot.v4"
@@ -13,12 +14,20 @@ func InitBot() *tele.Bot {
 	cfg := config.GetConfig()
 
 	settings := tele.Settings{
+		Synchronous: false,
+		ParseMode:   tele.ModeMarkdownV2,
+		OnError: func(err error, c tele.Context) {
+			// Log the error with context information
+			log.Printf("Error in context %s: %v", c.Message().Text, err)
+		},
 		Token:  cfg.TOKEN,
 		Poller: &tele.LongPoller{Timeout: 10 * time.Second},
 	}
 
 	if settings.Token == "" {
+		// If the token is not set, log an error and return nil
 		log.Println("BOT_TOKEN not set")
+		os.Exit(1)
 		return nil
 	}
 
@@ -52,7 +61,15 @@ func Start(bot *tele.Bot) {
 }
 
 func Run() {
-	bot := InitBot()
+	var bot *tele.Bot
+	for {
+		bot = InitBot()
+		if bot != nil {
+			break
+		}
+		log.Println("Failed to initialize bot, retrying in 5 seconds...")
+		time.Sleep(5 * time.Second)
+	}
 	go Start(bot)
 	select {}
 }
