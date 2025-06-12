@@ -1,12 +1,11 @@
 package telegram
 
 import (
-	"context"     // For prompt processing worker
-	"ket/backend" // For prompt processing worker
+	"context"
+	"ket/backend"
 	"ket/config"
 	"ket/utils"
 	"log"
-	"os"
 	"time"
 
 	tele "gopkg.in/telebot.v4"
@@ -35,15 +34,15 @@ func processPrompt(task PromptTask) {
 	// log.Printf("Response received for chat ID %d: %s", task.ChatID, response)
 
 	// Send the response to the user using OriginalContext
-	_, err = task.OriginalContext.Bot().Reply(task.TargetMessage, response)
-	if err != nil {
-		log.Printf("Error sending response to chat ID %d: %v", task.ChatID, err)
+	_, sendErr := task.OriginalContext.Bot().Reply(task.TargetMessage, response)
+	if sendErr != nil {
+		log.Printf("Error sending response to chat ID %d: %v", task.ChatID, sendErr)
 	}
 	log.Printf("Successfully sent response to chat ID %d.", task.ChatID)
 }
 
 // startPromptWorker initializes and starts the prompt processing worker.
-func startPromptWorker() { // Removed bot *tele.Bot as it's not directly used here for queue init
+func startPromptWorker() {
 	// promptQueue is declared in prompt.go and is a package-level variable.
 	// MaxQueueSize is also defined in prompt.go.
 	promptQueue = make(chan PromptTask, MaxQueueSize) // Initialize the queue
@@ -74,16 +73,13 @@ func InitBot() *tele.Bot {
 	}
 
 	if settings.Token == "" {
-		// If the token is not set, log an error and return nil
-		log.Println("BOT_TOKEN not set")
-		os.Exit(1)
-		// return nil // os.Exit(1) will terminate, so this is unreachable but good for clarity if Exit was removed
+		// If the token is not set, log an error and exit
+		log.Fatalf("BOT_TOKEN not set") // Changed to log.Fatalf and removed os.Exit(1)
 	}
 
 	bot, err := tele.NewBot(settings)
 	if err != nil {
-		log.Println(err)
-		// return nil // log.Fatal also exits
+		log.Fatalf("Failed to create new bot: %v", err) // Changed to log.Fatalf
 	}
 
 	log.Println("Telegram bot created successfully")
@@ -121,15 +117,8 @@ func Start(bot *tele.Bot) {
 func Run() {
 	// Initialize the bot
 	bot := InitBot()
-	if bot == nil {
-		log.Println("Failed to initialize bot, exiting application.")
-		return // Exit if bot initialization failed
-	}
-
-	// The prompt worker is already started in InitBot via startPromptWorker().
 
 	log.Println("Application setup complete. Bot is initializing and starting...")
-	// If bot.Start() is blocking and we want the application to run indefinitely:
 	go Start(bot) // Run the bot in a separate goroutine
 
 	// Keep the main goroutine alive indefinitely, allowing background tasks (like the bot and worker) to run.
