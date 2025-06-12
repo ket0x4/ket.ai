@@ -1,11 +1,11 @@
 package telegram
 
 import (
-	"fmt" // Added for fmt.Sprintf
+	"fmt"
 	"ket/config"
 	"ket/permissions"
 	"log"
-	"strings" // Added for strings.HasPrefix and strings.TrimSpace
+	"strings"
 
 	tele "gopkg.in/telebot.v4"
 )
@@ -24,18 +24,13 @@ var promptQueue chan PromptTask
 
 // MaxQueueSize defines the maximum number of prompts that can be queued.
 // It will be used in telegram.go for initializing the queue.
-// const MaxQueueSize = 4
 var MaxQueueSize = config.GetConfig().MAX_QUEUE
 
-func HandlePrompt2(c tele.Context) error {
-	// Check permissions first
-	if !permissions.IsAllowed(c.Chat().ID) {
-		log.Printf("Unauthorized access attempt by chat ID: %d", c.Chat().ID)
-		return c.Reply("You are not authorized to use this bot.")
-	}
-
-	promptText := ""
-	targetMessage := c.Message() // Default to current message
+// extractPromptDetails attempts to get the prompt text and the target message.
+// It returns the prompt, the message to target for a reply, and an error if the prompt is empty.
+func extractPromptDetails(c tele.Context) (promptText string, targetMessage *tele.Message, err error) {
+	promptText = ""
+	targetMessage = c.Message() // Default to current message
 
 	// Determine the prompt text and the message to reply to
 	if c.Message().IsReply() && c.Message().ReplyTo != nil && c.Message().ReplyTo.Text != "" {
@@ -52,16 +47,34 @@ func HandlePrompt2(c tele.Context) error {
 			if trimmedText != "" {
 				promptText = trimmedText
 			}
-		} //else if c.Message().Chat.Type == tele.ChatPrivate {
-		// In private chats, if not a /ket command, consider the whole message as a prompt.
-		// This part might need adjustment based on whether non-command messages should be processed.
-		// For now, assuming /ket is the primary trigger.
-		// If HandlePrompt2 is only for /ket, this 'else if' might be redundant.
-		// Keeping it simple: /ket command is the focus.
-		//}
+		}
+		// else if c.Message().Chat.Type == tele.ChatPrivate {
+		// // In private chats, if not a /ket command, consider the whole message as a prompt.
+		// // This part might need adjustment based on whether non-command messages should be processed.
+		// // For now, assuming /ket is the primary trigger.
+		// }
 	}
 
 	if promptText == "" {
+		// Return targetMessage even if prompt is empty, as c.Message() is the default.
+		return "", targetMessage, fmt.Errorf("prompt is empty")
+	}
+
+	return promptText, targetMessage, nil
+}
+
+func HandlePrompt2(c tele.Context) error {
+	// Check permissions first
+	if !permissions.IsAllowed(c.Chat().ID) {
+		log.Printf("Unauthorized access attempt by chat ID: %d", c.Chat().ID)
+		return c.Reply("You are not authorized to use this bot.")
+	}
+
+	promptText, targetMessage, err := extractPromptDetails(c)
+	if err != nil {
+		// Log the error for debugging purposes.
+		// The error from extractPromptDetails currently only signifies an empty prompt.
+		log.Printf("Prompt extraction failed for chat ID %d: %v", c.Chat().ID, err)
 		return c.Reply("The prompt is empty. Usage: /ket <your prompt> or reply to a message with /ket.")
 	}
 
