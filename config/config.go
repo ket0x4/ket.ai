@@ -55,7 +55,7 @@ func LogConfig() {
 	log.Println("Backend:", loadedConfig.BACKEND)
 	log.Println("API URL:", loadedConfig.API_URL+"/v1")
 	log.Println("Model:", loadedConfig.MODEL)
-	log.Println("System Prompt:", loadedConfig.SYS_PROMPT)
+	//log.Println("System Prompt:", loadedConfig.SYS_PROMPT)
 	log.Println("Max Queue Size:", loadedConfig.MAX_QUEUE)
 	log.Println("------------------------------------------")
 	log.Println("Config loaded successfully.")

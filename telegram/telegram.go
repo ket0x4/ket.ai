@@ -60,7 +60,7 @@ func InitBot() *tele.Bot {
 
 	settings := tele.Settings{
 		Synchronous: false,
-		//ParseMode:   tele.ModeMarkdownV2,
+		ParseMode:   tele.ModeMarkdown,
 		OnError: func(err error, c tele.Context) {
 			// Log the error with context information
 			if c != nil && c.Message() != nil {

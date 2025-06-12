@@ -77,7 +77,6 @@ func HandlePrompt2(c tele.Context) error {
 	case promptQueue <- task:
 		queueLen := len(promptQueue)
 		log.Printf("Prompt from chat ID %d queued. Current queue length: %d/%d.", c.Chat().ID, queueLen, MaxQueueSize)
-		// Updated reply to include queue length
 		replyMsg := fmt.Sprintf("Your request has been queued <code>(position %d/%d)</code>", queueLen, MaxQueueSize)
 		return c.Reply(replyMsg, tele.ModeHTML)
 	default: // This case is hit if the promptQueue is full (channel buffer is at capacity)
