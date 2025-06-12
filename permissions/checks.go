@@ -8,11 +8,10 @@ import (
 	"sync"
 )
 
-// AllowedIDs holds the lists of allowed user, chat, and group IDs.
+// AllowedIDs holds the lists of allowed user and chat IDs.
 type AllowedIDs struct {
-	AllowedUsers  []int64 `json:"allowed_users"`
-	AllowedChats  []int64 `json:"allowed_chats"`
-	AllowedGroups []int64 `json:"allowed_groups"`
+	AllowedUsers []int64 `json:"allowed_users"`
+	AllowedChats []int64 `json:"allowed_chats"`
 }
 
 var (
@@ -44,11 +43,11 @@ func loadAllowedIDs() {
 			return
 		}
 		allowedIDsData = &ids
-		log.Printf("Successfully loaded allowed IDs from %s", chatsFilePath)
+		log.Printf("Successfully loaded allowed IDs from %s. Users: %d, Chats: %d", chatsFilePath, len(ids.AllowedUsers), len(ids.AllowedChats))
 	})
 }
 
-// IsAllowed checks if the given ID (user, chat, or group) is present
+// IsAllowed checks if the given ID (user or chat) is present
 // in the lists of allowed IDs loaded from chats.json.
 // It returns true if the ID is allowed, false otherwise.
 // If there was an error loading the configuration, it defaults to false.
@@ -71,10 +70,5 @@ func IsAllowed(id int64) bool {
 	}
 
 	// Check if ID is in AllowedChats
-	if slices.Contains(allowedIDsData.AllowedChats, id) {
-		return true
-	}
-
-	// Check if ID is in AllowedGroups
-	return slices.Contains(allowedIDsData.AllowedGroups, id)
+	return slices.Contains(allowedIDsData.AllowedChats, id)
 }
