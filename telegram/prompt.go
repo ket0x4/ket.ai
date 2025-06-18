@@ -2,6 +2,7 @@ package telegram
 
 import (
 	"fmt"
+	"ket/backend"
 	"ket/config"
 	"ket/permissions"
 	"log"
@@ -15,12 +16,13 @@ type PromptTask struct {
 	ChatID          int64
 	Prompt          string
 	TargetMessage   *tele.Message
-	OriginalContext tele.Context // To use c.Bot().Reply and other context methods
+	QueueMessage    *tele.Message // To store the queue message for later deletion
+	OriginalContext tele.Context  // To use c.Bot().Reply and other context methods
 }
 
 // promptQueue is the channel acting as a queue for prompt processing tasks.
 // It will be initialized in telegram.go.
-var promptQueue chan PromptTask
+var promptQueue chan *PromptTask
 
 // MaxQueueSize defines the maximum number of prompts that can be queued.
 // It will be used in telegram.go for initializing the queue.
@@ -70,6 +72,12 @@ func HandlePrompt2(c tele.Context) error {
 		return c.Reply("You are not authorized to use this bot.")
 	}
 
+	// check api status
+	if backend.Backend == "llama" && !backend.IsLlamaCppAvailable() {
+		log.Printf("Llama.cpp server is down or unreachable for chat ID %d", c.Chat().ID)
+		return c.Reply("Backend down or unreachable. Please try again later.")
+	}
+
 	promptText, targetMessage, err := extractPromptDetails(c)
 	if err != nil {
 		// Log the error for debugging purposes.
@@ -78,7 +86,7 @@ func HandlePrompt2(c tele.Context) error {
 		return c.Reply("The prompt is empty. Usage: /ket <your prompt> or reply to a message with /ket.")
 	}
 
-	task := PromptTask{
+	task := &PromptTask{
 		ChatID:          c.Chat().ID,
 		Prompt:          promptText,
 		TargetMessage:   targetMessage,
@@ -91,9 +99,15 @@ func HandlePrompt2(c tele.Context) error {
 		queueLen := len(promptQueue)
 		log.Printf("Prompt from chat ID %d queued. Current queue length: %d/%d.", c.Chat().ID, queueLen, MaxQueueSize)
 		replyMsg := fmt.Sprintf("Your request has been queued <code>(position %d/%d)</code>", queueLen, MaxQueueSize)
-		return c.Reply(replyMsg, tele.ModeHTML)
-	default: // This case is hit if the promptQueue is full (channel buffer is at capacity)
-		log.Printf("Prompt queue full for chat ID %d. Max size: %d.", c.Chat().ID, MaxQueueSize)
-		return c.Reply("I'm currently processing a lot of requests, and the queue is full. Please try again in a moment.")
+		sentMsg, err := c.Bot().Reply(c.Message(), replyMsg, tele.ModeHTML)
+		if err != nil {
+			log.Printf("Failed to send queue message: %v", err)
+		}
+		task.QueueMessage = sentMsg // Store the sent message in the task
+	default:
+		log.Printf("Queue is full for chat ID %d. Task rejected.", c.Chat().ID)
+		return c.Reply("The bot is currently busy. Please try again in a few moments.")
 	}
+
+	return nil
 }

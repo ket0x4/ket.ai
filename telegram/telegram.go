@@ -12,7 +12,7 @@ import (
 )
 
 // processPrompt is the worker function that processes prompts from the queue.
-func processPrompt(task PromptTask) {
+func processPrompt(task *PromptTask) {
 	log.Printf("Processing prompt for chat ID %d from queue.", task.ChatID)
 
 	// Get response from backend
@@ -39,13 +39,21 @@ func processPrompt(task PromptTask) {
 		log.Printf("Error sending response to chat ID %d: %v", task.ChatID, sendErr)
 	}
 	log.Printf("Successfully sent response to chat ID %d.", task.ChatID)
+
+	// After sending the response, delete the queue message
+	if task.QueueMessage != nil {
+		err := task.OriginalContext.Bot().Delete(task.QueueMessage)
+		if err != nil {
+			log.Printf("Failed to delete queue message %d in chat %d: %v", task.QueueMessage.ID, task.ChatID, err)
+		}
+	}
 }
 
 // startPromptWorker initializes and starts the prompt processing worker.
 func startPromptWorker() {
 	// promptQueue is declared in prompt.go and is a package-level variable.
 	// MaxQueueSize is also defined in prompt.go.
-	promptQueue = make(chan PromptTask, MaxQueueSize) // Initialize the queue
+	promptQueue = make(chan *PromptTask, MaxQueueSize) // Initialize the queue
 	go func() {
 		for task := range promptQueue {
 			processPrompt(task) // Process one prompt at a time
@@ -59,7 +67,8 @@ func InitBot() *tele.Bot {
 
 	settings := tele.Settings{
 		Synchronous: false,
-		ParseMode:   tele.ModeMarkdown,
+		//ParseMode:   tele.ModeMarkdown,
+		// Causes issues with some messages, so we use the default mode
 		OnError: func(err error, c tele.Context) {
 			// Log the error with context information
 			if c != nil && c.Message() != nil {
@@ -122,6 +131,5 @@ func Run() {
 	go Start(bot) // Run the bot in a separate goroutine
 
 	// Keep the main goroutine alive indefinitely, allowing background tasks (like the bot and worker) to run.
-	log.Println("Application running. Main goroutine is now idle, workers are active.")
 	select {}
 }
