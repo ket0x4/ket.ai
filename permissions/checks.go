@@ -12,12 +12,14 @@ import (
 type AllowedIDs struct {
 	AllowedUsers []int64 `json:"allowed_users"`
 	AllowedChats []int64 `json:"allowed_chats"`
+	Admins       []int64 `json:"admins"`
 }
 
 var (
-	allowedIDsData *AllowedIDs
-	loadOnce       sync.Once
-	loadError      error
+	allowedIDsData      *AllowedIDs
+	loadOnce            sync.Once
+	loadError           error
+	allowedIDsDataMutex sync.RWMutex
 )
 
 // chatsFilePath is the path to the JSON file containing allowed IDs,
@@ -59,6 +61,9 @@ func IsAllowed(id int64) bool {
 		return false // Default to not allowed if configuration loading failed
 	}
 
+	allowedIDsDataMutex.RLock()
+	defer allowedIDsDataMutex.RUnlock()
+
 	if allowedIDsData == nil {
 		log.Printf("Permission check for ID %d failed: allowed IDs data is not loaded.", id)
 		return false // Should not happen if loadError is nil, but as a safeguard
@@ -71,4 +76,48 @@ func IsAllowed(id int64) bool {
 
 	// Check if ID is in AllowedChats
 	return slices.Contains(allowedIDsData.AllowedChats, id)
+}
+
+// IsAllowedUser checks if the given user ID is present
+// in the lists of allowed user IDs loaded from chats.json.
+func IsAllowedUser(id int64) bool {
+	loadAllowedIDs()
+
+	if loadError != nil {
+		log.Printf("Permission check for user ID %d failed: error loading allowed IDs: %v", id, loadError)
+		return false // Default to not allowed if configuration loading failed
+	}
+
+	allowedIDsDataMutex.RLock()
+	defer allowedIDsDataMutex.RUnlock()
+
+	if allowedIDsData == nil {
+		log.Printf("Permission check for user ID %d failed: allowed IDs data is not loaded.", id)
+		return false // Should not happen if loadError is nil, but as a safeguard
+	}
+
+	// Check if ID is in AllowedUsers
+	return slices.Contains(allowedIDsData.AllowedUsers, id)
+}
+
+// IsAdmin checks if the given user ID is present
+// in the lists of admin user IDs loaded from chats.json.
+func IsAdmin(id int64) bool {
+	loadAllowedIDs()
+
+	if loadError != nil {
+		log.Printf("Permission check for admin ID %d failed: error loading allowed IDs: %v", id, loadError)
+		return false // Default to not allowed if configuration loading failed
+	}
+
+	allowedIDsDataMutex.RLock()
+	defer allowedIDsDataMutex.RUnlock()
+
+	if allowedIDsData == nil {
+		log.Printf("Permission check for admin ID %d failed: allowed IDs data is not loaded.", id)
+		return false // Should not happen if loadError is nil, but as a safeguard
+	}
+
+	// Check if ID is in Admins
+	return slices.Contains(allowedIDsData.Admins, id)
 }

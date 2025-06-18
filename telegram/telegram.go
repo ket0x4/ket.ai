@@ -6,6 +6,7 @@ import (
 	"ket/config"
 	"ket/utils"
 	"log"
+	"strings"
 	"time"
 
 	tele "gopkg.in/telebot.v4"
@@ -102,13 +103,27 @@ func InitBot() *tele.Bot {
 	bot.Handle("/status", utils.HandleStatusCommand)
 	//bot.Handle(tele.OnText, HandleMessage)
 
-	/* Permission commands
-	bot.Handle("/adduser", utils.HandleAddUserCommand)
-	bot.Handle("/rmuser", utils.HandleRemoveUserCommand)
-	bot.Handle("/addchat", utils.HandleAddChatCommand)
-	bot.Handle("/rmchat", utils.HandleRemoveChatCommand)
-	bot.Handle("/listusers", utils.HandleListUsersCommand)
-	*/
+	// Permission commands
+	bot.Handle("/adduser", HandleAddUser)
+	bot.Handle("/rmuser", HandleRemoveUser)
+	bot.Handle("/addchat", HandleAddChat)
+	bot.Handle("/rmchat", HandleRemoveChat)
+	bot.Handle("/list", HandleList)
+
+	// The main handler for processing text, must be last
+	bot.Handle(tele.OnText, func(c tele.Context) error {
+		// Ignore any text messages that are commands
+		if strings.HasPrefix(c.Message().Text, "/") {
+			return nil
+		}
+
+		// Log the received message for debugging
+		log.Printf("Received message in chat %d: %s", c.Chat().ID, c.Message().Text)
+
+		// Reply to the message with the same text (echo)
+		_, err := c.Bot().Reply(c.Message(), "You said: "+c.Message().Text)
+		return err
+	})
 
 	return bot
 }
