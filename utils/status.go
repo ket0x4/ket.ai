@@ -2,24 +2,25 @@ package utils
 
 import (
 	"fmt"
+	"ket/backend"
+	"ket/config"
 	"ket/permissions"
 	"log"
 	"os"
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/shirou/gopsutil/cpu"
 	"github.com/shirou/gopsutil/mem"
 	tele "gopkg.in/telebot.v4"
 )
 
-// to-do: make it variable after implementing the config
-const VERSION = "Next"
-
-// to-do: make it dynamic after implementing llamacpp backend
-var modelName = "Unknown"
-var currentBackend = "llama.cpp"
+var (
+	boardName     string
+	boardNameOnce sync.Once
+)
 
 func getCPUUsage() float64 {
 	percentages, err := cpu.Percent(1, false)
@@ -41,44 +42,38 @@ func getMemoryUsage() float64 {
 
 func getCPUTemperature() string {
 	if runtime.GOOS == "linux" {
-		tempFile := "/sys/class/thermal/thermal_zone0/temp"
-		data, err := os.ReadFile(tempFile)
-		if err != nil {
-			log.Printf("[Status] Error reading CPU Temp file %s: %v", tempFile, err)
-			return "`I/O error`"
+		if temp, err := os.ReadFile("/sys/class/thermal/thermal_zone0/temp"); err == nil {
+			if tempInt, err := strconv.Atoi(strings.TrimSpace(string(temp))); err == nil {
+				return fmt.Sprintf("%.1f°C", float64(tempInt)/1000.0)
+			}
 		}
-
-		temp, err := strconv.Atoi(strings.TrimSpace(string(data)))
-		if err != nil {
-			log.Printf("[Status] Error parsing CPU Temp from file %s: %v", tempFile, err)
-			return "`Invalid temp format`"
-		}
-		return fmt.Sprintf("%.2f°C", float64(temp)/1000.0)
 	}
 	return "Unsupported OS/Board"
 }
 
 func getBoardName() string {
-	if runtime.GOOS == "linux" {
-		// Try reading from DMI product name first
-		boardFileDMI := "/sys/devices/virtual/dmi/id/product_name"
-		if data, err := os.ReadFile(boardFileDMI); err == nil {
-			name := strings.TrimSpace(string(data))
-			if name != "" {
-				return name
+	boardNameOnce.Do(func() {
+		if runtime.GOOS == "linux" {
+			// Try reading from DMI product name first
+			if content, err := os.ReadFile("/sys/devices/virtual/dmi/id/product_name"); err == nil {
+				boardName = strings.TrimSpace(string(content))
+				return
 			}
-		}
 
-		// Fallback to device-tree model
-		boardFileDeviceTree := "/proc/device-tree/model"
-		if data, err := os.ReadFile(boardFileDeviceTree); err == nil {
-			name := strings.TrimSpace(string(data))
-			if name != "" {
-				return name
+			// Fallback to device-tree model
+			if content, err := os.ReadFile("/sys/firmware/devicetree/base/model"); err == nil {
+				name := strings.TrimSpace(string(content))
+				// remove null terminator
+				if idx := strings.IndexByte(name, 0); idx != -1 {
+					name = name[:idx]
+				}
+				boardName = name
+				return
 			}
 		}
-	}
-	return "Unknown"
+		boardName = "Unknown"
+	})
+	return boardName
 }
 
 func getSystemStats() string {
@@ -87,9 +82,10 @@ func getSystemStats() string {
 	cpuTemp := getCPUTemperature()
 	osName := runtime.GOOS
 	if osName == "windows" {
-		osName = "Microsoft Windows"
+		osName = "Windows"
 	}
 	boardName := getBoardName()
+	cfg := config.GetConfig()
 
 	return fmt.Sprintf(`
 <b>System Status</b>
@@ -101,7 +97,7 @@ func getSystemStats() string {
 <b>CPU Temperature:</b> <code>%s</code>
 <b>Backend:</b> <code>%s</code>
 <b>LLM Model:</b> <code>%s</code>
-`, VERSION, boardName, osName, cpuUsage, memoryUsage, cpuTemp, currentBackend, modelName)
+`, cfg.VERSION, boardName, osName, cpuUsage, memoryUsage, cpuTemp, backend.Backend, cfg.MODEL)
 }
 
 func GetStatus() {
