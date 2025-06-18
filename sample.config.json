@@ -6,5 +6,5 @@
     "model": "phi3-mini",
     "version": "Next",
     "sys_prompt": "You are a helpful assistant.",
-    "max_queue": 4
+    "max_queue": 10
 }
