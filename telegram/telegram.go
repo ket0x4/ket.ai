@@ -118,10 +118,10 @@ func InitBot() *tele.Bot {
 		}
 
 		// Log the received message for debugging
-		log.Printf("Received message in chat %d: %s", c.Chat().ID, c.Message().Text)
+		// log.Printf("Received message in chat %d: %s", c.Chat().ID, c.Message().Text)
 
 		// Reply to the message with the same text (echo)
-		//_, err := c.Bot().Reply(c.Message(), "You said: "+c.Message().Text)
+		// _, err := c.Bot().Reply(c.Message(), "You said: "+c.Message().Text)
 		return err
 	})
 
