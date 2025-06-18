@@ -94,7 +94,7 @@ func getSystemStats() string {
 <b>Platform:</b> <code>%s</code>
 <b>CPU Usage:</b> <code>%.2f%%</code>
 <b>Memory Usage:</b> <code>%.2f%%</code>
-<b>CPU Temperature:</b> <code>%s</code>
+<b>CPU Temp:</b> <code>%s</code>
 <b>Backend:</b> <code>%s</code>
 <b>LLM Model:</b> <code>%s</code>
 `, cfg.VERSION, boardName, osName, cpuUsage, memoryUsage, cpuTemp, backend.Backend, cfg.MODEL)
