@@ -24,7 +24,7 @@ var (
 
 // chatsFilePath is the path to the JSON file containing allowed IDs,
 // relative to this permissions.go file.
-const chatsFilePath = "chats.json"
+var chatsFilePath = "chats.json"
 
 // loadAllowedIDs reads and unmarshals the chats.json file.
 // It ensures this operation is performed only once.
