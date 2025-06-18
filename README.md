@@ -18,14 +18,14 @@ Ket.ai is an telegram bot that functions as a chatbot powered by an OpenAI compa
     "model": "Model Name",
     "version": "Next",
     "sys_prompt": "You are a helpful assistant.",
-    "max_queue": 4
+    "max_queue": 10
 }
 ```
 
 ### `chats.json` structure:
 ```json
 {
-    "allowed_users": [
+    "admins": [
         207588255,
         2087606991
     ],
@@ -33,11 +33,6 @@ Ket.ai is an telegram bot that functions as a chatbot powered by an OpenAI compa
         -1001541497652,
         -1001253259500,
         -1001054130924
-    ],
-    "allowed_groups": [
-        -1001234567890,
-        -1001253259500,
-        -1009876543210
     ]
 }
 ```
