@@ -1,9 +1,9 @@
 package config
 
 import (
-	"embed"
 	"encoding/json"
 	"log"
+	"os"
 )
 
 type Config struct {
@@ -21,12 +21,9 @@ var loadedConfig Config
 
 const configFilePath = "config.json"
 
-//go:embed config.json
-var configFile embed.FS
-
 func parseConfigFile(filePath string) (Config, error) {
 	var config Config
-	bytes, err := configFile.ReadFile(filePath)
+	bytes, err := os.ReadFile(filePath)
 	if err != nil {
 		return config, err
 	}
@@ -40,7 +37,7 @@ func parseConfigFile(filePath string) (Config, error) {
 }
 
 func ReadConfig() {
-	c, err := parseConfigFile("config.json")
+	c, err := parseConfigFile(configFilePath)
 	if err != nil {
 		log.Fatalf("Error loading config: %v", err)
 	}
