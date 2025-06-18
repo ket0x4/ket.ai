@@ -9,6 +9,15 @@ Ket.ai is an telegram bot that functions as a chatbot powered by an OpenAI compa
 - **Help Command**: `/help` provides information on how to use the bot and its commands.
 - **Status Command**: `/status` to check the current status of the host device.
 
+## User Management
+Note: Only admins can manage users and chats.
+
+- **Add User Command**: `/adduser` to add a user to the allowed users list.
+- **Remove User Command**: `/rmuser` to remove a user from the allowed users list.
+- **Add Chat Command**: `/addchat` to add a chat to the allowed chats list.
+- **Remove Chat Command**: `/rmchat` to remove a chat from the allowed chats list.
+- **List Command**: `/list` to list all allowed users and chats.
+
 ### `config/config.json` structure:
 ```json
 {
