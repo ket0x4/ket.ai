@@ -2,7 +2,6 @@ package telegram
 
 import (
 	"fmt"
-	"ket/backend"
 	"ket/config"
 	"ket/permissions"
 	"log"
@@ -70,12 +69,6 @@ func HandlePrompt2(c tele.Context) error {
 	if !permissions.IsAllowed(c.Chat().ID) {
 		log.Printf("Unauthorized access attempt by chat ID: %d", c.Chat().ID)
 		return c.Reply("You are not authorized to use this bot.")
-	}
-
-	// check api status
-	if backend.Backend == "llama" && !backend.IsLlamaCppAvailable() {
-		log.Printf("Llama.cpp server is down or unreachable for chat ID %d", c.Chat().ID)
-		return c.Reply("Backend down or unreachable. Please try again later.")
 	}
 
 	promptText, targetMessage, err := extractPromptDetails(c)

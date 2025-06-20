@@ -2,7 +2,6 @@ package utils
 
 import (
 	"fmt"
-	"ket/backend"
 	"ket/config"
 	"ket/permissions"
 	"log"
@@ -95,9 +94,8 @@ func getSystemStats() string {
 <b>CPU Usage:</b> <code>%.2f%%</code>
 <b>Memory Usage:</b> <code>%.2f%%</code>
 <b>CPU Temp:</b> <code>%s</code>
-<b>Backend:</b> <code>%s</code>
 <b>LLM Model:</b> <code>%s</code>
-`, cfg.VERSION, boardName, osName, cpuUsage, memoryUsage, cpuTemp, backend.Backend, cfg.MODEL)
+`, cfg.VERSION, boardName, osName, cpuUsage, memoryUsage, cpuTemp, cfg.MODEL)
 }
 
 func GetStatus() {

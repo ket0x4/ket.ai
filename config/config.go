@@ -8,7 +8,6 @@ import (
 
 type Config struct {
 	TOKEN      string `json:"token"`
-	BACKEND    string `json:"backend"`
 	API_URL    string `json:"api_url"`
 	API_KEY    string `json:"api_key"`
 	MODEL      string `json:"model"`
@@ -49,8 +48,7 @@ func LogConfig() {
 	log.Println("Loading config.json...")
 	log.Println("------------------------------------------")
 	log.Println("Version:", loadedConfig.VERSION)
-	log.Println("Backend:", loadedConfig.BACKEND)
-	log.Println("API URL:", loadedConfig.API_URL+"/v1")
+	log.Println("API URL:", loadedConfig.API_URL)
 	log.Println("Model:", loadedConfig.MODEL)
 	//log.Println("System Prompt:", loadedConfig.SYS_PROMPT)
 	log.Println("Max Queue Size:", loadedConfig.MAX_QUEUE)
