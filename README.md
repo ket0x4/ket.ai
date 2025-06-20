@@ -4,6 +4,11 @@
 ## Overview
 Ket.ai is an telegram bot that functions as a chatbot powered by an OpenAI compatible API (Thats mean you can use it with any server like llama.cpp). It is designed to provide a conversational interface for users, allowing them to interact with the bot in a natural language format.
 
+### Supported backends
+- [Llama.cpp](https://github.com/ggml-org/llama.cpp)
+- [OpenAI API](https://openai.com/api/)
+- [Openrouter](https://openrouter.ai/)
+
 ## Commands
 - **Start Command**: `/start` to get an introduction and available commands.
 - **Help Command**: `/help` provides information on how to use the bot and its commands.
@@ -23,8 +28,8 @@ Note: Only admins can manage users and chats.
 {
     "token": "TELEGRAM_BOT_TOKEN",
     "api_url": "OpenAI Compatible API URL",
-    "api_key": "OpenAI API Key (optional)",
-    "model": "Model Name",
+    "api_key": "OpenAI API Key (optional for llama.cpp)",
+    "model": "Model Name (for openai compatible API)",
     "version": "Next",
     "sys_prompt": "You are a helpful assistant.",
     "max_queue": 10
