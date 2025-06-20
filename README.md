@@ -1,8 +1,8 @@
 
-# Ketard AI Bot
+# Ket.AI Bot
 
 ## Overview
-Ket.ai is an telegram bot that functions as a chatbot powered by an OpenAI compatible API (Thats mean you can use it with any server like llama.cpp). It is designed to provide a conversational interface for users, allowing them to interact with the bot in a natural language format.
+Ket.AI is an telegram bot that functions as a chatbot powered by an OpenAI compatible API (Thats mean you can use it with any server like llama.cpp). It is designed to provide a conversational interface for users, allowing them to interact with the bot in a natural language format.
 
 ### Supported backends
 - [Llama.cpp](https://github.com/ggml-org/llama.cpp)
@@ -69,6 +69,12 @@ docker run -d --name ketai
 go mod tidy
 CCGO_ENABLED=0 go build -ldflags '-w -s' -o ket main.go
 ```
+
+### To-do
+- Implement multimodality support
+- Improve error handling
+- Improve user management features
+- Support replying to responses
 
 ## License
 This project is licensed under the terms of the [GNU General Public License v3.0](LICENSE).
