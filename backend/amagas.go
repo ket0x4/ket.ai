@@ -1,6 +1,7 @@
 package backend
 
 import (
+	"context"
 	"ket/config"
 	"log"
 	"net/http"
@@ -27,9 +28,21 @@ func init() {
 			log.Println("Unable to find llama-server, Set url and key in config.json")
 			log.Println("Falling back to OpenAI backend")
 			Backend = "openai"
+			go func() {
+				log.Println("Testing OpenAI backend...")
+				// Using a simple context and prompt for testing
+				_, err := GetResponse(context.Background(), "Hi! Are you working?")
+				if err != nil {
+					log.Printf("OpenAI backend test failed: %v", err)
+					return
+				}
+				log.Printf("OpenAI backend test successful")
+			}()
 		}
 	}
-	go HealthCheck() // Start health check in a separate goroutine
+	if Backend == "llama" {
+		go HealthCheck() // Start health check in a separate goroutine
+	}
 }
 
 // check if url returns 200 OK
@@ -51,9 +64,11 @@ func HealthCheck() {
 	defer ticker.Stop()
 
 	for range ticker.C {
-		isLlamaOk = IsLlamaCppAvailable()
-		if !isLlamaOk {
-			log.Println("Llama.cpp server is down or unreachable")
+		if Backend == "llama" {
+			isLlamaOk = IsLlamaCppAvailable()
+			if !isLlamaOk {
+				log.Println("Llama.cpp server is down or unreachable")
+			}
 		}
 	}
 }
