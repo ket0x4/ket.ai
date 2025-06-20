@@ -29,7 +29,7 @@ Note: Only admins can manage users and chats.
     "token": "TELEGRAM_BOT_TOKEN",
     "api_url": "OpenAI Compatible API URL",
     "api_key": "OpenAI API Key (optional for llama.cpp)",
-    "model": "Model Name (for openai compatible API)",
+    "model": "Model Name",
     "version": "Next",
     "sys_prompt": "You are a helpful assistant.",
     "max_queue": 10
