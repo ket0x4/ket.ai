@@ -78,7 +78,7 @@ func InitBot() *tele.Bot {
 				log.Printf("Error with nil context or message: %v", err)
 			}
 		},
-		Token:  cfg.TOKEN,
+		Token:  cfg.BotSetup.Token,
 		Poller: &tele.LongPoller{Timeout: 10 * time.Second},
 	}
 

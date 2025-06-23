@@ -15,7 +15,7 @@ func init() {
 
 // Check backend health
 func HealthCheck(ctx context.Context) bool {
-	url := config.GetConfig().API_URL
+	url := config.GetConfig().BackendSetup.ApiUrl
 	log.Println("Checking backend health at", url)
 	if err := HttpCheck(url); err != nil {
 		log.Printf("health check failed on http check: %v", err)

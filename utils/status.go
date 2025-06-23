@@ -95,7 +95,7 @@ func getSystemStats() string {
 <b>Memory Usage:</b> <code>%.2f%%</code>
 <b>CPU Temp:</b> <code>%s</code>
 <b>LLM Model:</b> <code>%s</code>
-`, cfg.VERSION, boardName, osName, cpuUsage, memoryUsage, cpuTemp, cfg.MODEL)
+`, cfg.Version, boardName, osName, cpuUsage, memoryUsage, cpuTemp, cfg.BackendSetup.Model)
 }
 
 func GetStatus() {

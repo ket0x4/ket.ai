@@ -26,15 +26,24 @@ Note: Only admins can manage users and chats.
 ### `config/config.json` structure:
 ```json
 {
-    "token": "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11",
-    "api_url": "http://127.0.0.1:8080",
-    "api_key": "your_api_key_here",
-    "model": "phi3-mini",
-    "version": "Next",
-    "sys_prompt": "You are a helpful assistant.",
-    "yt-language": "en",
-    "http_proxy": "",
-    "max_queue": 10
+    "Version": "5.0",
+    "BotSetup": {
+        "token": "TELEGRAM_BOT_TOKEN",
+        "max_queue": 10
+    },
+    "BackendSetup": {
+        "api_url": "https://openrouter.ai/api/v1",
+        "api_key": "API_KEY",
+        "model": "LLM_MODEL",
+        "input_length": 2048,
+        "yt-language": "en",
+        "sys_prompt": "You are a helpful assistant."
+    },
+    "logging": {
+        "level": "info",
+        "file": "ket.log"
+    },
+    "http_proxy": "127.0.0.1:8008"
 }
 ```
 

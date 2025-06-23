@@ -25,7 +25,7 @@ var promptQueue chan *PromptTask
 
 // MaxQueueSize defines the maximum number of prompts that can be queued.
 // It will be used in telegram.go for initializing the queue.
-var MaxQueueSize = config.GetConfig().MAX_QUEUE
+var MaxQueueSize = config.GetConfig().BotSetup.MaxQueue
 
 // extractPromptDetails attempts to get the prompt text and the target message.
 // It returns the prompt, the message to target for a reply, and an error if the prompt is empty.

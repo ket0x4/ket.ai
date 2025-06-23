@@ -11,7 +11,7 @@ import (
 	"strings"
 )
 
-var SumPrompt = fmt.Sprintf("Summarize the following YouTube video transcript in %s Language. Skip intro, outro, sponsor segments. Make it concise and clear. and short. 3000 char limit. Transcript: ", config.GetConfig().YT_LANGUAGE)
+var SumPrompt = fmt.Sprintf("Summarize the following YouTube video transcript in %s Language. Skip intro, outro, sponsor segments. Make it concise and clear. and short. 3000 char limit. Transcript: ", config.GetConfig().BackendSetup.YtLanguage)
 
 func SummarizeYT(link string) (string, error) {
 	videoID, err := utils.GetVideoID(link)
@@ -45,7 +45,7 @@ func SummarizeYT(link string) (string, error) {
 		log.Printf("English transcript not found for %s, falling back to %s", videoID, langCode)
 	}
 
-	transcript, err := ytClient.GetTranscript(videoID, langCode)
+	transcript, err := ytClient.GetTranscript(videoID, config.GetConfig().BackendSetup.YtLanguage)
 	if err != nil {
 		return "", fmt.Errorf("failed to get transcript: %w", err)
 	}

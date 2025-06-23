@@ -19,10 +19,10 @@ var system_prompt string
 func init() {
 	cfg = config.GetConfig()
 	client = openai.NewClient(
-		option.WithBaseURL(cfg.API_URL),
-		option.WithAPIKey(cfg.API_KEY),
+		option.WithBaseURL(cfg.BackendSetup.ApiUrl),
+		option.WithAPIKey(cfg.BackendSetup.ApiKey),
 	)
-	system_prompt = cfg.SYS_PROMPT
+	system_prompt = cfg.BackendSetup.SysPrompt
 }
 
 func GetResponse(ctx context.Context, prompt string) (string, error) {
@@ -38,7 +38,7 @@ func GetResponse(ctx context.Context, prompt string) (string, error) {
 			openai.SystemMessage(system_prompt),
 			openai.UserMessage(prompt),
 		},
-		Model: openai.ChatModel(cfg.MODEL),
+		Model: openai.ChatModel(cfg.BackendSetup.Model),
 	})
 	if err != nil {
 		return "", err

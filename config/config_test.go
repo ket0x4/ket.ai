@@ -8,14 +8,24 @@ import (
 func TestParseConfigFile(t *testing.T) {
 	// Create a dummy config file
 	content := []byte(`{
-		"token": "test_token",
-		"backend": "test_backend",
-		"api_url": "test_api_url",
-		"api_key": "test_api_key",
-		"model": "test_model",
-		"version": "test_version",
-		"sys_prompt": "test_sys_prompt",
-		"max_queue": 10
+		"Version": "test_version",
+		"BotSetup": {
+			"token": "test_token",
+			"max_queue": 10
+		},
+		"BackendSetup": {
+			"api_url": "test_api_url",
+			"api_key": "test_api_key",
+			"model": "test_model",
+			"input_length": 2048,
+			"yt-language": "en",
+			"sys_prompt": "test_sys_prompt"
+		},
+		"logging": {
+			"level": "info",
+			"file": "test.log"
+		},
+		"http_proxy": ""
 	}`)
 	tmpfile, err := os.CreateTemp("", "config.json")
 	if err != nil {
@@ -35,11 +45,31 @@ func TestParseConfigFile(t *testing.T) {
 		t.Errorf("parseConfigFile() error = %v", err)
 	}
 
-	if config.TOKEN != "test_token" {
-		t.Errorf("Expected token to be 'test_token', got %s", config.TOKEN)
+	if config.BotSetup.Token != "test_token" {
+		t.Errorf("Expected token to be 'test_token', got %s", config.BotSetup.Token)
 	}
 
-	if config.MAX_QUEUE != 10 {
-		t.Errorf("Expected max_queue to be 10, got %d", config.MAX_QUEUE)
+	if config.BotSetup.MaxQueue != 10 {
+		t.Errorf("Expected max_queue to be 10, got %d", config.BotSetup.MaxQueue)
+	}
+
+	if config.BackendSetup.ApiUrl != "test_api_url" {
+		t.Errorf("Expected api_url to be 'test_api_url', got %s", config.BackendSetup.ApiUrl)
+	}
+
+	if config.BackendSetup.ApiKey != "test_api_key" {
+		t.Errorf("Expected api_key to be 'test_api_key', got %s", config.BackendSetup.ApiKey)
+	}
+
+	if config.BackendSetup.Model != "test_model" {
+		t.Errorf("Expected model to be 'test_model', got %s", config.BackendSetup.Model)
+	}
+
+	if config.Version != "test_version" {
+		t.Errorf("Expected version to be 'test_version', got %s", config.Version)
+	}
+
+	if config.BackendSetup.SysPrompt != "test_sys_prompt" {
+		t.Errorf("Expected sys_prompt to be 'test_sys_prompt', got %s", config.BackendSetup.SysPrompt)
 	}
 }
