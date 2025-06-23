@@ -110,6 +110,10 @@ func InitBot() *tele.Bot {
 	bot.Handle("/rmchat", HandleRemoveChat)
 	bot.Handle("/list", HandleList)
 
+	// YTSum Commands
+	bot.Handle("/yt", HandleYTCommand)
+	bot.Handle("/ytsum", HandleYTCommand)
+
 	// The main handler for processing text, must be last
 	bot.Handle(tele.OnText, func(c tele.Context) error {
 		// Ignore any text messages that are commands
