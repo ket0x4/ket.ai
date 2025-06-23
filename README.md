@@ -13,6 +13,7 @@ Ket.AI is an telegram bot that functions as a chatbot powered by an OpenAI compa
 - **Start Command**: `/start` to get an introduction and available commands.
 - **Help Command**: `/help` provides information on how to use the bot and its commands.
 - **Status Command**: `/status` to check the current status of the host device.
+- **Video summary Command**: `/yt` or `/ytsum` to summarize a YouTube video by providing the video URL.
 
 ## User Management
 Note: Only admins can manage users and chats.
