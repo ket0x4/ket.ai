@@ -19,7 +19,7 @@ func CheckPrompt(prompt string) (bool, string) {
 	if isEmpty(prompt) {
 		return false, "Prompt is empty"
 	}
-	if isTooLong(prompt, 3000) {
+	if isTooLong(prompt, 30000) {
 		return false, "Prompt is too long (max 3000 characters)"
 	}
 	return true, ""
