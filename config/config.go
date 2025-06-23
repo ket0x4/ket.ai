@@ -7,13 +7,15 @@ import (
 )
 
 type Config struct {
-	TOKEN      string `json:"token"`
-	API_URL    string `json:"api_url"`
-	API_KEY    string `json:"api_key"`
-	MODEL      string `json:"model"`
-	VERSION    string `json:"version"`
-	SYS_PROMPT string `json:"sys_prompt"`
-	MAX_QUEUE  int    `json:"max_queue"`
+	TOKEN       string `json:"token"`
+	API_URL     string `json:"api_url"`
+	API_KEY     string `json:"api_key"`
+	MODEL       string `json:"model"`
+	VERSION     string `json:"version"`
+	SYS_PROMPT  string `json:"sys_prompt"`
+	MAX_QUEUE   int    `json:"max_queue"`
+	YT_LANGUAGE string `json:"yt-language"`
+	HTTP_PROXY  string `json:"http_proxy"`
 }
 
 var loadedConfig Config
@@ -48,6 +50,8 @@ func LogConfig() {
 	log.Println("Loading config.json...")
 	log.Println("------------------------------------------")
 	log.Println("Version:", loadedConfig.VERSION)
+	log.Println("Proxy:", loadedConfig.HTTP_PROXY)
+	log.Println("YouTube Language:", loadedConfig.YT_LANGUAGE)
 	log.Println("API URL:", loadedConfig.API_URL)
 	log.Println("Model:", loadedConfig.MODEL)
 	//log.Println("System Prompt:", loadedConfig.SYS_PROMPT)
