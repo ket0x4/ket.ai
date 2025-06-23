@@ -5,5 +5,7 @@
     "model": "phi3-mini",
     "version": "Next",
     "sys_prompt": "You are a helpful assistant.",
+    "yt-language": "en",
+    "http_proxy": "",
     "max_queue": 10
 }

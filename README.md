@@ -26,12 +26,14 @@ Note: Only admins can manage users and chats.
 ### `config/config.json` structure:
 ```json
 {
-    "token": "TELEGRAM_BOT_TOKEN",
-    "api_url": "OpenAI Compatible API URL",
-    "api_key": "OpenAI API Key (optional for llama.cpp)",
-    "model": "Model Name",
+    "token": "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11",
+    "api_url": "http://127.0.0.1:8080",
+    "api_key": "your_api_key_here",
+    "model": "phi3-mini",
     "version": "Next",
     "sys_prompt": "You are a helpful assistant.",
+    "yt-language": "en",
+    "http_proxy": "",
     "max_queue": 10
 }
 ```
