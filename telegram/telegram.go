@@ -4,7 +4,7 @@ import (
 	"context"
 	"ket/backend"
 	"ket/config"
-	"ket/utils"
+	"ket/rag"
 	"log"
 	"strings"
 	"time"
@@ -16,16 +16,21 @@ import (
 func processPrompt(task *PromptTask) {
 	log.Printf("Processing prompt for chat ID %d from queue.", task.ChatID)
 
-	// Get response from backend
-	response, err := backend.GetResponse(context.Background(), task.Prompt)
+	// Get response from backend using RAG
+	response, err := rag.GetRagResponse(context.Background(), task.Prompt, task.ChatID, task.UserID)
 	if err != nil {
-		log.Printf("Error getting response from backend for chat ID %d: %v", task.ChatID, err)
-		// Use OriginalContext to reply with the error
-		_, replyErr := task.OriginalContext.Bot().Reply(task.TargetMessage, "Error processing your request: "+err.Error())
-		if replyErr != nil {
-			log.Printf("Error sending error reply to chat ID %d: %v", task.ChatID, replyErr)
+		log.Printf("Error getting RAG response for chat ID %d: %v", task.ChatID, err)
+		// Fallback to regular backend if RAG fails
+		response, err = backend.GetResponse(context.Background(), task.Prompt)
+		if err != nil {
+			log.Printf("Error getting fallback response from backend for chat ID %d: %v", task.ChatID, err)
+			// Use OriginalContext to reply with the error
+			_, replyErr := task.OriginalContext.Bot().Reply(task.TargetMessage, "Error processing your request: "+err.Error())
+			if replyErr != nil {
+				log.Printf("Error sending error reply to chat ID %d: %v", task.ChatID, replyErr)
+			}
+			return
 		}
-		return
 	}
 
 	// Log the user ID, prompt, and response
@@ -68,7 +73,8 @@ func InitBot() *tele.Bot {
 
 	settings := tele.Settings{
 		Synchronous: false,
-		//ParseMode:   tele.ModeMarkdown,
+		ParseMode:   tele.ModeMarkdown,
+
 		// Causes issues with some messages, so we use the default mode
 		OnError: func(err error, c tele.Context) {
 			// Log the error with context information
@@ -100,8 +106,19 @@ func InitBot() *tele.Bot {
 	bot.Handle("/start", HandleStartCommand)
 	bot.Handle("/help", HandleHelp)
 	bot.Handle("/ket", HandlePrompt2) // HandlePrompt2 now queues tasks
-	bot.Handle("/status", utils.HandleStatusCommand)
-	//bot.Handle(tele.OnText, HandleMessage)
+	bot.Handle("/status", func(c tele.Context) error {
+		// Ignore any text messages that are commands
+		if strings.HasPrefix(c.Message().Text, "/") {
+			return nil
+		}
+
+		// Log the received message for debugging
+		// log.Printf("Received message in chat %d: %s", c.Chat().ID, c.Message().Text)
+
+		// Reply to the message with the same text (echo)
+		// _, err := c.Bot().Reply(c.Message(), "You said: "+c.Message().Text)
+		return err
+	})
 
 	// Permission commands
 	bot.Handle("/adduser", HandleAddUser)
@@ -113,6 +130,21 @@ func InitBot() *tele.Bot {
 	// YTSum Commands
 	bot.Handle("/yt", HandleYTCommand)
 	bot.Handle("/ytsum", HandleYTCommand)
+
+	// RAG Commands
+	bot.Handle("/ragstats", HandleRAGStats)
+	bot.Handle("/raghistory", HandleRAGHistory)
+	bot.Handle("/ragclear", HandleRAGClear)
+	bot.Handle("/ragcontext", HandleRAGContext)
+	bot.Handle("/ragsummary", HandleRAGSummary)
+	bot.Handle("/ragcleanup", HandleRAGCleanup)
+
+	// Aliases for RAG commands
+	bot.Handle("/ra", HandleRAGContext) // Alias for /ragcontext
+	bot.Handle("/rs", HandleRAGStats) // Alias for /ragstats
+	bot.Handle("/rc", HandleRAGClear) // Alias for /ragclear
+	bot.Handle("/rh", HandleRAGHistory) // Alias for /raghistory
+	bot.Handle("/rsm", HandleRAGSummary) // Alias for /ragsummary
 
 	// The main handler for processing text, must be last
 	bot.Handle(tele.OnText, func(c tele.Context) error {

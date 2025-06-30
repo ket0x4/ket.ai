@@ -45,3 +45,26 @@ func GetResponse(ctx context.Context, prompt string) (string, error) {
 	}
 	return chatCompletion.Choices[0].Message.Content, nil
 }
+
+// GetResponseWithRAG generates a response using RAG-enhanced context
+func GetResponseWithRAG(ctx context.Context, prompt string, contextPrompt string) (string, error) {
+	// Check prompt for empty or too long before processing
+	valid, errorMsg := CheckPrompt(prompt)
+	if !valid {
+		log.Println(errorMsg)
+		return "", fmt.Errorf("%s", errorMsg)
+	}
+
+	// Use the context-enhanced prompt for RAG responses
+	chatCompletion, err := client.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
+		Messages: []openai.ChatCompletionMessageParamUnion{
+			openai.SystemMessage(system_prompt),
+			openai.UserMessage(contextPrompt),
+		},
+		Model: openai.ChatModel(cfg.BackendSetup.Model),
+	})
+	if err != nil {
+		return "", err
+	}
+	return chatCompletion.Choices[0].Message.Content, nil
+}

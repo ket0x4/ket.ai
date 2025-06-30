@@ -13,6 +13,7 @@ import (
 // PromptTask holds the necessary information for processing a prompt.
 type PromptTask struct {
 	ChatID          int64
+	UserID          int64         // Added for RAG user tracking
 	Prompt          string
 	TargetMessage   *tele.Message
 	QueueMessage    *tele.Message // To store the queue message for later deletion
@@ -81,6 +82,7 @@ func HandlePrompt2(c tele.Context) error {
 
 	task := &PromptTask{
 		ChatID:          c.Chat().ID,
+		UserID:          c.Sender().ID,
 		Prompt:          promptText,
 		TargetMessage:   targetMessage,
 		OriginalContext: c,

@@ -1,6 +1,8 @@
 module ket
 
-go 1.24.2
+go 1.23.0
+
+toolchain go1.24.1
 
 require (
 	github.com/openai/openai-go v1.6.0
