@@ -73,6 +73,8 @@ func InitBot() *tele.Bot {
 
 	settings := tele.Settings{
 		Synchronous: false,
+		Updates:     5,
+		Poller:      &tele.LongPoller{Timeout: 10 * time.Second},
 		ParseMode:   tele.ModeMarkdown,
 
 		// Causes issues with some messages, so we use the default mode
@@ -84,8 +86,7 @@ func InitBot() *tele.Bot {
 				log.Printf("Error with nil context or message: %v", err)
 			}
 		},
-		Token:  cfg.BotSetup.Token,
-		Poller: &tele.LongPoller{Timeout: 10 * time.Second},
+		Token: cfg.BotSetup.Token,
 	}
 
 	if settings.Token == "" {
@@ -140,10 +141,10 @@ func InitBot() *tele.Bot {
 	bot.Handle("/ragcleanup", HandleRAGCleanup)
 
 	// Aliases for RAG commands
-	bot.Handle("/ra", HandleRAGContext) // Alias for /ragcontext
-	bot.Handle("/rs", HandleRAGStats) // Alias for /ragstats
-	bot.Handle("/rc", HandleRAGClear) // Alias for /ragclear
-	bot.Handle("/rh", HandleRAGHistory) // Alias for /raghistory
+	bot.Handle("/ra", HandleRAGContext)  // Alias for /ragcontext
+	bot.Handle("/rs", HandleRAGStats)    // Alias for /ragstats
+	bot.Handle("/rc", HandleRAGClear)    // Alias for /ragclear
+	bot.Handle("/rh", HandleRAGHistory)  // Alias for /raghistory
 	bot.Handle("/rsm", HandleRAGSummary) // Alias for /ragsummary
 
 	// The main handler for processing text, must be last
