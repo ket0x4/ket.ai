@@ -12,6 +12,22 @@ import (
 	tele "gopkg.in/telebot.v4"
 )
 
+var botStartTime time.Time
+
+// ignoreOldMessagesMiddleware ignores any messages sent before the bot was started.
+func ignoreOldMessagesMiddleware(next tele.HandlerFunc) tele.HandlerFunc {
+	return func(c tele.Context) error {
+		if c.Message() != nil {
+			// Check if the message timestamp is before the bot's start time.
+			if c.Message().Time().Before(botStartTime) {
+				log.Printf("Ignoring old message from %v", c.Message().Time())
+				return nil // Don't process the handler chain.
+			}
+		}
+		return next(c)
+	}
+}
+
 // processPrompt is the worker function that processes prompts from the queue.
 func processPrompt(task *PromptTask) {
 	log.Printf("Processing prompt for chat ID %d from queue.", task.ChatID)
@@ -69,6 +85,7 @@ func startPromptWorker() {
 }
 
 func InitBot() *tele.Bot {
+	botStartTime = time.Now()
 	cfg := config.GetConfig()
 
 	settings := tele.Settings{
@@ -98,6 +115,8 @@ func InitBot() *tele.Bot {
 	if err != nil {
 		log.Fatalf("Failed to create new bot: %v", err) // Changed to log.Fatalf
 	}
+
+	bot.Use(ignoreOldMessagesMiddleware)
 
 	log.Println("Telegram bot created successfully")
 
