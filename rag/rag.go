@@ -391,16 +391,17 @@ func prepareContext(results []SearchResult, maxTokens int) string {
 	var totalTokens int
 
 	for _, result := range results {
-		roleIcon := "👤" // User
-		if result.Document.UserID == 0 {
-			roleIcon = "🤖" // Bot
-		}
+		var role string
 		if result.Document.Type == "context" {
-			roleIcon = "📝" // System/Context
+			role = "System"
+		} else if result.Document.UserID == 0 {
+			role = "Bot"
+		} else {
+			role = "User"
 		}
 
-		// More compact format: ICON (Timestamp): Content
-		header := fmt.Sprintf("%s (%s): ", roleIcon, result.Document.Timestamp.Format("15:04"))
+		// More compact format: Role (Timestamp): Content
+		header := fmt.Sprintf("%s (%s): ", role, result.Document.Timestamp.Format("15:04"))
 		content := result.Document.Content
 
 		// Simple token estimation (words).

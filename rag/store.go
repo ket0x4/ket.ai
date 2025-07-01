@@ -19,8 +19,9 @@ func saveChatHistories(chatHistories map[int64][]Document) error {
 	fileMutex.Lock()
 	defer fileMutex.Unlock()
 
-	// Create a temporary file to write the new data to.
-	tempFile, err := os.CreateTemp("", ragDataFile+".*.tmp")
+	// Create a temporary file in the same directory as the final file to ensure
+	// that it's on the same device, which is required for os.Rename to be atomic.
+	tempFile, err := os.CreateTemp(".", ragDataFile+".*.tmp")
 	if err != nil {
 		return err
 	}
