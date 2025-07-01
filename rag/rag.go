@@ -19,6 +19,10 @@ var (
 	initOnce      sync.Once
 	rwMutex       sync.RWMutex
 
+	// debouncedSaver ensures that file saving operations are queued and executed
+	// efficiently, preventing race conditions and excessive I/O.
+	debouncedSaver *DebouncedSaver
+
 	// Pre-compiled regex for cleaning text
 	nonAlphanumericRegex = regexp.MustCompile(`[^\p{L}\p{N}\s]+`)
 
@@ -31,6 +35,53 @@ var (
 		"daha": true, "en": true, "her": true, "hiç": true, "böyle": true, "şöyle": true,
 	}
 )
+
+// Scoring constants for relevance calculation, making the logic clearer and easier to tune.
+const (
+	exactMatchBoost      = 3.0
+	contextTypeScore     = 1.0
+	summaryTypeScore     = 0.8
+	messageTypeScore     = 0.3
+	userMessageBonus     = 0.2
+	qualityScoreBonus    = 0.3
+	partialMatchBonus    = 0.25  // Bonus for partial word matches
+	recencyHalfLifeHours = 48.0  // How quickly scores decay
+	maxRecencyHours      = 168.0 // 7 days, after which recency score is 0
+)
+
+// DebouncedSaver handles saving chat histories to disk with a debounce mechanism
+// to avoid frequent writes and potential race conditions.
+type DebouncedSaver struct {
+	mu     sync.Mutex
+	timer  *time.Timer
+	wait   time.Duration
+	action func()
+}
+
+// NewDebouncedSaver creates a new debounced saver.
+func NewDebouncedSaver(wait time.Duration, action func()) *DebouncedSaver {
+	return &DebouncedSaver{
+		wait:   wait,
+		action: action,
+	}
+}
+
+// Trigger starts or resets the debounce timer. When the timer fires, the action is executed.
+func (ds *DebouncedSaver) Trigger() {
+	ds.mu.Lock()
+	defer ds.mu.Unlock()
+
+	// If there's an existing timer, stop it to reset the debounce period.
+	if ds.timer != nil {
+		ds.timer.Stop()
+	}
+
+	// Set a new timer that will execute the save action after the wait duration.
+	ds.timer = time.AfterFunc(ds.wait, func() {
+		log.Println("RAG: Debouncer triggered, persisting data...")
+		ds.action()
+	})
+}
 
 // Document represents a piece of information in the RAG system
 type Document struct {
@@ -176,7 +227,7 @@ func calculateEnhancedRelevanceScore(queryWords []string, doc Document, fullQuer
 	// 1. Exact phrase match (highest priority)
 	exactMatchScore := 0.0
 	if strings.Contains(content, fullQuery) {
-		exactMatchScore = 3.0
+		exactMatchScore = exactMatchBoost
 	}
 
 	// 2. Enhanced word overlap with TF-IDF-like scoring
@@ -201,7 +252,7 @@ func calculateEnhancedRelevanceScore(queryWords []string, doc Document, fullQuer
 		for cWord := range contentWordMap {
 			if strings.Contains(cWord, qWord) || strings.Contains(qWord, cWord) {
 				if cWord != qWord { // Avoid double counting exact matches
-					wordScore += 0.5
+					wordScore += partialMatchBonus
 				}
 			}
 		}
@@ -215,36 +266,68 @@ func calculateEnhancedRelevanceScore(queryWords []string, doc Document, fullQuer
 	// 3. Enhanced recency scoring with exponential decay
 	recencyScore := 0.0
 	age := time.Since(doc.Timestamp).Hours()
-	if age < 168 { // Within last week
-		recencyScore = 1.0 * math.Exp(-age/48.0) // Exponential decay with 48h half-life
+	if age < maxRecencyHours { // Within last week
+		recencyScore = math.Exp(-age / recencyHalfLifeHours) // Exponential decay
 	}
 
 	// 4. Type-based scoring with better weights
 	typeScore := 0.0
 	switch doc.Type {
 	case "context":
-		typeScore = 1.0 // Context documents are very valuable
+		typeScore = contextTypeScore // Context documents are very valuable
 	case "summary":
-		typeScore = 0.8 // Summaries provide good overview
+		typeScore = summaryTypeScore // Summaries provide good overview
 	case "message":
-		typeScore = 0.3 // Regular messages
+		typeScore = messageTypeScore // Regular messages
 	}
 
 	// 5. User interaction bonus (prefer messages from the same user)
 	userScore := 0.0
 	if role, ok := doc.Metadata["role"].(string); ok && role == "user" {
-		userScore = 0.2
+		userScore = userMessageBonus
 	}
 
 	// 6. Content quality scoring (prefer longer, more informative content)
 	qualityScore := 0.0
 	if len(doc.Content) > 20 && len(doc.Content) < 500 {
-		qualityScore = 0.3
+		qualityScore = qualityScoreBonus
 	}
 
 	totalScore := exactMatchScore + wordScore + recencyScore + typeScore + userScore + qualityScore
 
 	return totalScore
+}
+
+// jaccardSimilarity calculates the Jaccard similarity between two sets of keywords.
+// It's used to measure the similarity between two documents to help with diversification.
+func jaccardSimilarity(a, b []string) float64 {
+	if len(a) == 0 || len(b) == 0 {
+		return 0.0
+	}
+
+	setA := make(map[string]struct{})
+	for _, item := range a {
+		setA[item] = struct{}{}
+	}
+
+	setB := make(map[string]struct{})
+	for _, item := range b {
+		setB[item] = struct{}{}
+	}
+
+	intersection := 0
+	for item := range setA {
+		if _, exists := setB[item]; exists {
+			intersection++
+		}
+	}
+
+	union := len(setA) + len(setB) - intersection
+	if union == 0 {
+		return 0.0
+	}
+
+	return float64(intersection) / float64(union)
 }
 
 // diversifyResults ensures result diversity to avoid redundant context
@@ -254,22 +337,44 @@ func diversifyResults(results []SearchResult, limit int) []SearchResult {
 	}
 
 	var diversified []SearchResult
-	usedContent := make(map[string]bool)
+	const similarityThreshold = 0.6 // Documents with similarity > threshold are considered redundant
 
 	for _, result := range results {
 		if len(diversified) >= limit {
 			break
 		}
 
-		// Simple similarity check to avoid near-duplicate content
-		contentKey := strings.ToLower(result.Document.Content)
-		if len(contentKey) > 50 {
-			contentKey = contentKey[:50]
+		// Check for similarity against already selected documents
+		isTooSimilar := false
+		for _, d := range diversified {
+			// Use Jaccard similarity on keywords for a more robust check
+			if jaccardSimilarity(result.Document.keywords, d.Document.keywords) > similarityThreshold {
+				isTooSimilar = true
+				break
+			}
 		}
 
-		if !usedContent[contentKey] {
+		if !isTooSimilar {
 			diversified = append(diversified, result)
-			usedContent[contentKey] = true
+		}
+	}
+
+	// Fallback: If diversification was too aggressive, ensure we still return up to the limit.
+	if len(diversified) < limit {
+		// Create a set of documents already included to avoid duplicates.
+		included := make(map[string]bool)
+		for _, res := range diversified {
+			included[res.Document.ID] = true
+		}
+
+		// Add remaining documents from the original sorted list until the limit is reached.
+		for _, res := range results {
+			if len(diversified) >= limit {
+				break
+			}
+			if !included[res.Document.ID] {
+				diversified = append(diversified, res)
+			}
 		}
 	}
 
@@ -388,12 +493,8 @@ func AddToCollection(ctx context.Context, chatID int64, document Document) error
 		})
 	}
 
-	// Persist to disk asynchronously to avoid blocking
-	go func() {
-		if err := SaveChatHistories(chatHistories); err != nil {
-			log.Printf("Failed to persist RAG data: %v", err)
-		}
-	}()
+	// Persist to disk using a debounced saver to avoid race conditions and excessive I/O
+	debouncedSaver.Trigger()
 
 	return nil
 }
@@ -634,5 +735,24 @@ func init() {
 		} else {
 			log.Printf("RAG: Failed to load chat histories: %v", err)
 		}
+
+		// Initialize the debounced saver to persist data safely.
+		debouncedSaver = NewDebouncedSaver(10*time.Second, func() {
+			rwMutex.RLock()
+			// Create a deep copy of the map to avoid holding the lock during I/O.
+			historiesToSave := make(map[int64][]Document, len(chatHistories))
+			for chatID, docs := range chatHistories {
+				docsCopy := make([]Document, len(docs))
+				copy(docsCopy, docs)
+				historiesToSave[chatID] = docsCopy
+			}
+			rwMutex.RUnlock()
+
+			if err := SaveChatHistories(historiesToSave); err != nil {
+				log.Printf("RAG: Debounced save failed: %v", err)
+			} else {
+				log.Println("RAG: Chat histories successfully persisted via debouncer.")
+			}
+		})
 	})
 }
