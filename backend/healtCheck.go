@@ -39,7 +39,10 @@ func HealthCheck(ctx context.Context) bool {
 func HttpCheck(url string) error {
 	resp, err := http.Get(url)
 	if err != nil {
-		return err
+		resp, err = http.Get(url + "/health")
+		if err != nil {
+			return err
+		}
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {

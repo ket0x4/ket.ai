@@ -3,13 +3,13 @@ package telegram
 import (
 	"fmt"
 	"ket/permissions" // Added import for utils package
+	"ket/utils"
 	"log"
 	"strconv"
 	"strings"
 
 	tele "gopkg.in/telebot.v4"
 )
-
 
 func HandleStartCommand(c tele.Context) error {
 	// Check permissions first
@@ -102,6 +102,14 @@ func HandleRemoveChat(c tele.Context) error {
 		return c.Reply(fmt.Sprintf("Error removing chat: %v", err))
 	}
 	return c.Reply(fmt.Sprintf("Chat %d removed successfully.", chatID))
+}
+
+func HandleStatus(c tele.Context) error {
+	if !permissions.IsAllowed(c.Chat().ID) {
+		log.Printf("Unauthorized access attempt for /status by chat ID: %d", c.Chat().ID)
+		return c.Reply("You are not authorized to use this bot.")
+	}
+	return c.Send(utils.GetSystemStats(), tele.ModeHTML)
 }
 
 func HandleList(c tele.Context) error {

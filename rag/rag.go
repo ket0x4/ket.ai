@@ -11,7 +11,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-	
 )
 
 // Package rag implements a two-stage RAG (Retrieval-Augmented Generation) pipeline.
@@ -23,12 +22,12 @@ var (
 
 // Document represents a piece of information in the RAG system
 type Document struct {
-	ID        string    `json:"id"`
-	Content   string    `json:"content"`
-	Timestamp time.Time `json:"timestamp"`
-	ChatID    int64     `json:"chat_id"`
-	UserID    int64     `json:"user_id"`
-	Type      string    `json:"type"` // "message", "context", "summary"
+	ID        string                 `json:"id"`
+	Content   string                 `json:"content"`
+	Timestamp time.Time              `json:"timestamp"`
+	ChatID    int64                  `json:"chat_id"`
+	UserID    int64                  `json:"user_id"`
+	Type      string                 `json:"type"` // "message", "context", "summary"
 	Metadata  map[string]interface{} `json:"metadata,omitempty"`
 }
 
@@ -52,7 +51,7 @@ func GetRagResponse(ctx context.Context, prompt string, chatID int64, userID int
 
 	// Stage 2: Context preparation and generation
 	contextStr := prepareContext(retrievedDocs)
-	
+
 	// Enhanced prompt with context
 	finalPrompt := buildRAGPrompt(prompt, contextStr)
 
@@ -66,7 +65,7 @@ func GetRagResponse(ctx context.Context, prompt string, chatID int64, userID int
 		Type:      "message",
 		Metadata:  map[string]interface{}{"role": "user"},
 	}
-	
+
 	if err := AddToCollection(ctx, chatID, currentDoc); err != nil {
 		log.Printf("Failed to add user message to RAG collection: %v", err)
 		// Don't fail the request if we can't save to history
@@ -88,7 +87,7 @@ func GetRagResponse(ctx context.Context, prompt string, chatID int64, userID int
 		Type:      "message",
 		Metadata:  map[string]interface{}{"role": "assistant"},
 	}
-	
+
 	if err := AddToCollection(ctx, chatID, responseDoc); err != nil {
 		log.Printf("Failed to add bot response to RAG collection: %v", err)
 		// Don't fail the request if we can't save to history
@@ -103,7 +102,7 @@ func retrieve(query string, chatID int64, limit int) []SearchResult {
 	rwMutex.RLock()
 	history, exists := chatHistories[chatID]
 	rwMutex.RUnlock()
-	
+
 	if !exists || len(history) == 0 {
 		return []SearchResult{}
 	}
@@ -114,13 +113,13 @@ func retrieve(query string, chatID int64, limit int) []SearchResult {
 
 	// Enhanced filtering: only consider documents from last 7 days for better relevance
 	cutoffTime := time.Now().AddDate(0, 0, -7)
-	
+
 	for _, doc := range history {
 		// Skip very old documents unless they're context type
 		if doc.Type != "context" && doc.Timestamp.Before(cutoffTime) {
 			continue
 		}
-		
+
 		score := calculateEnhancedRelevanceScore(queryWords, doc, queryLower)
 		if score > 0.05 { // Lowered threshold for better recall
 			results = append(results, SearchResult{
@@ -149,12 +148,12 @@ func extractKeywords(query string) []string {
 		"nasıl": true, "nerede": true, "kim": true, "hangi": true, "çok": true,
 		"daha": true, "en": true, "her": true, "hiç": true, "böyle": true, "şöyle": true,
 	}
-	
+
 	// Clean and split query
 	reg := regexp.MustCompile(`[^\p{L}\p{N}\s]+`)
 	cleaned := reg.ReplaceAllString(query, " ")
 	words := strings.Fields(cleaned)
-	
+
 	var keywords []string
 	for _, word := range words {
 		word = strings.TrimSpace(word)
@@ -162,20 +161,20 @@ func extractKeywords(query string) []string {
 			keywords = append(keywords, word)
 		}
 	}
-	
+
 	return keywords
 }
 
 // calculateEnhancedRelevanceScore computes improved relevance between query and document
 func calculateEnhancedRelevanceScore(queryWords []string, doc Document, fullQuery string) float64 {
 	content := strings.ToLower(doc.Content)
-	
+
 	// 1. Exact phrase match (highest priority)
 	exactMatchScore := 0.0
 	if strings.Contains(content, fullQuery) {
 		exactMatchScore = 3.0
 	}
-	
+
 	// 2. Enhanced word overlap with TF-IDF-like scoring
 	wordScore := 0.0
 	contentWords := extractKeywords(content)
@@ -183,13 +182,13 @@ func calculateEnhancedRelevanceScore(queryWords []string, doc Document, fullQuer
 	for _, word := range contentWords {
 		contentWordMap[word]++
 	}
-	
+
 	for _, qWord := range queryWords {
 		if count, exists := contentWordMap[qWord]; exists {
 			// Boost score based on word frequency and inverse length
 			wordScore += float64(count) * (1.0 + 1.0/float64(len(qWord)))
 		}
-		
+
 		// Partial matches for Turkish language flexibility
 		for cWord := range contentWordMap {
 			if strings.Contains(cWord, qWord) || strings.Contains(qWord, cWord) {
@@ -199,19 +198,19 @@ func calculateEnhancedRelevanceScore(queryWords []string, doc Document, fullQuer
 			}
 		}
 	}
-	
+
 	// Normalize by document length (prevent long documents from dominating)
 	if len(contentWords) > 0 {
 		wordScore = wordScore / math.Log(1.0+float64(len(contentWords)))
 	}
-	
+
 	// 3. Enhanced recency scoring with exponential decay
 	recencyScore := 0.0
 	age := time.Since(doc.Timestamp).Hours()
 	if age < 168 { // Within last week
 		recencyScore = 1.0 * math.Exp(-age/48.0) // Exponential decay with 48h half-life
 	}
-	
+
 	// 4. Type-based scoring with better weights
 	typeScore := 0.0
 	switch doc.Type {
@@ -222,21 +221,21 @@ func calculateEnhancedRelevanceScore(queryWords []string, doc Document, fullQuer
 	case "message":
 		typeScore = 0.3 // Regular messages
 	}
-	
+
 	// 5. User interaction bonus (prefer messages from the same user)
 	userScore := 0.0
 	if role, ok := doc.Metadata["role"].(string); ok && role == "user" {
 		userScore = 0.2
 	}
-	
+
 	// 6. Content quality scoring (prefer longer, more informative content)
 	qualityScore := 0.0
 	if len(doc.Content) > 20 && len(doc.Content) < 500 {
 		qualityScore = 0.3
 	}
-	
+
 	totalScore := exactMatchScore + wordScore + recencyScore + typeScore + userScore + qualityScore
-	
+
 	return totalScore
 }
 
@@ -245,33 +244,28 @@ func diversifyResults(results []SearchResult, limit int) []SearchResult {
 	if len(results) <= limit {
 		return results
 	}
-	
+
 	var diversified []SearchResult
 	usedContent := make(map[string]bool)
-	
+
 	for _, result := range results {
 		if len(diversified) >= limit {
 			break
 		}
-		
+
 		// Simple similarity check to avoid near-duplicate content
 		contentKey := strings.ToLower(result.Document.Content)
 		if len(contentKey) > 50 {
 			contentKey = contentKey[:50]
 		}
-		
+
 		if !usedContent[contentKey] {
 			diversified = append(diversified, result)
 			usedContent[contentKey] = true
 		}
 	}
-	
-	return diversified
-}
 
-// Legacy function kept for compatibility
-func calculateRelevanceScore(queryWords []string, doc Document, fullQuery string) float64 {
-	return calculateEnhancedRelevanceScore(queryWords, doc, fullQuery)
+	return diversified
 }
 
 // prepareContext formats retrieved documents into enhanced context string
@@ -279,13 +273,13 @@ func prepareContext(results []SearchResult) string {
 	if len(results) == 0 {
 		return ""
 	}
-	
+
 	var contextParts []string
-	
+
 	// Group by conversation threads if possible
 	for i, result := range results {
 		timestamp := result.Document.Timestamp.Format("02.01 15:04")
-		
+
 		// Add role indicator
 		roleIcon := "💬"
 		if result.Document.Type == "context" {
@@ -295,20 +289,20 @@ func prepareContext(results []SearchResult) string {
 		} else {
 			roleIcon = "👤"
 		}
-		
+
 		// Truncate very long content but preserve important parts
 		content := result.Document.Content
 		if len(content) > 200 {
 			// Try to keep the beginning and end
 			content = content[:100] + "..." + content[len(content)-50:]
 		}
-		
+
 		// Add relevance score for debugging (can be removed in production)
-		contextParts = append(contextParts, 
-			fmt.Sprintf("%s [%d] (%s) [Score: %.2f]\n%s", 
+		contextParts = append(contextParts,
+			fmt.Sprintf("%s [%d] (%s) [Score: %.2f]\n%s",
 				roleIcon, i+1, timestamp, result.Score, content))
 	}
-	
+
 	return strings.Join(contextParts, "\n\n")
 }
 
@@ -317,46 +311,31 @@ func buildRAGPrompt(userPrompt, context string) string {
 	if context == "" {
 		return userPrompt
 	}
-	
-	return fmt.Sprintf(`🧠 BAĞLAM BİLGİLERİ (RAG Sistemi):
 
-%s
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-📝 GÖREV: Yukarıdaki bağlam bilgilerini kullanarak aşağıdaki soruyu yanıtla. 
-
-📋 TALİMATLAR:
-- Bağlam bilgileri alakalıysa bunları kullan ve referans ver
-- Bağlam bilgileri alakasızsa normal şekilde yanıtla
-- Önceki konuşmalarda bahsedilen kişi/olay/konulara atıfta bulunabilirsin
-- Kısa ve özlü yanıtlar ver, gereksiz tekrar yapma
-
-❓ KULLANICI SORUSU:
-%s`, context, userPrompt)
+	return fmt.Sprintf(`RAG: %s. User Prompt: %s`, context, userPrompt)
 }
 
 // AddToCollection adds a document to the specified chat's collection with improved management
 func AddToCollection(ctx context.Context, chatID int64, document Document) error {
 	rwMutex.Lock()
 	defer rwMutex.Unlock()
-	
-	const maxHistory = 1000 // Increased for better context retention
+
+	const maxHistory = 1000   // Increased for better context retention
 	const maxContextDocs = 50 // Separate limit for context documents
-	
+
 	// Initialize chat history if not exists
 	if chatHistories[chatID] == nil {
 		chatHistories[chatID] = make([]Document, 0)
 	}
-	
+
 	// Add document
 	chatHistories[chatID] = append(chatHistories[chatID], document)
-	
+
 	// Smart trimming: preserve context documents and recent important messages
 	if len(chatHistories[chatID]) > maxHistory {
 		// Separate context docs from regular messages
 		var contextDocs, regularDocs []Document
-		
+
 		for _, doc := range chatHistories[chatID] {
 			if doc.Type == "context" {
 				contextDocs = append(contextDocs, doc)
@@ -364,32 +343,32 @@ func AddToCollection(ctx context.Context, chatID int64, document Document) error
 				regularDocs = append(regularDocs, doc)
 			}
 		}
-		
+
 		// Keep all context docs (up to limit) and most recent regular docs
 		if len(contextDocs) > maxContextDocs {
 			// Keep most recent context docs
 			contextDocs = contextDocs[len(contextDocs)-maxContextDocs:]
 		}
-		
+
 		regularDocsToKeep := maxHistory - len(contextDocs)
 		if len(regularDocs) > regularDocsToKeep {
 			regularDocs = regularDocs[len(regularDocs)-regularDocsToKeep:]
 		}
-		
+
 		// Combine and sort by timestamp
 		chatHistories[chatID] = append(contextDocs, regularDocs...)
 		sort.Slice(chatHistories[chatID], func(i, j int) bool {
 			return chatHistories[chatID][i].Timestamp.Before(chatHistories[chatID][j].Timestamp)
 		})
 	}
-	
+
 	// Persist to disk asynchronously to avoid blocking
 	go func() {
 		if err := SaveChatHistories(chatHistories); err != nil {
 			log.Printf("Failed to persist RAG data: %v", err)
 		}
 	}()
-	
+
 	return nil
 }
 
@@ -404,7 +383,7 @@ func AddContextDocument(ctx context.Context, chatID int64, content string, metad
 		Type:      "context",
 		Metadata:  metadata,
 	}
-	
+
 	return AddToCollection(ctx, chatID, doc)
 }
 
@@ -412,16 +391,16 @@ func AddContextDocument(ctx context.Context, chatID int64, content string, metad
 func GetChatHistory(chatID int64, limit int) []Document {
 	rwMutex.RLock()
 	defer rwMutex.RUnlock()
-	
+
 	history, exists := chatHistories[chatID]
 	if !exists {
 		return []Document{}
 	}
-	
+
 	if limit > 0 && len(history) > limit {
 		return history[len(history)-limit:]
 	}
-	
+
 	return history
 }
 
@@ -429,7 +408,7 @@ func GetChatHistory(chatID int64, limit int) []Document {
 func ClearChatHistory(chatID int64) error {
 	rwMutex.Lock()
 	defer rwMutex.Unlock()
-	
+
 	delete(chatHistories, chatID)
 	return SaveChatHistories(chatHistories)
 }
@@ -438,42 +417,42 @@ func ClearChatHistory(chatID int64) error {
 func GetStats() map[string]interface{} {
 	rwMutex.RLock()
 	defer rwMutex.RUnlock()
-	
+
 	totalDocs := 0
 	chatsWithHistory := 0
 	contextDocs := 0
 	messagesByDay := make(map[string]int)
-	
+
 	for _, history := range chatHistories {
 		if len(history) > 0 {
 			chatsWithHistory++
 			totalDocs += len(history)
-			
+
 			for _, doc := range history {
 				if doc.Type == "context" {
 					contextDocs++
 				}
-				
+
 				// Count messages by day for activity tracking
 				dayKey := doc.Timestamp.Format("2006-01-02")
 				messagesByDay[dayKey]++
 			}
 		}
 	}
-	
+
 	// Calculate average documents per chat
 	avgDocsPerChat := 0.0
 	if chatsWithHistory > 0 {
 		avgDocsPerChat = float64(totalDocs) / float64(chatsWithHistory)
 	}
-	
+
 	return map[string]interface{}{
-		"total_documents":      totalDocs,
-		"chats_with_history":   chatsWithHistory,
-		"total_chats_tracked":  len(chatHistories),
-		"context_documents":    contextDocs,
-		"avg_docs_per_chat":    avgDocsPerChat,
-		"activity_by_day":      messagesByDay,
+		"total_documents":     totalDocs,
+		"chats_with_history":  chatsWithHistory,
+		"total_chats_tracked": len(chatHistories),
+		"context_documents":   contextDocs,
+		"avg_docs_per_chat":   avgDocsPerChat,
+		"activity_by_day":     messagesByDay,
 	}
 }
 
@@ -482,29 +461,29 @@ func CreateConversationSummary(chatID int64, hours int) error {
 	rwMutex.RLock()
 	history, exists := chatHistories[chatID]
 	rwMutex.RUnlock()
-	
+
 	if !exists || len(history) == 0 {
 		return fmt.Errorf("no history found for chat %d", chatID)
 	}
-	
+
 	// Get messages from last N hours
 	cutoff := time.Now().Add(-time.Duration(hours) * time.Hour)
 	var recentMessages []Document
-	
+
 	for _, doc := range history {
 		if doc.Timestamp.After(cutoff) && doc.Type == "message" {
 			recentMessages = append(recentMessages, doc)
 		}
 	}
-	
+
 	if len(recentMessages) < 3 {
 		return fmt.Errorf("not enough recent messages to summarize")
 	}
-	
+
 	// Create summary content
 	var summary strings.Builder
 	summary.WriteString(fmt.Sprintf("Son %d saatin konuşma özeti:\n", hours))
-	
+
 	userMessages := 0
 	botMessages := 0
 	for _, msg := range recentMessages {
@@ -514,30 +493,30 @@ func CreateConversationSummary(chatID int64, hours int) error {
 			userMessages++
 		}
 	}
-	
+
 	summary.WriteString(fmt.Sprintf("- %d kullanıcı mesajı, %d bot yanıtı\n", userMessages, botMessages))
 	summary.WriteString("- Ana konular: ")
-	
+
 	// Simple keyword extraction for topics
 	allText := ""
 	for _, msg := range recentMessages {
 		allText += " " + msg.Content
 	}
-	
+
 	keywords := extractKeywords(strings.ToLower(allText))
 	if len(keywords) > 5 {
 		keywords = keywords[:5]
 	}
 	summary.WriteString(strings.Join(keywords, ", "))
-	
+
 	// Add as context document
 	metadata := map[string]interface{}{
-		"type":           "auto_summary",
-		"hours_covered":  hours,
-		"message_count":  len(recentMessages),
-		"generated_at":   time.Now(),
+		"type":          "auto_summary",
+		"hours_covered": hours,
+		"message_count": len(recentMessages),
+		"generated_at":  time.Now(),
 	}
-	
+
 	return AddContextDocument(context.Background(), chatID, summary.String(), metadata)
 }
 
@@ -546,14 +525,14 @@ func SearchSimilarQuestions(query string, chatID int64) []SearchResult {
 	rwMutex.RLock()
 	history, exists := chatHistories[chatID]
 	rwMutex.RUnlock()
-	
+
 	if !exists {
 		return []SearchResult{}
 	}
-	
+
 	var results []SearchResult
 	queryWords := extractKeywords(strings.ToLower(query))
-	
+
 	for _, doc := range history {
 		// Only look at user messages (questions)
 		if doc.UserID != 0 && doc.Type == "message" {
@@ -566,17 +545,17 @@ func SearchSimilarQuestions(query string, chatID int64) []SearchResult {
 			}
 		}
 	}
-	
+
 	// Sort by relevance
 	sort.Slice(results, func(i, j int) bool {
 		return results[i].Score > results[j].Score
 	})
-	
+
 	// Return top 3 similar questions
 	if len(results) > 3 {
 		results = results[:3]
 	}
-	
+
 	return results
 }
 
@@ -584,13 +563,13 @@ func SearchSimilarQuestions(query string, chatID int64) []SearchResult {
 func CleanupOldDocuments(olderThanDays int) error {
 	rwMutex.Lock()
 	defer rwMutex.Unlock()
-	
+
 	cutoff := time.Now().AddDate(0, 0, -olderThanDays)
 	cleaned := 0
-	
+
 	for chatID, history := range chatHistories {
 		var newHistory []Document
-		
+
 		for _, doc := range history {
 			// Keep context documents and recent messages
 			if doc.Type == "context" || doc.Timestamp.After(cutoff) {
@@ -599,17 +578,17 @@ func CleanupOldDocuments(olderThanDays int) error {
 				cleaned++
 			}
 		}
-		
+
 		chatHistories[chatID] = newHistory
-		
+
 		// Remove empty chat histories
 		if len(newHistory) == 0 {
 			delete(chatHistories, chatID)
 		}
 	}
-	
+
 	log.Printf("RAG: Cleaned up %d old documents", cleaned)
-	
+
 	// Persist changes
 	return SaveChatHistories(chatHistories)
 }

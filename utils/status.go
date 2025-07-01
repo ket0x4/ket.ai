@@ -3,7 +3,6 @@ package utils
 import (
 	"fmt"
 	"ket/config"
-	"ket/permissions"
 	"log"
 	"os"
 	"runtime"
@@ -13,7 +12,6 @@ import (
 
 	"github.com/shirou/gopsutil/cpu"
 	"github.com/shirou/gopsutil/mem"
-	tele "gopkg.in/telebot.v4"
 )
 
 var (
@@ -75,7 +73,7 @@ func getBoardName() string {
 	return boardName
 }
 
-func getSystemStats() string {
+func GetSystemStats() string {
 	cpuUsage := getCPUUsage()
 	memoryUsage := getMemoryUsage()
 	cpuTemp := getCPUTemperature()
@@ -96,22 +94,4 @@ func getSystemStats() string {
 <b>CPU Temp:</b> <code>%s</code>
 <b>LLM Model:</b> <code>%s</code>
 `, cfg.Version, boardName, osName, cpuUsage, memoryUsage, cpuTemp, cfg.BackendSetup.Model)
-}
-
-func GetStatus() {
-	stats := getSystemStats()
-	log.Println(stats)
-}
-
-func HandleStatusCommand(c tele.Context) error {
-	// Check permissions first
-	if !permissions.IsAllowed(c.Chat().ID) { // IsAllowed is in the same package
-		log.Printf("Unauthorized access attempt for /status by chat ID: %d", c.Chat().ID)
-		return c.Reply("You are not authorized to use this bot.")
-	}
-
-	stats := getSystemStats()
-	// Send the stats to the user
-	log.Printf("User %d requested system status", c.Message().Chat.ID)
-	return c.Reply(stats, tele.ModeHTML)
 }
