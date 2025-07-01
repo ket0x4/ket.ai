@@ -84,14 +84,37 @@ func GetSystemStats() string {
 	boardName := getBoardName()
 	cfg := config.GetConfig()
 
+	cpuUsageStr := "N/A"
+	if cpuUsage > 0 {
+		cpuUsageStr = fmt.Sprintf("%.2f%%", cpuUsage)
+	}
+	memoryUsageStr := "N/A"
+	if memoryUsage > 0 {
+		memoryUsageStr = fmt.Sprintf("%.2f%%", memoryUsage)
+	}
+	if cpuTemp == "" {
+		cpuTemp = "N/A"
+	}
+	if boardName == "Unknown" || boardName == "" {
+		boardName = "N/A"
+	}
+	llmModel := "N/A"
+	if cfg.BackendSetup.Model != "" {
+		llmModel = cfg.BackendSetup.Model
+	}
+	version := "N/A"
+	if cfg.Version != "" {
+		version = cfg.Version
+	}
+
 	return fmt.Sprintf(`
 <b>System Status</b>
 <b>Version:</b> <code>%s</code>
 <b>Board:</b> <code>%s</code>
 <b>Platform:</b> <code>%s</code>
-<b>CPU Usage:</b> <code>%.2f%%</code>
-<b>Memory Usage:</b> <code>%.2f%%</code>
+<b>CPU Usage:</b> <code>%s</code>
+<b>Memory Usage:</b> <code>%s</code>
 <b>CPU Temp:</b> <code>%s</code>
 <b>LLM Model:</b> <code>%s</code>
-`, cfg.Version, boardName, osName, cpuUsage, memoryUsage, cpuTemp, cfg.BackendSetup.Model)
+`, version, boardName, osName, cpuUsageStr, memoryUsageStr, cpuTemp, llmModel)
 }
