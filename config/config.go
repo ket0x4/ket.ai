@@ -17,7 +17,7 @@ type BackendSetup struct {
 	Model       string `json:"model"`
 	InputLength int    `json:"input_length"`
 	YtLanguage  string `json:"yt-language"`
-	SysPrompt   string `json:"sys_prompt"`
+	SysPrompt   string
 }
 
 type Logging struct {
@@ -58,6 +58,13 @@ func ReadConfig() {
 		log.Fatalf("Error loading config: %v", err)
 	}
 	loadedConfig = c
+
+	sysPrompt, err := os.ReadFile("system_prompt.txt")
+	if err != nil {
+		log.Fatalf("Error loading system prompt: %v", err)
+	}
+	loadedConfig.BackendSetup.SysPrompt = string(sysPrompt)
+
 	LogConfig()
 }
 

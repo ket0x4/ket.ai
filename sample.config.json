@@ -9,8 +9,7 @@
         "api_key": "API_KEY",
         "model": "LLM_MODEL",
         "input_length": 2048,
-        "yt-language": "en",
-        "sys_prompt": "You are a helpful assistant."
+        "yt-language": "en"
     },
     "logging": {
         "level": "info",
