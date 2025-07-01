@@ -1,8 +1,6 @@
 package telegram
 
 import (
-	"ket/utils"
-
 	tele "gopkg.in/telebot.v4"
 )
 
@@ -38,7 +36,7 @@ var basicCommands = []Command{
 	{Name: "start", Handler: HandleStartCommand},
 	{Name: "help", Handler: HandleHelp},
 	{Name: "ket", Handler: HandlePrompt2},
-	{Name: "status", Handler: utils.HandleStatusCommand},
+	{Name: "status", Handler: HandleStatus},
 }
 
 // Permission Commands

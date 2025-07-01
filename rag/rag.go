@@ -18,6 +18,18 @@ var (
 	chatHistories = make(map[int64][]Document)
 	initOnce      sync.Once
 	rwMutex       sync.RWMutex
+
+	// Pre-compiled regex for cleaning text
+	nonAlphanumericRegex = regexp.MustCompile(`[^\p{L}\p{N}\s]+`)
+
+	// Common Turkish stop words
+	stopWords = map[string]bool{
+		"bir": true, "bu": true, "şu": true, "o": true, "de": true, "da": true,
+		"ve": true, "ile": true, "için": true, "gibi": true, "var": true, "yok": true,
+		"mi": true, "mı": true, "mu": true, "mü": true, "ki": true, "ne": true,
+		"nasıl": true, "nerede": true, "kim": true, "hangi": true, "çok": true,
+		"daha": true, "en": true, "her": true, "hiç": true, "böyle": true, "şöyle": true,
+	}
 )
 
 // Document represents a piece of information in the RAG system
@@ -29,6 +41,7 @@ type Document struct {
 	UserID    int64                  `json:"user_id"`
 	Type      string                 `json:"type"` // "message", "context", "summary"
 	Metadata  map[string]interface{} `json:"metadata,omitempty"`
+	keywords  []string               // Cached keywords for faster retrieval
 }
 
 // SearchResult represents a document with relevance score
@@ -140,18 +153,8 @@ func retrieve(query string, chatID int64, limit int) []SearchResult {
 
 // extractKeywords extracts meaningful keywords from query
 func extractKeywords(query string) []string {
-	// Remove common Turkish stop words
-	stopWords := map[string]bool{
-		"bir": true, "bu": true, "şu": true, "o": true, "de": true, "da": true,
-		"ve": true, "ile": true, "için": true, "gibi": true, "var": true, "yok": true,
-		"mi": true, "mı": true, "mu": true, "mü": true, "ki": true, "ne": true,
-		"nasıl": true, "nerede": true, "kim": true, "hangi": true, "çok": true,
-		"daha": true, "en": true, "her": true, "hiç": true, "böyle": true, "şöyle": true,
-	}
-
 	// Clean and split query
-	reg := regexp.MustCompile(`[^\p{L}\p{N}\s]+`)
-	cleaned := reg.ReplaceAllString(query, " ")
+	cleaned := nonAlphanumericRegex.ReplaceAllString(query, " ")
 	words := strings.Fields(cleaned)
 
 	var keywords []string
@@ -177,7 +180,11 @@ func calculateEnhancedRelevanceScore(queryWords []string, doc Document, fullQuer
 
 	// 2. Enhanced word overlap with TF-IDF-like scoring
 	wordScore := 0.0
-	contentWords := extractKeywords(content)
+	contentWords := doc.keywords
+	if contentWords == nil {
+		// Fallback for any documents that might not have cached keywords
+		contentWords = extractKeywords(content)
+	}
 	contentWordMap := make(map[string]int)
 	for _, word := range contentWords {
 		contentWordMap[word]++
@@ -327,6 +334,9 @@ func AddToCollection(ctx context.Context, chatID int64, document Document) error
 	if chatHistories[chatID] == nil {
 		chatHistories[chatID] = make([]Document, 0)
 	}
+
+	// Extract and cache keywords before adding for performance
+	document.keywords = extractKeywords(strings.ToLower(document.Content))
 
 	// Add document
 	chatHistories[chatID] = append(chatHistories[chatID], document)
@@ -597,6 +607,12 @@ func CleanupOldDocuments(olderThanDays int) error {
 func init() {
 	initOnce.Do(func() {
 		if data, err := LoadChatHistories(); err == nil {
+			// Populate keywords for loaded documents for performance
+			for chatID, docs := range data {
+				for i := range docs {
+					data[chatID][i].keywords = extractKeywords(strings.ToLower(docs[i].Content))
+				}
+			}
 			chatHistories = data
 			log.Printf("RAG: Loaded chat histories for %d chats", len(chatHistories))
 		} else {
