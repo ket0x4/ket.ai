@@ -62,8 +62,9 @@ func GetRagResponse(ctx context.Context, prompt string, chatID int64, userID int
 	// Stage 1: Enhanced Retrieval - get relevant documents with better scoring
 	retrievedDocs := retrieve(prompt, chatID, 8) // Increased limit for better context
 
-	// Stage 2: Context preparation and generation
-	contextStr := prepareContext(retrievedDocs)
+	// Stage 2: Context preparation and generation with a token budget
+	const maxContextTokens = 1500 // Budget for context tokens to keep prompts lean
+	contextStr := prepareContext(retrievedDocs, maxContextTokens)
 
 	// Enhanced prompt with context
 	finalPrompt := buildRAGPrompt(prompt, contextStr)
@@ -275,42 +276,56 @@ func diversifyResults(results []SearchResult, limit int) []SearchResult {
 	return diversified
 }
 
-// prepareContext formats retrieved documents into enhanced context string
-func prepareContext(results []SearchResult) string {
+// prepareContext formats retrieved documents into a compact, token-limited context string.
+func prepareContext(results []SearchResult, maxTokens int) string {
 	if len(results) == 0 {
 		return ""
 	}
 
-	var contextParts []string
+	var contextBuilder strings.Builder
+	var totalTokens int
 
-	// Group by conversation threads if possible
-	for i, result := range results {
-		timestamp := result.Document.Timestamp.Format("02.01 15:04")
-
-		// Add role indicator
-		roleIcon := "💬"
+	for _, result := range results {
+		roleIcon := "👤" // User
+		if result.Document.UserID == 0 {
+			roleIcon = "🤖" // Bot
+		}
 		if result.Document.Type == "context" {
-			roleIcon = "📝"
-		} else if result.Document.UserID == 0 {
-			roleIcon = "🤖"
-		} else {
-			roleIcon = "👤"
+			roleIcon = "📝" // System/Context
 		}
 
-		// Truncate very long content but preserve important parts
+		// More compact format: ICON (Timestamp): Content
+		header := fmt.Sprintf("%s (%s): ", roleIcon, result.Document.Timestamp.Format("15:04"))
 		content := result.Document.Content
-		if len(content) > 200 {
-			// Try to keep the beginning and end
-			content = content[:100] + "..." + content[len(content)-50:]
+
+		// Simple token estimation (words).
+		headerTokens := len(strings.Fields(header))
+		contentTokens := len(strings.Fields(content))
+
+		// Check if adding this document would exceed the budget.
+		if totalTokens+headerTokens+contentTokens > maxTokens {
+			// If there's some budget left, try to add a truncated version of the content.
+			remainingTokens := maxTokens - totalTokens - headerTokens
+			if remainingTokens > 20 { // Only add if we can fit a meaningful snippet.
+				words := strings.Fields(content)
+				if len(words) > remainingTokens {
+					words = words[:remainingTokens]
+				}
+				content = strings.Join(words, " ") + "..."
+
+				finalLine := header + content
+				contextBuilder.WriteString(finalLine)
+			}
+			break // Budget exceeded, stop processing.
 		}
 
-		// Add relevance score for debugging (can be removed in production)
-		contextParts = append(contextParts,
-			fmt.Sprintf("%s [%d] (%s) [Score: %.2f]\n%s",
-				roleIcon, i+1, timestamp, result.Score, content))
+		finalLine := header + content
+		contextBuilder.WriteString(finalLine)
+		contextBuilder.WriteString("\n\n")
+		totalTokens += headerTokens + contentTokens
 	}
 
-	return strings.Join(contextParts, "\n\n")
+	return strings.TrimSpace(contextBuilder.String())
 }
 
 // buildRAGPrompt creates the enhanced final prompt with context
@@ -319,7 +334,8 @@ func buildRAGPrompt(userPrompt, context string) string {
 		return userPrompt
 	}
 
-	return fmt.Sprintf(`RAG: %s. User Prompt: %s`, context, userPrompt)
+	// A more compact prompt format for smaller models
+	return fmt.Sprintf("Context:\n%s\n\nQuestion: %s", context, userPrompt)
 }
 
 // AddToCollection adds a document to the specified chat's collection with improved management
