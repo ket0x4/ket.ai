@@ -31,7 +31,7 @@ var (
 
 const (
 	// maxHistorySize is the number of messages to keep in the recent history.
-	maxHistorySize = 100
+	maxHistorySize = 200
 	// summaryTriggerCount is the number of messages after which a summary is created.
 	summaryTriggerCount = 200
 )
