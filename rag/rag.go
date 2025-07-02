@@ -105,7 +105,15 @@ func GetRagResponse(ctx context.Context, prompt string, chatID int64, userID int
 	addMessageToHistory(chatID, botMessage)
 
 	log.Printf("RAG: Successfully processed prompt for chat %d", chatID)
-	return response, nil
+	return cleanMarkdown(response), nil
+}
+
+// cleanMarkdown ensures that markdown code blocks are properly closed.
+func cleanMarkdown(text string) string {
+	if strings.Count(text, "```")%2 != 0 {
+		text += "\n```"
+	}
+	return text
 }
 
 // addMessageToHistory adds a new message to the chat's history and trims if necessary.
