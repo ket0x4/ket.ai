@@ -126,19 +126,7 @@ func InitBot() *tele.Bot {
 	bot.Handle("/start", HandleStartCommand)
 	bot.Handle("/help", HandleHelp)
 	bot.Handle("/ket", HandlePrompt2) // HandlePrompt2 now queues tasks
-	bot.Handle("/status", func(c tele.Context) error {
-		// Ignore any text messages that are commands
-		if strings.HasPrefix(c.Message().Text, "/") {
-			return nil
-		}
-
-		// Log the received message for debugging
-		// log.Printf("Received message in chat %d: %s", c.Chat().ID, c.Message().Text)
-
-		// Reply to the message with the same text (echo)
-		// _, err := c.Bot().Reply(c.Message(), "You said: "+c.Message().Text)
-		return err
-	})
+	bot.Handle("/status", HandleStatus)
 
 	// Permission commands
 	bot.Handle("/adduser", HandleAddUser)
