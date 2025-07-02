@@ -149,11 +149,11 @@ func InitBot() *tele.Bot {
 	bot.Handle("/ragcleanup", HandleRAGCleanup)
 
 	// Aliases for RAG commands
-	bot.Handle("/ra", HandleRAGContext)  // Alias for /ragcontext
-	bot.Handle("/rs", HandleRAGStats)    // Alias for /ragstats
-	bot.Handle("/rc", HandleRAGClear)    // Alias for /ragclear
-	bot.Handle("/rh", HandleRAGHistory)  // Alias for /raghistory
-	bot.Handle("/rsm", HandleRAGSummary) // Alias for /ragsummary
+	bot.Handle("/radd", HandleRAGContext)  // Alias for /ragcontext
+	bot.Handle("/rstat", HandleRAGStats)   // Alias for /ragstats
+	bot.Handle("/rclr", HandleRAGClear)    // Alias for /ragclear
+	bot.Handle("/rhist", HandleRAGHistory) // Alias for /raghistory
+	bot.Handle("/rsum", HandleRAGSummary)  // Alias for /ragsummary
 
 	// Register /model command handler
 	bot.Handle("/model", HandleModelCommand)

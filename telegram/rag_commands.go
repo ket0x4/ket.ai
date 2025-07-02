@@ -19,12 +19,12 @@ func HandleRAGStats(c tele.Context) error {
 	}
 
 	stats := rag.GetStats()
-	
-	message := fmt.Sprintf(`📊 *RAG System Statistics*
 
-📃 Total Documents: %d
-💬 Chats with History: %d
-▶️ Tracked Chats: %d
+	message := fmt.Sprintf(`*RAG System Statistics*
+
+▶ Total Documents: %d
+▶ Chats with History: %d
+▶ Tracked Chats: %d
 
 The RAG system uses your chat history to generate more relevant responses.`,
 		stats["total_documents"],
@@ -42,7 +42,7 @@ func HandleRAGHistory(c tele.Context) error {
 
 	args := strings.Fields(c.Message().Text)
 	limit := 10 // Default limit
-	
+
 	if len(args) > 1 {
 		if parsedLimit, err := strconv.Atoi(args[1]); err == nil && parsedLimit > 0 && parsedLimit <= 50 {
 			limit = parsedLimit
@@ -50,28 +50,28 @@ func HandleRAGHistory(c tele.Context) error {
 	}
 
 	history := rag.GetChatHistory(c.Chat().ID, limit)
-	
+
 	if len(history) == 0 {
-		return c.Reply("Bu sohbet için henüz geçmiş bulunmuyor.")
+		return c.Reply("There is no chat history available for this chat.")
 	}
 
 	var message strings.Builder
-	message.WriteString(fmt.Sprintf("📚 *Son %d RAG Girişi*\n\n", len(history)))
-	
+	message.WriteString(fmt.Sprintf("*Last %d RAG Entries*\n\n", len(history)))
+
 	for i, doc := range history {
 		timestamp := doc.Timestamp.Format("02.01 15:04")
-		docType := "💬"
+		docType := "User"
 		if doc.Type == "context" {
-			docType = "📝"
+			docType = "Context"
 		} else if doc.UserID == 0 {
-			docType = "🤖"
+			docType = "Bot"
 		}
-		
+
 		content := doc.Content
 		if len(content) > 100 {
 			content = content[:97] + "..."
 		}
-		
+
 		message.WriteString(fmt.Sprintf("%s *[%d]* (%s)\n%s\n\n", docType, i+1, timestamp, content))
 	}
 
@@ -87,10 +87,10 @@ func HandleRAGClear(c tele.Context) error {
 	err := rag.ClearChatHistory(c.Chat().ID)
 	if err != nil {
 		log.Printf("Error clearing RAG history for chat %d: %v", c.Chat().ID, err)
-		return c.Reply("Geçmiş temizlenirken hata oluştu.")
+		return c.Reply("There was an error clearing the RAG history for this chat.")
 	}
 
-	return c.Reply("✅ Bu sohbet için RAG geçmişi temizlendi.")
+	return c.Reply("RAG History cleanedd for this chat.")
 }
 
 // HandleRAGContext adds important context to RAG
@@ -118,10 +118,10 @@ func HandleRAGContext(c tele.Context) error {
 	err := rag.AddContextDocument(context.Background(), c.Chat().ID, contextStr, metadata)
 	if err != nil {
 		log.Printf("Error adding context to RAG for chat %d: %v", c.Chat().ID, err)
-		return c.Reply("Bağlam bilgisi eklenirken hata oluştu.")
+		return c.Reply("There was an error adding context information.")
 	}
 
-	return c.Reply("✅ Bağlam bilgisi RAG sistemine eklendi.")
+	return c.Reply("Context information has been successfully added to the RAG system.")
 }
 
 // HandleRAGSummary creates a conversation summary
@@ -132,7 +132,7 @@ func HandleRAGSummary(c tele.Context) error {
 
 	args := strings.Fields(c.Message().Text)
 	hours := 24 // Default to last 24 hours
-	
+
 	if len(args) > 1 {
 		if parsedHours, err := strconv.Atoi(args[1]); err == nil && parsedHours > 0 && parsedHours <= 168 {
 			hours = parsedHours
@@ -142,10 +142,10 @@ func HandleRAGSummary(c tele.Context) error {
 	err := rag.CreateConversationSummary(c.Chat().ID, hours)
 	if err != nil {
 		log.Printf("Error creating conversation summary for chat %d: %v", c.Chat().ID, err)
-		return c.Reply(fmt.Sprintf("Özet oluşturulurken hata: %v", err))
+		return c.Reply(fmt.Sprintf("There was an error creating the summary: %v", err))
 	}
 
-	return c.Reply(fmt.Sprintf("✅ Son %d saatin konuşma özeti RAG sistemine eklendi.", hours))
+	return c.Reply(fmt.Sprintf("✅ The conversation summary for the last %d hours has been added to the RAG system.", hours))
 }
 
 // HandleRAGCleanup cleans old documents (admin only)
@@ -156,7 +156,7 @@ func HandleRAGCleanup(c tele.Context) error {
 
 	args := strings.Fields(c.Message().Text)
 	days := 30 // Default to 30 days
-	
+
 	if len(args) > 1 {
 		if parsedDays, err := strconv.Atoi(args[1]); err == nil && parsedDays > 0 && parsedDays <= 365 {
 			days = parsedDays
@@ -166,8 +166,8 @@ func HandleRAGCleanup(c tele.Context) error {
 	err := rag.CleanupOldDocuments(days)
 	if err != nil {
 		log.Printf("Error cleaning up RAG documents: %v", err)
-		return c.Reply("Temizlik sırasında hata oluştu.")
+		return c.Reply("There was an error cleaning up the RAG documents.")
 	}
 
-	return c.Reply(fmt.Sprintf("✅ %d günden eski dokümanlar temizlendi.", days))
+	return c.Reply(fmt.Sprintf("✅ RAG documents older than %d days have been cleaned up.", days))
 }

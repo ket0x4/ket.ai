@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"ket/backend"
 	"ket/config"
-	"ket/permissions" // Added import for utils package
+	"ket/permissions"
 	"ket/utils"
 	"log"
 	"strconv"
@@ -14,7 +14,32 @@ import (
 	tele "gopkg.in/telebot.v4"
 )
 
-var modelIDMap = make(map[string]string) // index or id -> model id
+var modelIDMap = make(map[string]string)
+
+// Helper: check admin and reply if not
+func requireAdmin(c tele.Context, cmd string) bool {
+	if !permissions.IsAdmin(c.Sender().ID) {
+		log.Printf("[DENY] %s | user:%d chat:%d", cmd, c.Sender().ID, c.Chat().ID)
+		c.Reply("You are not authorized to use this command.")
+		return false
+	}
+	return true
+}
+
+// Helper: parse single int64 argument
+func parseSingleIDArg(c tele.Context, usage string) (int64, bool) {
+	args := strings.Split(c.Message().Text, " ")
+	if len(args) < 2 {
+		c.Reply(usage)
+		return 0, false
+	}
+	id, err := strconv.ParseInt(args[1], 10, 64)
+	if err != nil {
+		c.Reply("Invalid ID.")
+		return 0, false
+	}
+	return id, true
+}
 
 func HandleStartCommand(c tele.Context) error {
 	log.Printf("[CMD] /start | user:%d chat:%d", c.Sender().ID, c.Chat().ID)
@@ -31,20 +56,14 @@ You can use @ketailegacy_bot to access the old version.`,
 
 func HandleAddUser(c tele.Context) error {
 	log.Printf("[CMD] /adduser | user:%d chat:%d args:%q", c.Sender().ID, c.Chat().ID, c.Message().Text)
-	if !permissions.IsAdmin(c.Sender().ID) {
-		log.Printf("[DENY] /adduser | user:%d chat:%d", c.Sender().ID, c.Chat().ID)
-		return c.Reply("You are not authorized to use this command.")
+	if !requireAdmin(c, "/adduser") {
+		return nil
 	}
-	args := strings.Split(c.Message().Text, " ")
-	if len(args) < 2 {
-		return c.Reply("Usage: /adduser <user_id>")
+	userID, ok := parseSingleIDArg(c, "Usage: /adduser <user_id>")
+	if !ok {
+		return nil
 	}
-	userID, err := strconv.ParseInt(args[1], 10, 64)
-	if err != nil {
-		log.Printf("[FAIL] /adduser | user:%d chat:%d invalid user_id:%q", c.Sender().ID, c.Chat().ID, args[1])
-		return c.Reply("Invalid user ID.")
-	}
-	err = permissions.AddUser(userID)
+	err := permissions.AddUser(userID)
 	if err != nil {
 		log.Printf("[FAIL] /adduser | user:%d chat:%d error:%v", c.Sender().ID, c.Chat().ID, err)
 		return c.Reply(fmt.Sprintf("Error adding user: %v", err))
@@ -55,20 +74,14 @@ func HandleAddUser(c tele.Context) error {
 
 func HandleRemoveUser(c tele.Context) error {
 	log.Printf("[CMD] /rmuser | user:%d chat:%d args:%q", c.Sender().ID, c.Chat().ID, c.Message().Text)
-	if !permissions.IsAdmin(c.Sender().ID) {
-		log.Printf("[DENY] /rmuser | user:%d chat:%d", c.Sender().ID, c.Chat().ID)
-		return c.Reply("You are not authorized to use this command.")
+	if !requireAdmin(c, "/rmuser") {
+		return nil
 	}
-	args := strings.Split(c.Message().Text, " ")
-	if len(args) < 2 {
-		return c.Reply("Usage: /rmuser <user_id>")
+	userID, ok := parseSingleIDArg(c, "Usage: /rmuser <user_id>")
+	if !ok {
+		return nil
 	}
-	userID, err := strconv.ParseInt(args[1], 10, 64)
-	if err != nil {
-		log.Printf("[FAIL] /rmuser | user:%d chat:%d invalid user_id:%q", c.Sender().ID, c.Chat().ID, args[1])
-		return c.Reply("Invalid user ID.")
-	}
-	err = permissions.RemoveUser(userID)
+	err := permissions.RemoveUser(userID)
 	if err != nil {
 		log.Printf("[FAIL] /rmuser | user:%d chat:%d error:%v", c.Sender().ID, c.Chat().ID, err)
 		return c.Reply(fmt.Sprintf("Error removing user: %v", err))
@@ -79,20 +92,14 @@ func HandleRemoveUser(c tele.Context) error {
 
 func HandleAddChat(c tele.Context) error {
 	log.Printf("[CMD] /addchat | user:%d chat:%d args:%q", c.Sender().ID, c.Chat().ID, c.Message().Text)
-	if !permissions.IsAdmin(c.Sender().ID) {
-		log.Printf("[DENY] /addchat | user:%d chat:%d", c.Sender().ID, c.Chat().ID)
-		return c.Reply("You are not authorized to use this command.")
+	if !requireAdmin(c, "/addchat") {
+		return nil
 	}
-	args := strings.Split(c.Message().Text, " ")
-	if len(args) < 2 {
-		return c.Reply("Usage: /addchat <chat_id>")
+	chatID, ok := parseSingleIDArg(c, "Usage: /addchat <chat_id>")
+	if !ok {
+		return nil
 	}
-	chatID, err := strconv.ParseInt(args[1], 10, 64)
-	if err != nil {
-		log.Printf("[FAIL] /addchat | user:%d chat:%d invalid chat_id:%q", c.Sender().ID, c.Chat().ID, args[1])
-		return c.Reply("Invalid chat ID.")
-	}
-	err = permissions.AddChat(chatID)
+	err := permissions.AddChat(chatID)
 	if err != nil {
 		log.Printf("[FAIL] /addchat | user:%d chat:%d error:%v", c.Sender().ID, c.Chat().ID, err)
 		return c.Reply(fmt.Sprintf("Error adding chat: %v", err))
@@ -103,20 +110,14 @@ func HandleAddChat(c tele.Context) error {
 
 func HandleRemoveChat(c tele.Context) error {
 	log.Printf("[CMD] /rmchat | user:%d chat:%d args:%q", c.Sender().ID, c.Chat().ID, c.Message().Text)
-	if !permissions.IsAdmin(c.Sender().ID) {
-		log.Printf("[DENY] /rmchat | user:%d chat:%d", c.Sender().ID, c.Chat().ID)
-		return c.Reply("You are not authorized to use this command.")
+	if !requireAdmin(c, "/rmchat") {
+		return nil
 	}
-	args := strings.Split(c.Message().Text, " ")
-	if len(args) < 2 {
-		return c.Reply("Usage: /rmchat <chat_id>")
+	chatID, ok := parseSingleIDArg(c, "Usage: /rmchat <chat_id>")
+	if !ok {
+		return nil
 	}
-	chatID, err := strconv.ParseInt(args[1], 10, 64)
-	if err != nil {
-		log.Printf("[FAIL] /rmchat | user:%d chat:%d invalid chat_id:%q", c.Sender().ID, c.Chat().ID, args[1])
-		return c.Reply("Invalid chat ID.")
-	}
-	err = permissions.RemoveChat(chatID)
+	err := permissions.RemoveChat(chatID)
 	if err != nil {
 		log.Printf("[FAIL] /rmchat | user:%d chat:%d error:%v", c.Sender().ID, c.Chat().ID, err)
 		return c.Reply(fmt.Sprintf("Error removing chat: %v", err))
@@ -137,25 +138,20 @@ func HandleStatus(c tele.Context) error {
 
 func HandleList(c tele.Context) error {
 	log.Printf("[CMD] /list | user:%d chat:%d", c.Sender().ID, c.Chat().ID)
-	if !permissions.IsAdmin(c.Sender().ID) {
-		log.Printf("[DENY] /list | user:%d chat:%d", c.Sender().ID, c.Chat().ID)
-		return c.Reply("You are not authorized to use this command.")
+	if !requireAdmin(c, "/list") {
+		return nil
 	}
-
 	users := permissions.ListUsers()
 	chats := permissions.ListChats()
-
 	var response strings.Builder
 	response.WriteString("Allowed Users:\n")
 	for _, user := range users {
 		response.WriteString(fmt.Sprintf("- `%d`\n", user))
 	}
-
 	response.WriteString("\nAllowed Chats:\n")
 	for _, chat := range chats {
 		response.WriteString(fmt.Sprintf("- `%d`\n", chat))
 	}
-
 	log.Printf("[OK] /list | user:%d chat:%d listed users/chats", c.Sender().ID, c.Chat().ID)
 	return c.Send(response.String(), &tele.SendOptions{ParseMode: tele.ModeMarkdown})
 }
@@ -176,7 +172,7 @@ func HandleModelCommand(c tele.Context) error {
 		return c.Reply("Failed to fetch models: " + err.Error())
 	}
 
-	modelIDMap = make(map[string]string) // Reset map
+	modelIDMap = make(map[string]string)
 	var rows [][]tele.InlineButton
 	for i, m := range models {
 		id := strconv.Itoa(i)
@@ -195,7 +191,6 @@ func HandleModelCommand(c tele.Context) error {
 	return c.Send("<b>Available Models:</b>", markup, tele.ModeHTML)
 }
 
-// Callback handler for model selection
 func HandleModelSelect(c tele.Context) error {
 	data := c.Data()
 	userID := c.Sender().ID
@@ -222,7 +217,7 @@ func HandleModelSelect(c tele.Context) error {
 		return c.Respond(&tele.CallbackResponse{Text: "Model not found.", ShowAlert: true})
 	}
 	cfg.BackendSetup.Model = model
-	config.UpdateConfig(cfg) // Update the global config
+	config.UpdateConfig(cfg)
 	err = config.SaveConfig()
 	if err != nil {
 		log.Printf("[FAIL] /model button | user:%d error saving config: %v", userID, err)
