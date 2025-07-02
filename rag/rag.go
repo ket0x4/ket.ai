@@ -135,39 +135,47 @@ func addMessageToHistory(chatID int64, message string) {
 func handleSummarization(ctx context.Context, chatID int64) {
 	rwMutex.RLock()
 	count := messageCounter[chatID]
-	// Create a snapshot of the history for summarization
-	var historySnapshot string
-	if count >= summaryTriggerCount {
-		history := chatHistories[chatID]
-		historySnapshot = strings.Join(history, "\n")
-	}
 	rwMutex.RUnlock()
 
-	if count >= summaryTriggerCount {
-		log.Printf("RAG: Triggering summary for chat %d after %d messages.", chatID, count)
+	if count < summaryTriggerCount {
+		return
+	}
 
-		summaryPrompt := fmt.Sprintf(`This is the message history of the group you are in. Summarize it and write down the things you think should be remembered in bullet points. You will need these later. Just write a summary and keep it short.
+	// Create a snapshot of the history for summarization, excluding bot messages.
+	rwMutex.RLock()
+	var historyForSummary []string
+	history := chatHistories[chatID]
+	for _, msg := range history {
+		if !strings.HasPrefix(strings.TrimSpace(msg), "- bot:") {
+			historyForSummary = append(historyForSummary, msg)
+		}
+	}
+	historySnapshot := strings.Join(historyForSummary, "\n")
+	rwMutex.RUnlock()
+
+	log.Printf("RAG: Triggering summary for chat %d after %d messages.", chatID, count)
+
+	summaryPrompt := fmt.Sprintf(`This is the message history of the group you are in. Summarize it and write down the things you think should be remembered in bullet points. You will need these later. Just write a summary and keep it short.
 
 History:
 %s`, historySnapshot)
 
-		// Get summary from the model
-		summary, err := backend.GetResponse(ctx, summaryPrompt)
-		if err != nil {
-			log.Printf("RAG: Failed to create summary for chat %d: %v", chatID, err)
-			// Don't reset counter if summarization fails, try again later.
-			return
-		}
+	// Get summary from the model
+	summary, err := backend.GetResponse(ctx, summaryPrompt)
+	if err != nil {
+		log.Printf("RAG: Failed to create summary for chat %d: %v", chatID, err)
+		// Don't reset counter if summarization fails, try again later.
+		return
+	}
 
-		rwMutex.Lock()
-		chatSummaries[chatID] = summary
-		messageCounter[chatID] = 0 // Reset counter
-		rwMutex.Unlock()
+	rwMutex.Lock()
+	chatSummaries[chatID] = summary
+	messageCounter[chatID] = 0 // Reset counter
+	rwMutex.Unlock()
 
-		log.Printf("RAG: Successfully created new summary for chat %d.", chatID)
-		if debouncedSaver != nil {
-			debouncedSaver.Trigger()
-		}
+	log.Printf("RAG: Successfully created new summary for chat %d.", chatID)
+	if debouncedSaver != nil {
+		debouncedSaver.Trigger()
 	}
 }
 
