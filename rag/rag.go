@@ -84,7 +84,7 @@ func GetRagResponse(ctx context.Context, prompt string, chatID int64, userID int
 	log.Printf("RAG: Processing prompt for chat %d, user %s", chatID, userName)
 
 	// Add user's message to history
-	userMessage := fmt.Sprintf("    - %s: %s", userName, prompt)
+	userMessage := fmt.Sprintf("- %s: %s", userName, prompt)
 	addMessageToHistory(chatID, userMessage)
 
 	// Check if it's time to summarize
@@ -101,7 +101,7 @@ func GetRagResponse(ctx context.Context, prompt string, chatID int64, userID int
 	}
 
 	// Add bot's response to history
-	botMessage := fmt.Sprintf("        *bot: %s", response)
+	botMessage := fmt.Sprintf("- bot: %s", response)
 	addMessageToHistory(chatID, botMessage)
 
 	log.Printf("RAG: Successfully processed prompt for chat %d", chatID)
@@ -189,8 +189,8 @@ func prepareContext(chatID int64) string {
 	}
 
 	if len(history) > 0 {
-contextBuilder.WriteString(fmt.Sprintf("and here are the last %d messages for this group:\n", len(history)))
-contextBuilder.WriteString(strings.Join(history, "\n"))
+		contextBuilder.WriteString(fmt.Sprintf("and here are the last %d messages for this group:\n", len(history)))
+		contextBuilder.WriteString(strings.Join(history, "\n"))
 	}
 
 	return strings.TrimSpace(contextBuilder.String())

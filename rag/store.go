@@ -65,7 +65,7 @@ func loadChatHistories() ([]Document, error) {
 
 	var data []Document
 	decoder := json.NewDecoder(file)
-	if err := decoder.Decode(&data); err != nil && err != io.EOF {
+	if err := decoder.Decode(&data); err != nil && err.Error() != "EOF" {
 		return nil, err
 	}
 

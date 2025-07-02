@@ -1,5 +1,5 @@
 {
-    "Version": "5.0",
+    "Version": "6.0",
     "BotSetup": {
         "token": "TELEGRAM_BOT_TOKEN",
         "max_queue": 10,
