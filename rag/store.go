@@ -3,6 +3,7 @@ package rag
 import (
 	"encoding/json"
 	"io"
+	"log"
 	"os"
 	"sync"
 )
@@ -18,6 +19,12 @@ var (
 func saveChatHistories(data []Document) error {
 	fileMutex.Lock()
 	defer fileMutex.Unlock()
+
+	// First, create a backup of the existing file.
+	if err := backupChatHistories(); err != nil {
+		log.Printf("RAG: Failed to create backup: %v", err)
+		// Continue anyway, as saving is more important.
+	}
 
 	// Create a temporary file in the same directory as the final file to ensure
 	// that it's on the same device, which is required for os.Rename to be atomic.
@@ -79,6 +86,30 @@ func SaveChatHistories(data []Document) error {
 
 func LoadChatHistories() ([]Document, error) {
 	return loadChatHistories()
+}
+
+// backupChatHistories creates a backup of the current RAG data.
+func backupChatHistories() error {
+	// This function is called from saveChatHistories, which already holds a lock.
+	sourceFile, err := os.Open(ragDataFile)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil // No file to backup.
+		}
+		return err
+	}
+	defer sourceFile.Close()
+
+	// Create the destination file for writing.
+	destFile, err := os.Create(ragDataFile + ".bak")
+	if err != nil {
+		return err
+	}
+	defer destFile.Close()
+
+	// Copy the contents from source to destination.
+	_, err = io.Copy(destFile, sourceFile)
+	return err
 }
 
 // BackupChatHistories creates a backup of the current RAG data using an efficient file copy.
