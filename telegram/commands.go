@@ -56,10 +56,6 @@ var ytCommands = []Command{
 
 // RAG Commands
 var ragCommands = []Command{
-	{Name: "ragstats", Handler: HandleRAGStats, Aliases: []string{"rs"}},
 	{Name: "raghistory", Handler: HandleRAGHistory, Aliases: []string{"rh"}},
 	{Name: "ragclear", Handler: HandleRAGClear, Aliases: []string{"rc"}},
-	{Name: "ragcontext", Handler: HandleRAGContext, Aliases: []string{"ra"}},
-	{Name: "ragsummary", Handler: HandleRAGSummary, Aliases: []string{"rsm"}},
-	{Name: "ragcleanup", Handler: HandleRAGCleanup},
 }

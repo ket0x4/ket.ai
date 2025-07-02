@@ -12,10 +12,10 @@ var (
 	fileMutex   sync.RWMutex
 )
 
-// saveChatHistories persists chatHistories to disk using a safe-write pattern.
+// saveChatHistories persists the RAG data to disk.
 // It writes to a temporary file first, then renames it to the final destination.
 // This ensures that the original data file is not corrupted if the write is interrupted.
-func saveChatHistories(chatHistories map[int64][]Document) error {
+func saveChatHistories(data []Document) error {
 	fileMutex.Lock()
 	defer fileMutex.Unlock()
 
@@ -30,7 +30,7 @@ func saveChatHistories(chatHistories map[int64][]Document) error {
 	// Encode the data to the temporary file.
 	encoder := json.NewEncoder(tempFile)
 	encoder.SetIndent("", "  ") // Pretty print for debugging.
-	if err := encoder.Encode(chatHistories); err != nil {
+	if err := encoder.Encode(data); err != nil {
 		tempFile.Close()
 		return err
 	}
@@ -49,40 +49,35 @@ func saveChatHistories(chatHistories map[int64][]Document) error {
 	return nil
 }
 
-// loadChatHistories loads chatHistories from disk.
-func loadChatHistories() (map[int64][]Document, error) {
+// loadChatHistories loads the RAG data from disk.
+func loadChatHistories() ([]Document, error) {
 	fileMutex.RLock()
 	defer fileMutex.RUnlock()
 
 	file, err := os.Open(ragDataFile)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return make(map[int64][]Document), nil
+			return []Document{}, nil
 		}
 		return nil, err
 	}
 	defer file.Close()
 
-	var data map[int64][]Document
+	var data []Document
 	decoder := json.NewDecoder(file)
-	if err := decoder.Decode(&data); err != nil {
+	if err := decoder.Decode(&data); err != nil && err != io.EOF {
 		return nil, err
-	}
-
-	// Initialize empty map if data is nil
-	if data == nil {
-		data = make(map[int64][]Document)
 	}
 
 	return data, nil
 }
 
 // Exported versions for use in rag.go
-func SaveChatHistories(chatHistories map[int64][]Document) error {
-	return saveChatHistories(chatHistories)
+func SaveChatHistories(data []Document) error {
+	return saveChatHistories(data)
 }
 
-func LoadChatHistories() (map[int64][]Document, error) {
+func LoadChatHistories() ([]Document, error) {
 	return loadChatHistories()
 }
 
@@ -101,16 +96,14 @@ func BackupChatHistories() error {
 	}
 	defer sourceFile.Close()
 
-	// Create a new file for the backup.
-	backupFile := ragDataFile + ".backup"
-	destFile, err := os.Create(backupFile)
+	// Create the destination file for writing.
+	destFile, err := os.Create(ragDataFile + ".bak")
 	if err != nil {
 		return err
 	}
 	defer destFile.Close()
 
-	// Copy the contents of the source file to the destination file.
-	// This is more efficient than decoding and re-encoding the JSON data.
+	// Copy the contents from source to destination.
 	_, err = io.Copy(destFile, sourceFile)
 	return err
 }

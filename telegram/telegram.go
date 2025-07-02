@@ -33,7 +33,7 @@ func processPrompt(task *PromptTask) {
 	log.Printf("Processing prompt for chat ID %d from queue.", task.ChatID)
 
 	// Get response from backend using RAG
-	response, err := rag.GetRagResponse(context.Background(), task.Prompt, task.ChatID, task.UserID)
+	response, err := rag.GetRagResponse(context.Background(), task.Prompt, task.ChatID, task.UserID, "")
 	if err != nil {
 		log.Printf("Error getting RAG response for chat ID %d: %v", task.ChatID, err)
 		// Fallback to regular backend if RAG fails
@@ -141,19 +141,12 @@ func InitBot() *tele.Bot {
 	bot.Handle("/ytsum", HandleYTCommand)
 
 	// RAG Commands
-	bot.Handle("/ragstats", HandleRAGStats)
 	bot.Handle("/raghistory", HandleRAGHistory)
 	bot.Handle("/ragclear", HandleRAGClear)
-	bot.Handle("/ragcontext", HandleRAGContext)
-	bot.Handle("/ragsummary", HandleRAGSummary)
-	bot.Handle("/ragcleanup", HandleRAGCleanup)
 
-	// Aliases for RAG commands
-	bot.Handle("/radd", HandleRAGContext)  // Alias for /ragcontext
-	bot.Handle("/rstat", HandleRAGStats)   // Alias for /ragstats
+	// Aliases for RAG commands  // Alias for /ragstats
 	bot.Handle("/rclr", HandleRAGClear)    // Alias for /ragclear
 	bot.Handle("/rhist", HandleRAGHistory) // Alias for /raghistory
-	bot.Handle("/rsum", HandleRAGSummary)  // Alias for /ragsummary
 
 	// Register /model command handler
 	bot.Handle("/model", HandleModelCommand)
