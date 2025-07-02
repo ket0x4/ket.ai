@@ -17,7 +17,7 @@ type BackendSetup struct {
 	Model       string `json:"model"`
 	InputLength int    `json:"input_length"`
 	YtLanguage  string `json:"yt-language"`
-	SysPrompt   string
+	SysPrompt   string `json:"-"` // never marshal to JSON
 }
 
 type Logging struct {
@@ -83,6 +83,21 @@ func LogConfig() {
 
 func GetConfig() Config {
 	return loadedConfig
+}
+
+func UpdateConfig(newConfig Config) {
+	loadedConfig = newConfig
+}
+
+// SaveConfig writes the current loadedConfig to config.json, excluding SysPrompt from file.
+func SaveConfig() error {
+	cfgCopy := loadedConfig
+	cfgCopy.BackendSetup.SysPrompt = "" // will not be marshaled due to json:"-"
+	data, err := json.MarshalIndent(cfgCopy, "", "    ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(configFilePath, data, 0644)
 }
 
 func init() {

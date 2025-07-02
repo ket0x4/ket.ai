@@ -127,6 +127,7 @@ func InitBot() *tele.Bot {
 	bot.Handle("/help", HandleHelp)
 	bot.Handle("/ket", HandlePrompt2) // HandlePrompt2 now queues tasks
 	bot.Handle("/status", HandleStatus)
+	bot.Handle("/model", HandleModelCommand)
 
 	// Permission commands
 	bot.Handle("/adduser", HandleAddUser)
@@ -153,6 +154,10 @@ func InitBot() *tele.Bot {
 	bot.Handle("/rc", HandleRAGClear)    // Alias for /ragclear
 	bot.Handle("/rh", HandleRAGHistory)  // Alias for /raghistory
 	bot.Handle("/rsm", HandleRAGSummary) // Alias for /ragsummary
+
+	// Register /model command handler
+	bot.Handle("/model", HandleModelCommand)
+	bot.Handle(&tele.InlineButton{Unique: "model_select"}, HandleModelSelect)
 
 	// The main handler for processing text, must be last
 	bot.Handle(tele.OnText, func(c tele.Context) error {

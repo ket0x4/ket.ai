@@ -37,6 +37,7 @@ var basicCommands = []Command{
 	{Name: "help", Handler: HandleHelp},
 	{Name: "ket", Handler: HandlePrompt2},
 	{Name: "status", Handler: HandleStatus},
+	{Name: "model", Handler: HandleModelCommand},
 }
 
 // Permission Commands

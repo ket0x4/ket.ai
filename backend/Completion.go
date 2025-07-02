@@ -68,3 +68,16 @@ func GetResponseWithRAG(ctx context.Context, prompt string, contextPrompt string
 	}
 	return chatCompletion.Choices[0].Message.Content, nil
 }
+
+// FetchModels retrieves the list of available models from the backend API.
+func FetchModels(ctx context.Context) ([]string, error) {
+	models, err := client.Models.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var ids []string
+	for _, m := range models.Data {
+		ids = append(ids, m.ID)
+	}
+	return ids, nil
+}

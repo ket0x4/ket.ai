@@ -34,6 +34,7 @@ var helpMessage = `<b>🤖 ket.ai Bot Commands</b>
 <code>/rmchat [chat_id]</code> Remove a chat from the allowed chats list
 <code>/list</code> List all allowed users and chats
 <code>/ragcleanup [days]</code> Clean old RAG documents (admin only)
+<code>/model</code> List available LLM models (admin: /model [model_name] to change)
 
 <b>💡 Tips</b>
 • RAG system remembers your conversations for better responses

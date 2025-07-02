@@ -1,7 +1,10 @@
 package telegram
 
 import (
+	"context"
 	"fmt"
+	"ket/backend"
+	"ket/config"
 	"ket/permissions" // Added import for utils package
 	"ket/utils"
 	"log"
@@ -10,6 +13,8 @@ import (
 
 	tele "gopkg.in/telebot.v4"
 )
+
+var modelIDMap = make(map[string]string) // index or id -> model id
 
 func HandleStartCommand(c tele.Context) error {
 	log.Printf("[CMD] /start | user:%d chat:%d", c.Sender().ID, c.Chat().ID)
@@ -153,4 +158,75 @@ func HandleList(c tele.Context) error {
 
 	log.Printf("[OK] /list | user:%d chat:%d listed users/chats", c.Sender().ID, c.Chat().ID)
 	return c.Send(response.String(), &tele.SendOptions{ParseMode: tele.ModeMarkdown})
+}
+
+func HandleModelCommand(c tele.Context) error {
+	cfg := config.GetConfig()
+	currentModel := cfg.BackendSetup.Model
+	isAdmin := permissions.IsAdmin(c.Sender().ID)
+
+	if !isAdmin {
+		return c.Reply("You are not authorized to change the model.")
+	}
+
+	c.Send("Fetching models from backend...", tele.ModeHTML)
+	models, err := backend.FetchModels(context.Background())
+	if err != nil {
+		log.Printf("[FAIL] /model | user:%d error: %v", c.Sender().ID, err)
+		return c.Reply("Failed to fetch models: " + err.Error())
+	}
+
+	modelIDMap = make(map[string]string) // Reset map
+	var rows [][]tele.InlineButton
+	for i, m := range models {
+		id := strconv.Itoa(i)
+		modelIDMap[id] = m
+		btn := tele.InlineButton{
+			Unique: "model_select",
+			Text:   m,
+			Data:   id,
+		}
+		if m == currentModel {
+			btn.Text = "✅ " + m
+		}
+		rows = append(rows, []tele.InlineButton{btn})
+	}
+	markup := &tele.ReplyMarkup{InlineKeyboard: rows}
+	return c.Send("<b>Available Models:</b>", markup, tele.ModeHTML)
+}
+
+// Callback handler for model selection
+func HandleModelSelect(c tele.Context) error {
+	data := c.Data()
+	userID := c.Sender().ID
+	if !permissions.IsAdmin(userID) {
+		return c.Respond(&tele.CallbackResponse{Text: "Not authorized.", ShowAlert: true})
+	}
+	cfg := config.GetConfig()
+	model, ok := modelIDMap[data]
+	if !ok {
+		return c.Respond(&tele.CallbackResponse{Text: "Invalid model selection.", ShowAlert: true})
+	}
+	models, err := backend.FetchModels(context.Background())
+	if err != nil {
+		return c.Respond(&tele.CallbackResponse{Text: "Failed to fetch models.", ShowAlert: true})
+	}
+	found := false
+	for _, m := range models {
+		if m == model {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return c.Respond(&tele.CallbackResponse{Text: "Model not found.", ShowAlert: true})
+	}
+	cfg.BackendSetup.Model = model
+	config.UpdateConfig(cfg) // Update the global config
+	err = config.SaveConfig()
+	if err != nil {
+		log.Printf("[FAIL] /model button | user:%d error saving config: %v", userID, err)
+		return c.Respond(&tele.CallbackResponse{Text: "Failed to save config.", ShowAlert: true})
+	}
+	return c.Edit("<b>Model changed to:</b> <code>"+model+"</code>", &tele.SendOptions{ParseMode: tele.ModeHTML})
 }
