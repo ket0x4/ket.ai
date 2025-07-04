@@ -33,7 +33,7 @@ func processPrompt(task *PromptTask) {
 	log.Printf("Processing prompt for chat ID %d from queue.", task.ChatID)
 
 	// Get response from backend using RAG
-	response, err := rag.GetRagResponse(context.Background(), task.Prompt, task.ChatID, task.UserID, "")
+	response, err := rag.GetRagResponse(context.Background(), task.Prompt, task.ChatID, task.UserID, task.OriginalContext.Sender().Username)
 	if err != nil {
 		log.Printf("Error getting RAG response for chat ID %d: %v", task.ChatID, err)
 		// Fallback to regular backend if RAG fails
@@ -92,7 +92,7 @@ func InitBot() *tele.Bot {
 		Synchronous: false,
 		Updates:     5,
 		Poller:      &tele.LongPoller{Timeout: 10 * time.Second},
-		ParseMode:   tele.ModeMarkdown,
+		//ParseMode:   tele.ModeMarkdown,
 
 		// Causes issues with some messages, so we use the default mode
 		OnError: func(err error, c tele.Context) {

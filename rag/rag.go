@@ -78,13 +78,13 @@ func (ds *DebouncedSaver) Trigger() {
 // GetRagResponse generates a response using the simplified RAG model.
 func GetRagResponse(ctx context.Context, prompt string, chatID int64, userID int64, userName string) (string, error) {
 	if strings.TrimSpace(prompt) == "" {
-		return "", fmt.Errorf("prompt cannot be empty")
+		return "", nil
 	}
 
 	log.Printf("RAG: Processing prompt for chat %d, user %s", chatID, userName)
 
 	// Add user's message to history
-	userMessage := fmt.Sprintf("- %s: %s", userName, prompt)
+	userMessage := fmt.Sprintf("- %s:%d:%s", userName, userID, prompt)
 	addMessageToHistory(chatID, userMessage)
 
 	// Check if it's time to summarize
@@ -97,11 +97,11 @@ func GetRagResponse(ctx context.Context, prompt string, chatID int64, userID int
 	// Get response from backend
 	response, err := backend.GetResponseWithRAG(ctx, prompt, finalPrompt)
 	if err != nil {
-		return "", fmt.Errorf("failed to get response: %w", err)
+		return "", fmt.Errorf("failed to get response from backend: %w", err)
 	}
 
 	// Add bot's response to history
-	botMessage := fmt.Sprintf("- bot: %s", response)
+	botMessage := fmt.Sprintf("bot:%s", response)
 	addMessageToHistory(chatID, botMessage)
 
 	log.Printf("RAG: Successfully processed prompt for chat %d", chatID)
@@ -154,7 +154,8 @@ func handleSummarization(ctx context.Context, chatID int64) {
 	var historyForSummary []string
 	history := chatHistories[chatID]
 	for _, msg := range history {
-		if !strings.HasPrefix(strings.TrimSpace(msg), "- bot:") {
+		// Exclude bot messages from the summary context to avoid feedback loops.
+		if !strings.HasPrefix(strings.TrimSpace(msg), "bot:") {
 			historyForSummary = append(historyForSummary, msg)
 		}
 	}

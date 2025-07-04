@@ -3,6 +3,7 @@ package backend
 import (
 	"context"
 	"fmt"
+	"io"
 	"ket/config"
 	"log"
 	"net/http"
@@ -13,7 +14,7 @@ func init() {
 	go HealthCheck(context.Background())
 }
 
-// Check backend health
+// HealthCheck Check backend health
 func HealthCheck(ctx context.Context) bool {
 	url := config.GetConfig().BackendSetup.ApiUrl
 	log.Println("Checking backend health at", url)
@@ -35,7 +36,7 @@ func HealthCheck(ctx context.Context) bool {
 	return true
 }
 
-// HTTP status checker
+// HttpCheck HTTP status checker
 func HttpCheck(url string) error {
 	resp, err := http.Get(url)
 	if err != nil {
@@ -44,14 +45,19 @@ func HttpCheck(url string) error {
 			return err
 		}
 	}
-	defer resp.Body.Close()
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+
+		}
+	}(resp.Body)
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 	}
 	return nil
 }
 
-// Test backend with dummy request
+// DummyTest Test backend with dummy request
 func DummyTest(prompt string) error {
 	_, err := GetResponse(context.Background(), prompt)
 	return err
