@@ -18,14 +18,6 @@ var helpMessage = `<b>🤖 ket.ai Bot Commands</b>
 <b>▶ YouTube Commands</b>
 <code>/yt</code> or <code>/ytsum [URL]</code> Summarize a YouTube video
 
-<b>▶ RAG (Memory) Commands</b>
-<code>/ragstats</code> or <code>/rs</code> Show RAG system statistics
-<code>/raghistory [limit]</code> or <code>/rh</code> Show recent conversation history
-<code>/ragclear</code> or <code>/rc</code> Clear RAG history for this chat
-<code>/ragcontext [text]</code> or <code>/ra</code> Add important context info
-<code>/ragsummary [hours]</code> or <code>/rsm</code> Create conversation summary
-<code>/ragsearch [query]</code> or <code>/rse</code> Search for similar questions
-
 <b>▶ User Management</b>
 <i>Note: Only admins can manage users and chats.</i>
 <code>/adduser [user_id]</code> Add a user to the allowed users list
