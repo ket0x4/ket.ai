@@ -9,6 +9,7 @@ import (
 type BotSetup struct {
 	Token    string `json:"token"`
 	MaxQueue int    `json:"max_queue"`
+	Random   bool   `json:"random"`
 }
 
 type BackendSetup struct {
@@ -27,6 +28,8 @@ type Logging struct {
 
 type Config struct {
 	Version      string       `json:"Version"`
+	BotName      string       `json:"BotName"`
+	GenCommand   string       `json:"GenCommand"`
 	BotSetup     BotSetup     `json:"BotSetup"`
 	BackendSetup BackendSetup `json:"BackendSetup"`
 	Logging      Logging      `json:"logging"`
@@ -72,11 +75,14 @@ func LogConfig() {
 	log.Println("Loading config.json...")
 	log.Println("------------------------------------------")
 	log.Println("Version:", loadedConfig.Version)
+	log.Println("BotName:", loadedConfig.BotName)
+	log.Println("GenCommand:", loadedConfig.GenCommand)
 	log.Println("Proxy:", loadedConfig.HttpProxy)
 	log.Println("YouTube Language:", loadedConfig.BackendSetup.YtLanguage)
 	log.Println("API URL:", loadedConfig.BackendSetup.ApiUrl)
 	log.Println("Model:", loadedConfig.BackendSetup.Model)
 	log.Println("Max Queue Size:", loadedConfig.BotSetup.MaxQueue)
+	log.Println("Random:", loadedConfig.BotSetup.Random)
 	log.Println("------------------------------------------")
 	log.Println("Config loaded successfully.")
 }

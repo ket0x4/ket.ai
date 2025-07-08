@@ -1,5 +1,7 @@
 {
-    "Version": "6.0",
+    "Version": "6.1",
+    "BotName": "ket.ai",
+    "GenCommand": "/ket",
     "BotSetup": {
         "token": "TELEGRAM_BOT_TOKEN",
         "max_queue": 10,
@@ -10,7 +12,7 @@
         "api_key": "API_KEY",
         "model": "LLM_MODEL",
         "input_length": 2048,
-        "yt-language": "en"
+        "yt-language": "tr"
     },
     "logging": {
         "level": "info",

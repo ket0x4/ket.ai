@@ -49,8 +49,7 @@ func HandleStartCommand(c tele.Context) error {
 	}
 	log.Printf("[ALLOW] /start | user:%d chat:%d", c.Sender().ID, c.Chat().ID)
 	return c.Send(
-		`This version of Ket.ai is still in development.
-You can use @ketailegacy_bot to access the old version.`,
+		`Bot Running!`,
 	)
 }
 

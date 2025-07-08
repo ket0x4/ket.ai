@@ -1,6 +1,8 @@
 package telegram
 
 import (
+	"ket/config"
+
 	tele "gopkg.in/telebot.v4"
 )
 
@@ -35,7 +37,7 @@ func RegisterCommands(bot *tele.Bot) {
 var basicCommands = []Command{
 	{Name: "start", Handler: HandleStartCommand},
 	{Name: "help", Handler: HandleHelp},
-	{Name: "ket", Handler: HandlePrompt2},
+	{Name: config.GetConfig().GenCommand[1:], Handler: HandlePrompt2}, // Remove '/' from GenCommand
 	{Name: "status", Handler: HandleStatus},
 	{Name: "model", Handler: HandleModelCommand},
 }
