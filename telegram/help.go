@@ -7,7 +7,7 @@ import (
 	tele "gopkg.in/telebot.v4"
 )
 
-var helpMessage = `<b>🤖 ket.ai Bot Commands</b>
+var helpMessage = `<b>Bot Commands</b>
 
 <b>▶ Basic Commands</b>
 <code>/start</code> Get an introduction and available commands
