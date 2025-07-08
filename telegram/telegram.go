@@ -4,7 +4,9 @@ import (
 	"context"
 	"ket/backend"
 	"ket/config"
+	"ket/permissions"
 	"ket/rag"
+	"ket/random"
 	"log"
 	"strings"
 	"time"
@@ -110,7 +112,29 @@ func InitBot() *tele.Bot {
 		if strings.HasPrefix(c.Message().Text, "/") {
 			return nil
 		}
-		return err
+
+		// Sadece chatID bazlı izin kontrolü
+		if !permissions.IsAllowed(c.Chat().ID) {
+			return nil
+		}
+
+		ok, err := random.LogMessage(c.Chat().ID, c.Sender().Username, c.Sender().ID, c.Message().Text)
+		if err != nil {
+			log.Printf("[AutoResponse] LogMessage error: %v", err)
+		}
+		if ok {
+			log.Printf("[AutoResponse] Triggered for chat %d", c.Chat().ID)
+			response, err := random.GenerateAutoResponse(context.Background(), c.Chat().ID)
+			if err != nil {
+				log.Printf("[AutoResponse] GenerateAutoResponse error: %v", err)
+				return nil
+			}
+			_, sendErr := c.Bot().Reply(c.Message(), response)
+			if sendErr != nil {
+				log.Printf("[AutoResponse] Send error: %v", sendErr)
+			}
+		}
+		return nil
 	})
 
 	return bot
