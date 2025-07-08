@@ -12,7 +12,7 @@ import (
 
 const (
 	MaxMessagesPerGroup = 20
-	TriggerProbability  = 0.2 // %20
+	TriggerProbability  = 0.10 // %10
 )
 
 var (
