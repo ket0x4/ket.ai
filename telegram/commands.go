@@ -37,7 +37,7 @@ func RegisterCommands(bot *tele.Bot) {
 var basicCommands = []Command{
 	{Name: "start", Handler: HandleStartCommand},
 	{Name: "help", Handler: HandleHelp},
-	{Name: config.GetConfig().GenCommand[1:], Handler: HandlePrompt2}, // Remove '/' from GenCommand
+	{Name: config.GetConfig().GenCommand, Handler: HandlePrompt2}, // Remove '/' from GenCommand
 	{Name: "status", Handler: HandleStatus},
 	{Name: "model", Handler: HandleModelCommand},
 }
