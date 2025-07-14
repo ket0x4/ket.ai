@@ -4,15 +4,11 @@ import (
 	"context"
 	"fmt"
 	"ket/backend"
+	"ket/config"
 	"log"
 	"math/rand"
 	"strings"
 	"sync"
-)
-
-const (
-	MaxMessagesPerGroup = 20
-	TriggerProbability  = 0.10 // %10
 )
 
 var (
@@ -27,8 +23,7 @@ type AutoResponseConfig struct {
 }
 
 var defaultConfig = AutoResponseConfig{
-	PrePrompt: "Bu geçmiş kesitine göre, son mesaja kısa bir cevap ver. (bu promptu cevap içinde kullanma): ",
-	Enabled:   true,
+	Enabled: true,
 }
 
 var currentConfig = defaultConfig
@@ -43,6 +38,14 @@ func GetConfig() AutoResponseConfig {
 	return currentConfig
 }
 
+func getMaxMessagesPerGroup() int {
+	return config.GetConfig().BotSetup.MaxMessagesPerGroup
+}
+
+func getTriggerProbability() float64 {
+	return config.GetConfig().BotSetup.TriggerProbability
+}
+
 func LogMessage(chatID int64, username string, userID int64, message string) (bool, error) {
 	if !currentConfig.Enabled {
 		return false, nil
@@ -55,19 +58,19 @@ func LogMessage(chatID int64, username string, userID int64, message string) (bo
 
 	messages, exists := groupMessages[chatID]
 	if !exists {
-		messages = make([]string, 0, MaxMessagesPerGroup)
+		messages = make([]string, 0, getMaxMessagesPerGroup())
 	}
 
 	messages = append(messages, formattedMessage)
 
-	if len(messages) > MaxMessagesPerGroup {
-		messages = messages[len(messages)-MaxMessagesPerGroup:]
+	if len(messages) > getMaxMessagesPerGroup() {
+		messages = messages[len(messages)-getMaxMessagesPerGroup():]
 	}
 
 	groupMessages[chatID] = messages
 
 	// Gerçekten random tetikleme (Go 1.20+ için Seed gerekmez)
-	if rand.Float64() < TriggerProbability {
+	if rand.Float64() < getTriggerProbability() {
 		log.Printf("AutoResponse: Randomly triggered response for chat %d", chatID)
 		return true, nil
 	}
@@ -106,7 +109,8 @@ func GenerateAutoResponse(ctx context.Context, chatID int64) (string, error) {
 
 	fullPrompt := currentConfig.PrePrompt + "\n\nSon mesajlar:\n" + allMessages
 
-	response, err := backend.GetResponse(ctx, fullPrompt)
+	autoPrompt := config.GetConfig().BackendSetup.AutoPrompt
+	response, err := backend.GetResponse(ctx, fullPrompt, autoPrompt)
 	if err != nil {
 		return "", fmt.Errorf("failed to generate response: %w", err)
 	}
@@ -152,10 +156,10 @@ func GetGroupStats(chatID int64) (int, int) {
 
 	messages, exists := groupMessages[chatID]
 	if !exists {
-		return 0, MaxMessagesPerGroup
+		return 0, getMaxMessagesPerGroup()
 	}
 
-	return len(messages), MaxMessagesPerGroup
+	return len(messages), getMaxMessagesPerGroup()
 }
 
 func ClearGroupMessages(chatID int64) {

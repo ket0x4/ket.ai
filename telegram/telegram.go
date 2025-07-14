@@ -4,11 +4,8 @@ import (
 	"context"
 	"ket/backend"
 	"ket/config"
-	"ket/permissions"
 	"ket/rag"
-	"ket/random"
 	"log"
-	"strings"
 	"time"
 
 	tele "gopkg.in/telebot.v4"
@@ -28,13 +25,13 @@ func ignoreOldMessagesMiddleware(next tele.HandlerFunc) tele.HandlerFunc {
 	}
 }
 
-func processPrompt(task *PromptTask) {
+func processPrompt(task *PromptTask, systemPrompt string) {
 	log.Printf("Processing prompt for chat ID %d from queue.", task.ChatID)
 
-	response, err := rag.GetRagResponse(context.Background(), task.Prompt, task.ChatID, task.UserID, task.OriginalContext.Sender().Username)
+	response, err := rag.GetRagResponse(context.Background(), task.Prompt, task.ChatID, task.UserID, task.OriginalContext.Sender().Username, systemPrompt)
 	if err != nil {
 		log.Printf("Error getting RAG response for chat ID %d: %v", task.ChatID, err)
-		response, err = backend.GetResponse(context.Background(), task.Prompt)
+		response, err = backend.GetResponse(context.Background(), task.Prompt, systemPrompt)
 		if err != nil {
 			log.Printf("Error getting fallback response from backend for chat ID %d: %v", task.ChatID, err)
 			_, replyErr := task.OriginalContext.Bot().Reply(task.TargetMessage, "Error processing your request: "+err.Error())
@@ -61,11 +58,11 @@ func processPrompt(task *PromptTask) {
 	}
 }
 
-func startPromptWorker() {
+func startPromptWorker(systemPrompt string) {
 	promptQueue = make(chan *PromptTask, MaxQueueSize)
 	go func() {
 		for task := range promptQueue {
-			processPrompt(task)
+			processPrompt(task, systemPrompt)
 		}
 	}()
 	log.Println("Prompt processing worker started.")
@@ -102,40 +99,11 @@ func InitBot() *tele.Bot {
 
 	log.Println("Telegram bot created successfully")
 
-	startPromptWorker()
+	startPromptWorker("")
 
 	RegisterCommands(bot)
-
-	bot.Handle(&tele.InlineButton{Unique: "model_select"}, HandleModelSelect)
-
-	bot.Handle(tele.OnText, func(c tele.Context) error {
-		if strings.HasPrefix(c.Message().Text, "/") {
-			return nil
-		}
-
-		// Sadece chatID bazlı izin kontrolü
-		if !permissions.IsAllowed(c.Chat().ID) {
-			return nil
-		}
-
-		ok, err := random.LogMessage(c.Chat().ID, c.Sender().Username, c.Sender().ID, c.Message().Text)
-		if err != nil {
-			log.Printf("[AutoResponse] LogMessage error: %v", err)
-		}
-		if ok {
-			log.Printf("[AutoResponse] Triggered for chat %d", c.Chat().ID)
-			response, err := random.GenerateAutoResponse(context.Background(), c.Chat().ID)
-			if err != nil {
-				log.Printf("[AutoResponse] GenerateAutoResponse error: %v", err)
-				return nil
-			}
-			_, sendErr := c.Bot().Reply(c.Message(), response)
-			if sendErr != nil {
-				log.Printf("[AutoResponse] Send error: %v", sendErr)
-			}
-		}
-		return nil
-	})
+	RegisterInlineHandlers(bot)
+	RegisterTextHandler(bot)
 
 	return bot
 }

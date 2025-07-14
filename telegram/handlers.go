@@ -6,6 +6,7 @@ import (
 	"ket/backend"
 	"ket/config"
 	"ket/permissions"
+	"ket/random"
 	"ket/utils"
 	"log"
 	"strconv"
@@ -188,6 +189,42 @@ func HandleModelCommand(c tele.Context) error {
 	}
 	markup := &tele.ReplyMarkup{InlineKeyboard: rows}
 	return c.Send("<b>Available Models:</b>", markup, tele.ModeHTML)
+}
+
+func RegisterInlineHandlers(bot *tele.Bot) {
+	bot.Handle(&tele.InlineButton{Unique: "model_select"}, HandleModelSelect)
+}
+
+func RegisterTextHandler(bot *tele.Bot) {
+	bot.Handle(tele.OnText, HandleText)
+}
+
+func HandleText(c tele.Context) error {
+	if strings.HasPrefix(c.Message().Text, "/") {
+		return nil
+	}
+
+	if !permissions.IsAllowed(c.Chat().ID) {
+		return nil
+	}
+
+	ok, err := random.LogMessage(c.Chat().ID, c.Sender().Username, c.Sender().ID, c.Message().Text)
+	if err != nil {
+		log.Printf("[AutoResponse] LogMessage error: %v", err)
+	}
+	if ok {
+		log.Printf("[AutoResponse] Triggered for chat %d", c.Chat().ID)
+		response, err := random.GenerateAutoResponse(context.Background(), c.Chat().ID)
+		if err != nil {
+			log.Printf("[AutoResponse] GenerateAutoResponse error: %v", err)
+			return nil
+		}
+		_, sendErr := c.Bot().Reply(c.Message(), response)
+		if sendErr != nil {
+			log.Printf("[AutoResponse] Send error: %v", sendErr)
+		}
+	}
+	return nil
 }
 
 func HandleModelSelect(c tele.Context) error {

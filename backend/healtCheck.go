@@ -59,6 +59,6 @@ func HttpCheck(url string) error {
 
 // DummyTest Test backend with dummy request
 func DummyTest(prompt string) error {
-	_, err := GetResponse(context.Background(), prompt)
+	_, err := GetResponse(context.Background(), prompt, "")
 	return err
 }

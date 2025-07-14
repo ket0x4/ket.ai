@@ -28,7 +28,7 @@ func HandleYTCommand(c tele.Context) error {
 	// Process each link and send a summary
 	for _, link := range links {
 		log.Printf("Processing link for %d: %s", user, link)
-		summary, err := youtube.SummarizeYT(link)
+		summary, err := youtube.SummarizeYT(link, "")
 		if err != nil {
 			log.Printf("[Youtube] Error: %d: %v", user, err)
 			if strings.Contains(err.Error(), "Sign in to confirm") {

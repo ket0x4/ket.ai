@@ -31,10 +31,14 @@ func extractPromptDetails(c tele.Context) (promptText string, targetMessage *tel
 		targetMessage = c.Message().ReplyTo
 	} else {
 		rawText := c.Message().Text
-		if strings.HasPrefix(rawText, config.GetConfig().GenCommand) {
-			trimmedText := strings.TrimSpace(strings.TrimPrefix(rawText, config.GetConfig().GenCommand))
-			if trimmedText != "" {
-				promptText = trimmedText
+		cmdVariants := []string{config.GetConfig().GenCommand, "/" + config.GetConfig().GenCommand}
+		for _, cmd := range cmdVariants {
+			if strings.HasPrefix(rawText, cmd) {
+				trimmedText := strings.TrimSpace(strings.TrimPrefix(rawText, cmd))
+				if trimmedText != "" {
+					promptText = trimmedText
+					break
+				}
 			}
 		}
 	}
@@ -55,7 +59,7 @@ func HandlePrompt2(c tele.Context) error {
 	promptText, targetMessage, err := extractPromptDetails(c)
 	if err != nil {
 		log.Printf("Prompt extraction failed for chat ID %d: %v", c.Chat().ID, err)
-		return c.Reply(fmt.Sprintf("The prompt is empty. Usage: %s <your prompt> or reply to a message with %s.", config.GetConfig().GenCommand, config.GetConfig().GenCommand))
+		return c.Reply(fmt.Sprintf("The prompt is empty. Usage: /%s <your prompt> or reply to a message with /%s.", config.GetConfig().GenCommand, config.GetConfig().GenCommand))
 	}
 
 	task := &PromptTask{

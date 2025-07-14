@@ -7,9 +7,11 @@ import (
 )
 
 type BotSetup struct {
-	Token    string `json:"token"`
-	MaxQueue int    `json:"max_queue"`
-	Random   bool   `json:"random"`
+	Token               string  `json:"token"`
+	MaxQueue            int     `json:"max_queue"`
+	Random              bool    `json:"random"`
+	MaxMessagesPerGroup int     `json:"MaxMessagesPerGroup"`
+	TriggerProbability  float64 `json:"TriggerProbability"`
 }
 
 type BackendSetup struct {
@@ -19,6 +21,7 @@ type BackendSetup struct {
 	InputLength int    `json:"input_length"`
 	YtLanguage  string `json:"yt-language"`
 	SysPrompt   string `json:"-"` // never marshal to JSON
+	AutoPrompt  string `json:"-"` // used for auto response
 }
 
 type Logging struct {
@@ -68,6 +71,12 @@ func ReadConfig() {
 	}
 	loadedConfig.BackendSetup.SysPrompt = string(sysPrompt)
 
+	autoPrompt, err := os.ReadFile("auto_prompt.txt")
+	if err != nil {
+		log.Fatalf("Error loading auto prompt: %v", err)
+	}
+	loadedConfig.BackendSetup.AutoPrompt = string(autoPrompt)
+
 	LogConfig()
 }
 
@@ -83,6 +92,8 @@ func LogConfig() {
 	log.Println("Model:", loadedConfig.BackendSetup.Model)
 	log.Println("Max Queue Size:", loadedConfig.BotSetup.MaxQueue)
 	log.Println("Random:", loadedConfig.BotSetup.Random)
+	log.Println("Max Messages Per Group:", loadedConfig.BotSetup.MaxMessagesPerGroup)
+	log.Println("Trigger Probability:", loadedConfig.BotSetup.TriggerProbability)
 	log.Println("------------------------------------------")
 	log.Println("Config loaded successfully.")
 }

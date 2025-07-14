@@ -76,7 +76,7 @@ func (ds *DebouncedSaver) Trigger() {
 }
 
 // GetRagResponse generates a response using the simplified RAG model.
-func GetRagResponse(ctx context.Context, prompt string, chatID int64, userID int64, userName string) (string, error) {
+func GetRagResponse(ctx context.Context, prompt string, chatID int64, userID int64, userName string, systemPrompt string) (string, error) {
 	if strings.TrimSpace(prompt) == "" {
 		return "", nil
 	}
@@ -88,14 +88,14 @@ func GetRagResponse(ctx context.Context, prompt string, chatID int64, userID int
 	addMessageToHistory(chatID, userMessage)
 
 	// Check if it's time to summarize
-	go handleSummarization(ctx, chatID)
+	go handleSummarization(ctx, chatID, systemPrompt)
 
 	// Prepare context for the model
 	contextStr := prepareContext(chatID)
 	finalPrompt := buildRAGPrompt(prompt, contextStr)
 
 	// Get response from backend
-	response, err := backend.GetResponseWithRAG(ctx, prompt, finalPrompt)
+	response, err := backend.GetResponseWithRAG(ctx, prompt, finalPrompt, systemPrompt)
 	if err != nil {
 		return "", fmt.Errorf("failed to get response from backend: %w", err)
 	}
@@ -140,7 +140,7 @@ func addMessageToHistory(chatID int64, message string) {
 }
 
 // handleSummarization checks if a summary is needed and triggers it.
-func handleSummarization(ctx context.Context, chatID int64) {
+func handleSummarization(ctx context.Context, chatID int64, systemPrompt string) {
 	rwMutex.RLock()
 	count := messageCounter[chatID]
 	rwMutex.RUnlock()
@@ -170,7 +170,7 @@ History:
 %s`, historySnapshot)
 
 	// Get summary from the model
-	summary, err := backend.GetResponse(ctx, summaryPrompt)
+	summary, err := backend.GetResponse(ctx, summaryPrompt, systemPrompt)
 	if err != nil {
 		log.Printf("RAG: Failed to create summary for chat %d: %v", chatID, err)
 		// Don't reset counter if summarization fails, try again later.

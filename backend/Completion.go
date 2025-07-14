@@ -25,7 +25,7 @@ func init() {
 	system_prompt = cfg.BackendSetup.SysPrompt
 }
 
-func GetResponse(ctx context.Context, prompt string) (string, error) {
+func GetResponse(ctx context.Context, prompt string, systemPrompt string) (string, error) {
 	// Check prompt for empty or too long before processing
 	valid, errorMsg := CheckPrompt(prompt)
 	if !valid {
@@ -33,9 +33,13 @@ func GetResponse(ctx context.Context, prompt string) (string, error) {
 		return "", fmt.Errorf("%s", errorMsg)
 	}
 
+	if systemPrompt == "" {
+		systemPrompt = cfg.BackendSetup.SysPrompt
+	}
+
 	chatCompletion, err := client.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
 		Messages: []openai.ChatCompletionMessageParamUnion{
-			openai.SystemMessage(system_prompt),
+			openai.SystemMessage(systemPrompt),
 			openai.UserMessage(prompt),
 		},
 		Model: openai.ChatModel(cfg.BackendSetup.Model),
@@ -47,7 +51,7 @@ func GetResponse(ctx context.Context, prompt string) (string, error) {
 }
 
 // GetResponseWithRAG generates a response using RAG-enhanced context
-func GetResponseWithRAG(ctx context.Context, prompt string, contextPrompt string) (string, error) {
+func GetResponseWithRAG(ctx context.Context, prompt string, contextPrompt string, systemPrompt string) (string, error) {
 	// Check prompt for empty or too long before processing
 	valid, errorMsg := CheckPrompt(prompt)
 	if !valid {
@@ -55,10 +59,14 @@ func GetResponseWithRAG(ctx context.Context, prompt string, contextPrompt string
 		return "", fmt.Errorf("%s", errorMsg)
 	}
 
+	if systemPrompt == "" {
+		systemPrompt = cfg.BackendSetup.SysPrompt
+	}
+
 	// Use the context-enhanced prompt for RAG responses
 	chatCompletion, err := client.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
 		Messages: []openai.ChatCompletionMessageParamUnion{
-			openai.SystemMessage(system_prompt),
+			openai.SystemMessage(systemPrompt),
 			openai.UserMessage(contextPrompt),
 		},
 		Model: openai.ChatModel(cfg.BackendSetup.Model),
