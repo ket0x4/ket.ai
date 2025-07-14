@@ -75,6 +75,7 @@ func InitBot() *tele.Bot {
 	settings := tele.Settings{
 		Synchronous: false,
 		Updates:     5,
+		ParseMode:   tele.ModeMarkdown,
 		Poller:      &tele.LongPoller{Timeout: 10 * time.Second},
 		OnError: func(err error, c tele.Context) {
 			if c != nil && c.Message() != nil {
