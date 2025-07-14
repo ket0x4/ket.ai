@@ -5,7 +5,7 @@ config.json
 ket
 chats.json
 rag_data.json
-system_prompt.txt
 rag_data.json.bak
-telegram/prompt.go
+system_prompt.txt
+auto_prompt.txt
 config.debug
