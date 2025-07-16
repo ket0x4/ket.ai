@@ -31,6 +31,7 @@ func RegisterCommands(bot *tele.Bot) {
 			}
 		}
 	}
+	bot.Handle(&statusRefreshButton, HandleStatusRefresh)
 }
 
 // Basic Commands

@@ -11,11 +11,17 @@ import (
 	"log"
 	"strconv"
 	"strings"
+	"time"
 
 	tele "gopkg.in/telebot.v4"
 )
 
 var modelIDMap = make(map[string]string)
+var statusRefreshRateLimit = make(map[int64]time.Time)
+var statusRefreshButton = tele.InlineButton{
+	Unique: "status_refresh",
+	Text:   "⟳ Refresh",
+}
 
 // Helper: check admin and reply if not
 func requireAdmin(c tele.Context, cmd string) bool {
@@ -133,7 +139,24 @@ func HandleStatus(c tele.Context) error {
 		return c.Reply("You are not authorized to use this bot.")
 	}
 	log.Printf("[ALLOW] /status | user:%d chat:%d", c.Sender().ID, c.Chat().ID)
-	return c.Send(utils.GetSystemStats(), tele.ModeHTML)
+
+	markup := &tele.ReplyMarkup{}
+	markup.InlineKeyboard = [][]tele.InlineButton{{statusRefreshButton}}
+
+	return c.Send(utils.GetSystemStats(), markup, tele.ModeHTML)
+}
+
+func HandleStatusRefresh(c tele.Context) error {
+	userID := c.Sender().ID
+	if !permissions.IsAdmin(userID) {
+		return c.Respond(&tele.CallbackResponse{Text: "Only admins can refresh status.", ShowAlert: true})
+	}
+	last, ok := statusRefreshRateLimit[userID]
+	if ok && time.Since(last) < 3*time.Second {
+		return c.Respond(&tele.CallbackResponse{Text: "Rate limit: 1 refresh per 3 seconds.", ShowAlert: true})
+	}
+	statusRefreshRateLimit[userID] = time.Now()
+	return c.Edit(utils.GetSystemStats(), &tele.ReplyMarkup{InlineKeyboard: [][]tele.InlineButton{{statusRefreshButton}}}, tele.ModeHTML)
 }
 
 func HandleList(c tele.Context) error {
@@ -183,7 +206,7 @@ func HandleModelCommand(c tele.Context) error {
 			Data:   id,
 		}
 		if m == currentModel {
-			btn.Text = "✅ " + m
+			btn.Text = "✓ " + m
 		}
 		rows = append(rows, []tele.InlineButton{btn})
 	}

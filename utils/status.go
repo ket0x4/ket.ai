@@ -1,7 +1,9 @@
 package utils
 
 import (
+	"context"
 	"fmt"
+	"ket/backend"
 	"ket/config"
 	"log"
 	"os"
@@ -20,6 +22,13 @@ var (
 	boardName     string
 	boardNameOnce sync.Once
 )
+
+func getFormattedModelName() string {
+	model := config.GetConfig().BackendSetup.Model
+	model = strings.TrimPrefix(model, "model/")
+	model = strings.TrimPrefix(model, "models/")
+	return model
+}
 
 func getCPUUsage() (string, error) {
 	percentages, err := cpu.Percent(time.Second, false)
@@ -95,6 +104,7 @@ func GetSystemStats() string {
 
 	var wg sync.WaitGroup
 	var cpuUsage, memoryUsage, uptime, cpuTemp, osName, boardName, version, llmModel string
+	var backendHealth string
 
 	// Version
 	version = "N/A"
@@ -105,7 +115,7 @@ func GetSystemStats() string {
 	// LLM Model
 	llmModel = "N/A"
 	if cfg.BackendSetup.Model != "" {
-		llmModel = cfg.BackendSetup.Model
+		llmModel = getFormattedModelName()
 	}
 
 	// OS
@@ -153,6 +163,16 @@ func GetSystemStats() string {
 	// Board Name
 	boardName = getBoardName()
 
+	// Backend Health
+	backendHealth = "N/A"
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if backend.HealthCheck(ctx) {
+		backendHealth = "✓ Healthy"
+	} else {
+		backendHealth = "✗ Down"
+	}
+
 	return fmt.Sprintf(`
 <b>System Status</b>
 - - - - - - - - - - - - - - - - -
@@ -166,5 +186,6 @@ func GetSystemStats() string {
 <b>CPU Temp:</b> <code>%s</code>
 - - - - - - - - - - - - - - - - -
 <b>LLM Model:</b> <code>%s</code>
-`, version, boardName, osName, uptime, cpuUsage, memoryUsage, cpuTemp, llmModel)
+<b>Backend:</b> <code>%s</code>
+`, version, boardName, osName, uptime, cpuUsage, memoryUsage, cpuTemp, llmModel, backendHealth)
 }
