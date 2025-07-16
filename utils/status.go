@@ -6,12 +6,14 @@ import (
 	"log"
 	"os"
 	"runtime"
-	"strconv"
 	"strings"
 	"sync"
+	"time"
 
-	"github.com/shirou/gopsutil/cpu"
-	"github.com/shirou/gopsutil/mem"
+	"github.com/shirou/gopsutil/v4/cpu"
+	"github.com/shirou/gopsutil/v4/host"
+	"github.com/shirou/gopsutil/v4/mem"
+	"github.com/shirou/gopsutil/v4/sensors"
 )
 
 var (
@@ -19,102 +21,150 @@ var (
 	boardNameOnce sync.Once
 )
 
-func getCPUUsage() float64 {
-	percentages, err := cpu.Percent(1, false)
+func getCPUUsage() (string, error) {
+	percentages, err := cpu.Percent(time.Second, false)
 	if err != nil {
-		log.Printf("[Status] Error reading CPU usage: %v", err)
-		return 0
+		return "N/A", fmt.Errorf("error reading CPU usage: %w", err)
 	}
-	return percentages[0]
+	if len(percentages) == 0 {
+		return "N/A", fmt.Errorf("no CPU usage data returned")
+	}
+	return fmt.Sprintf("%.2f%%", percentages[0]), nil
 }
 
-func getMemoryUsage() float64 {
+func getMemoryUsage() (string, error) {
 	v, err := mem.VirtualMemory()
 	if err != nil {
-		log.Printf("[Status] Error reading memory usage: %v", err)
-		return 0
+		return "N/A", fmt.Errorf("error reading memory usage: %w", err)
 	}
-	return v.UsedPercent
+	return fmt.Sprintf("%.2f%%", v.UsedPercent), nil
 }
 
 func getCPUTemperature() string {
-	if runtime.GOOS == "linux" {
-		if temp, err := os.ReadFile("/sys/class/thermal/thermal_zone0/temp"); err == nil {
-			if tempInt, err := strconv.Atoi(strings.TrimSpace(string(temp))); err == nil {
-				return fmt.Sprintf("%.1f°C", float64(tempInt)/1000.0)
-			}
-		}
+	temps, err := sensors.SensorsTemperatures()
+	if err != nil {
+		log.Printf("[Status] Error reading CPU temperature: %v", err)
+		return "N/A"
 	}
-	return "Unsupported OS/Board"
+
+	if len(temps) == 0 {
+		return "N/A"
+	}
+
+	return fmt.Sprintf("%.1f°C", temps[0].Temperature)
 }
 
 func getBoardName() string {
 	boardNameOnce.Do(func() {
-		if runtime.GOOS == "linux" {
-			// Try reading from DMI product name first
-			if content, err := os.ReadFile("/sys/devices/virtual/dmi/id/product_name"); err == nil {
-				boardName = strings.TrimSpace(string(content))
-				return
-			}
+		if runtime.GOOS != "linux" {
+			boardName = "Unsupported OS"
+			return
+		}
+		// Try reading from DMI product name first
+		if content, err := os.ReadFile("/sys/devices/virtual/dmi/id/product_name"); err == nil {
+			boardName = strings.TrimSpace(string(content))
+			return
+		}
 
-			// Fallback to device-tree model
-			if content, err := os.ReadFile("/sys/firmware/devicetree/base/model"); err == nil {
-				name := strings.TrimSpace(string(content))
-				// remove null terminator
-				if idx := strings.IndexByte(name, 0); idx != -1 {
-					name = name[:idx]
-				}
-				boardName = name
-				return
+		// Fallback to device-tree model
+		if content, err := os.ReadFile("/sys/firmware/devicetree/base/model"); err == nil {
+			name := strings.TrimSpace(string(content))
+			// remove null terminator
+			if idx := strings.IndexByte(name, 0); idx != -1 {
+				name = name[:idx]
 			}
+			boardName = name
+			return
 		}
 		boardName = "Unknown"
 	})
 	return boardName
 }
 
-func GetSystemStats() string {
-	cpuUsage := getCPUUsage()
-	memoryUsage := getMemoryUsage()
-	cpuTemp := getCPUTemperature()
-	osName := runtime.GOOS
-	if osName == "windows" {
-		osName = "Windows"
+func getUptime() (string, error) {
+	uptime, err := host.Uptime()
+	if err != nil {
+		return "N/A", fmt.Errorf("error reading uptime: %w", err)
 	}
-	boardName := getBoardName()
+	d := time.Duration(uptime) * time.Second
+	return d.String(), nil
+}
+
+func GetSystemStats() string {
 	cfg := config.GetConfig()
 
-	cpuUsageStr := "N/A"
-	if cpuUsage > 0 {
-		cpuUsageStr = fmt.Sprintf("%.2f%%", cpuUsage)
-	}
-	memoryUsageStr := "N/A"
-	if memoryUsage > 0 {
-		memoryUsageStr = fmt.Sprintf("%.2f%%", memoryUsage)
-	}
-	if cpuTemp == "" {
-		cpuTemp = "N/A"
-	}
-	if boardName == "Unknown" || boardName == "" {
-		boardName = "N/A"
-	}
-	llmModel := "N/A"
-	if cfg.BackendSetup.Model != "" {
-		llmModel = cfg.BackendSetup.Model
-	}
-	version := "N/A"
+	var wg sync.WaitGroup
+	var cpuUsage, memoryUsage, uptime, cpuTemp, osName, boardName, version, llmModel string
+
+	// Version
+	version = "N/A"
 	if cfg.Version != "" {
 		version = cfg.Version
 	}
 
+	// LLM Model
+	llmModel = "N/A"
+	if cfg.BackendSetup.Model != "" {
+		llmModel = cfg.BackendSetup.Model
+	}
+
+	// OS
+	osName = runtime.GOOS
+	if osName == "windows" {
+		osName = "Windows"
+	}
+
+	wg.Add(4)
+
+	go func() {
+		defer wg.Done()
+		var err error
+		uptime, err = getUptime()
+		if err != nil {
+			log.Printf("[Status] %v", err)
+		}
+	}()
+
+	go func() {
+		defer wg.Done()
+		var err error
+		cpuUsage, err = getCPUUsage()
+		if err != nil {
+			log.Printf("[Status] %v", err)
+		}
+	}()
+
+	go func() {
+		defer wg.Done()
+		var err error
+		memoryUsage, err = getMemoryUsage()
+		if err != nil {
+			log.Printf("[Status] %v", err)
+		}
+	}()
+
+	go func() {
+		defer wg.Done()
+		cpuTemp = getCPUTemperature()
+	}()
+
+	wg.Wait()
+
+	// Board Name
+	boardName = getBoardName()
+
 	return fmt.Sprintf(`
 <b>System Status</b>
+- - - - - - - - - - - - - - - - -
 <b>Version:</b> <code>%s</code>
 <b>Board:</b> <code>%s</code>
 <b>Platform:</b> <code>%s</code>
-<b>CPU Usage:</b> <code>%s</code>
-<b>Memory Usage:</b> <code>%s</code>
+<b>Uptime:</b> <code>%s</code>
+- - - - - - - - - - - - - - - - -
+<b>CPU:</b> <code>%s</code>
+<b>RAM:</b> <code>%s</code>
 <b>CPU Temp:</b> <code>%s</code>
+- - - - - - - - - - - - - - - - -
 <b>LLM Model:</b> <code>%s</code>
-`, version, boardName, osName, cpuUsageStr, memoryUsageStr, cpuTemp, llmModel)
+`, version, boardName, osName, uptime, cpuUsage, memoryUsage, cpuTemp, llmModel)
 }

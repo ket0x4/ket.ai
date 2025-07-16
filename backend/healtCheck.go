@@ -3,62 +3,59 @@ package backend
 import (
 	"context"
 	"fmt"
-	"io"
 	"ket/config"
 	"log"
 	"net/http"
 )
 
-func init() {
-	// Initialize health check
-	go HealthCheck(context.Background())
-}
-
-// HealthCheck Check backend health
+// HealthCheck checks the backend health by making an HTTP request.
 func HealthCheck(ctx context.Context) bool {
 	url := config.GetConfig().BackendSetup.ApiUrl
 	log.Println("Checking backend health at", url)
-	if err := HttpCheck(url); err != nil {
-		log.Printf("health check failed on http check: %v", err)
+
+	if err := HttpCheck(ctx, url); err != nil {
+		log.Printf("Health check failed: %v", err)
 		return false
-	} else {
-		log.Println("HTTP health check passed.")
 	}
-	if err := DummyTest("Are you working?"); err != nil {
-		log.Printf("health check failed on dummy test: %v", err)
-		return false
-	} else {
-		log.Println("Dummy test passed.")
-	}
-	// If we reach here, all checks passed
+
 	log.Println("Backend health check passed.")
-	// Optionally, you can add more checks here (e.g., database connection, etc.)
 	return true
 }
 
-// HttpCheck HTTP status checker
-func HttpCheck(url string) error {
-	resp, err := http.Get(url)
+// HttpCheck performs an HTTP GET request to the given URL to check its status.
+func HttpCheck(ctx context.Context, url string) error {
+	// Try health endpoint first
+	healthURL := url + "/health"
+	req, err := http.NewRequestWithContext(ctx, "GET", healthURL, nil)
 	if err != nil {
-		resp, err = http.Get(url + "/health")
-		if err != nil {
-			return err
-		}
+		return fmt.Errorf("failed to create request: %w", err)
 	}
-	defer func(Body io.ReadCloser) {
-		err := Body.Close()
-		if err != nil {
 
-		}
-	}(resp.Body)
+	resp, err := http.DefaultClient.Do(req)
+	if err == nil && resp.StatusCode == http.StatusOK {
+		resp.Body.Close()
+		return nil
+	}
+	if resp != nil {
+		resp.Body.Close()
+	}
+
+	// Fallback to base URL if health endpoint fails
+	log.Println("Health check on /health failed, trying base URL.")
+	req, err = http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create request for base URL: %w", err)
+	}
+
+	resp, err = http.DefaultClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("HTTP GET request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 	}
-	return nil
-}
 
-// DummyTest Test backend with dummy request
-func DummyTest(prompt string) error {
-	_, err := GetResponse(context.Background(), prompt, "")
-	return err
+	return nil
 }
