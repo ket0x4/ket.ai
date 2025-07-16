@@ -13,7 +13,8 @@ var helpMessage = `<b>Bot Commands</b>
 <code>/start</code> Get an introduction and available commands
 <code>/help</code> Provides this help message
 <code>/status</code> Check the current status of the host device
-<code>/ket [prompt]</code> Send a prompt to the AI (supports RAG)
+<code>/ket [prompt]</code> Send a prompt to the AI
+<code>/model</code> List available LLM models
 
 <b>▶ YouTube Commands</b>
 <code>/yt</code> or <code>/ytsum [URL]</code> Summarize a YouTube video
@@ -25,12 +26,9 @@ var helpMessage = `<b>Bot Commands</b>
 <code>/addchat [chat_id]</code> Add a chat to the allowed chats list
 <code>/rmchat [chat_id]</code> Remove a chat from the allowed chats list
 <code>/list</code> List all allowed users and chats
-<code>/ragcleanup [days]</code> Clean old RAG documents (admin only)
-<code>/model</code> List available LLM models (admin: /model [model_name] to change)
 
 <b>▶ Tips</b>
 • RAG system remembers your conversations for better responses
-• Use /ragcontext to add important info that should be remembered
 • The bot works better with context from previous conversations`
 
 func HandleHelp(c tele.Context) error {
