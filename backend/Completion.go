@@ -3,30 +3,23 @@ package backend
 import (
 	"context"
 	"fmt"
+	"ket/config"
 	"log"
 
-	"ket/config"
-
-	"github.com/openai/openai-go"
-	"github.com/openai/openai-go/option"
+	openai "github.com/sashabaranov/go-openai"
 )
 
-var client openai.Client
+var client *openai.Client
 var cfg config.Config
-
-var system_prompt string
 
 func init() {
 	cfg = config.GetConfig()
-	client = openai.NewClient(
-		option.WithBaseURL(cfg.BackendSetup.ApiUrl),
-		option.WithAPIKey(cfg.BackendSetup.ApiKey),
-	)
-	system_prompt = cfg.BackendSetup.SysPrompt
+	config := openai.DefaultConfig(cfg.BackendSetup.ApiKey)
+	config.BaseURL = cfg.BackendSetup.ApiUrl
+	client = openai.NewClientWithConfig(config)
 }
 
 func GetResponse(ctx context.Context, prompt string, systemPrompt string) (string, error) {
-	// Check prompt for empty or too long before processing
 	valid, errorMsg := CheckPrompt(prompt)
 	if !valid {
 		log.Println(errorMsg)
@@ -37,22 +30,34 @@ func GetResponse(ctx context.Context, prompt string, systemPrompt string) (strin
 		systemPrompt = cfg.BackendSetup.SysPrompt
 	}
 
-	chatCompletion, err := client.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
-		Messages: []openai.ChatCompletionMessageParamUnion{
-			openai.SystemMessage(systemPrompt),
-			openai.UserMessage(prompt),
-		},
-		Model: openai.ChatModel(cfg.BackendSetup.Model),
+	messages := make([]openai.ChatCompletionMessage, 0)
+	if systemPrompt != "" {
+		messages = append(messages, openai.ChatCompletionMessage{
+			Role:    openai.ChatMessageRoleSystem,
+			Content: systemPrompt,
+		})
+	}
+	messages = append(messages, openai.ChatCompletionMessage{
+		Role:    openai.ChatMessageRoleUser,
+		Content: prompt,
 	})
+
+	resp, err := client.CreateChatCompletion(
+		ctx,
+		openai.ChatCompletionRequest{
+			Model:    cfg.BackendSetup.Model,
+			Messages: messages,
+		},
+	)
+
 	if err != nil {
 		return "", err
 	}
-	return chatCompletion.Choices[0].Message.Content, nil
+
+	return resp.Choices[0].Message.Content, nil
 }
 
-// GetResponseWithRAG generates a response using RAG-enhanced context
 func GetResponseWithRAG(ctx context.Context, prompt string, contextPrompt string, systemPrompt string) (string, error) {
-	// Check prompt for empty or too long before processing
 	valid, errorMsg := CheckPrompt(prompt)
 	if !valid {
 		log.Println(errorMsg)
@@ -63,29 +68,37 @@ func GetResponseWithRAG(ctx context.Context, prompt string, contextPrompt string
 		systemPrompt = cfg.BackendSetup.SysPrompt
 	}
 
-	// Use the context-enhanced prompt for RAG responses
-	chatCompletion, err := client.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
-		Messages: []openai.ChatCompletionMessageParamUnion{
-			openai.SystemMessage(systemPrompt),
-			openai.UserMessage(contextPrompt),
-		},
-		Model: openai.ChatModel(cfg.BackendSetup.Model),
+	messages := make([]openai.ChatCompletionMessage, 0)
+	if systemPrompt != "" {
+		messages = append(messages, openai.ChatCompletionMessage{
+			Role:    openai.ChatMessageRoleSystem,
+			Content: systemPrompt,
+		})
+	}
+	messages = append(messages, openai.ChatCompletionMessage{
+		Role:    openai.ChatMessageRoleUser,
+		Content: contextPrompt,
 	})
+
+	resp, err := client.CreateChatCompletion(
+		ctx,
+		openai.ChatCompletionRequest{
+			Model:    cfg.BackendSetup.Model,
+			Messages: messages,
+		},
+	)
+
 	if err != nil {
 		return "", err
 	}
-	return chatCompletion.Choices[0].Message.Content, nil
+
+	return resp.Choices[0].Message.Content, nil
 }
 
-// FetchModels retrieves the list of available models from the backend API.
-func FetchModels(ctx context.Context) ([]string, error) {
-	models, err := client.Models.List(ctx)
+func FetchModels(ctx context.Context) ([]openai.Model, error) {
+	models, err := client.ListModels(ctx)
 	if err != nil {
 		return nil, err
 	}
-	var ids []string
-	for _, m := range models.Data {
-		ids = append(ids, m.ID)
-	}
-	return ids, nil
+	return models.Models, nil
 }

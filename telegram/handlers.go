@@ -199,14 +199,14 @@ func HandleModelCommand(c tele.Context) error {
 	var rows [][]tele.InlineButton
 	for i, m := range models {
 		id := strconv.Itoa(i)
-		modelIDMap[id] = m
+		modelIDMap[id] = m.ID
 		btn := tele.InlineButton{
 			Unique: "model_select",
-			Text:   m,
+			Text:   m.ID,
 			Data:   id,
 		}
-		if m == currentModel {
-			btn.Text = "✓ " + m
+		if m.ID == currentModel {
+			btn.Text = "✓ " + m.ID
 		}
 		rows = append(rows, []tele.InlineButton{btn})
 	}
@@ -267,7 +267,7 @@ func HandleModelSelect(c tele.Context) error {
 	}
 	found := false
 	for _, m := range models {
-		if m == model {
+		if m.ID == model {
 			found = true
 			break
 		}
