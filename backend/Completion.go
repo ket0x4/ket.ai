@@ -26,7 +26,7 @@ func GetResponse(ctx context.Context, prompt string, systemPrompt string) (strin
 		return "", fmt.Errorf("%s", errorMsg)
 	}
 
-	if systemPrompt == "" {
+	if systemPrompt == "default" {
 		systemPrompt = cfg.BackendSetup.SysPrompt
 	}
 
@@ -64,7 +64,7 @@ func GetResponseWithRAG(ctx context.Context, prompt string, contextPrompt string
 		return "", fmt.Errorf("%s", errorMsg)
 	}
 
-	if systemPrompt == "" {
+	if systemPrompt == "default" {
 		systemPrompt = cfg.BackendSetup.SysPrompt
 	}
 

@@ -100,7 +100,7 @@ func InitBot() *tele.Bot {
 
 	log.Println("Telegram bot created successfully")
 
-	startPromptWorker("")
+	startPromptWorker("default")
 
 	RegisterCommands(bot)
 	RegisterInlineHandlers(bot)
