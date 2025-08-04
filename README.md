@@ -13,28 +13,28 @@ Ket.AI is an telegram bot that functions as a chatbot powered by an OpenAI compa
 ## Commands
 
 ### General Commands
-- **Start Command**: `/start` to get an introduction and available commands.
-- **Help Command**: `/help` provides information on how to use the bot and its commands.
-- **Status Command**: `/status` to check the current status of the host device.
+- `/start` to get an introduction and available commands.
+- `/help` provides information on how to use the bot and its commands.
+- `/status` to check the current status of the host device.
 
 ### Youtube Commands
-- **Video summary Command**: `/yt` or `/ytsum` to summarize a YouTube video by providing the video URL.
+- `/yt` or `/ytsum` to summarize a YouTube video by providing the video URL.
 
 Note: User can also reply to a YouTube video link with same commands to summarize it.
 
 ### User Management
 Note: Only admins can manage users and chats.
 
-- **Add User Command**: `/adduser` to add a user to the allowed users list.
-- **Remove User Command**: `/rmuser` to remove a user from the allowed users list.
-- **Add Chat Command**: `/addchat` to add a chat to the allowed chats list.
-- **Remove Chat Command**: `/rmchat` to remove a chat from the allowed chats list.
-- **List Command**: `/list` to list all allowed users and chats.
+- `/adduser` to add a user to the allowed users list.
+- `/rmuser` to remove a user from the allowed users list.
+- `/addchat` to add a chat to the allowed chats list.
+- `/rmchat` to remove a chat from the allowed chats list.
+- `/list` to list all allowed users and chats.
 
 ### Retrieval-Augmented Generation Commands
 
-- **Reset Command**: `/reset` to clear the context and start a new conversation.
-- **History Command**: `/history` to view the context history of the current chat.
+- `/reset` to clear the context and start a new conversation.
+- `/history` to view the context history of the current chat.
 
 ### `config/config.json` structure:
 
@@ -111,6 +111,21 @@ CCGO_ENABLED=0 go build -ldflags '-w -s' -o ket main.go
 - move sqlite from json to a proper database
 - Add more backend support
 
+### Telegram Bot Setup commands
+Note: add these commands to your bot using BotFather.
+```
+start - Start the bot and get an introduction
+help - Get help on how to use the bot
+status - Check the current status of the host device
+adduser - Add a user to the allowed users list
+rmuser - Remove a user from the allowed users list
+addchat - Add a chat to the allowed chats list
+rmchat - Remove a chat from the allowed chats list
+list - List all allowed users and chats
+reset - Clear the context and start a new conversation
+history - View the context history of the current chat
+ytsum - Summarize a YouTube video by providing the video URL
+```
 
 ## License
 
