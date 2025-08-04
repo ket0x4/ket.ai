@@ -19,7 +19,7 @@ func NewBot(cfg *config.Config) (*Bot, error) {
 	settings := tele.Settings{
 		Token:     cfg.BotSetup.Token,
 		Poller:    &tele.LongPoller{Timeout: 10 * time.Second},
-		ParseMode: tele.ModeHTML,
+		ParseMode: tele.ModeMarkdown,
 	}
 
 	b, err := tele.NewBot(settings)

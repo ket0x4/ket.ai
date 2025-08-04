@@ -122,7 +122,13 @@ func processPrompt(task *PromptTask, systemPrompt string, bot *tele.Bot) {
 
 	_, sendErr := bot.Reply(task.TargetMessage, response)
 	if sendErr != nil {
-		log.Printf("Error sending response to chat ID %d: %v", task.ChatID, sendErr)
+		log.Printf("Error sending markdown response to chat ID %d: %v. Retrying as plain text.", task.ChatID, sendErr)
+		_, sendErr = bot.Reply(task.TargetMessage, response, &tele.SendOptions{})
+		if sendErr != nil {
+			log.Printf("Error sending plain text response to chat ID %d: %v", task.ChatID, sendErr)
+			sendError(task.OriginalContext, "Failed to send response.", sendErr)
+			return
+		}
 	}
 	log.Printf("Successfully sent response to chat ID %d.", task.ChatID)
 }

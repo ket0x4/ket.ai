@@ -28,7 +28,11 @@ func HandleRAGHistory(c tele.Context) error {
 	message.WriteString(strings.Join(history, "\n"))
 	message.WriteString("\n```")
 
-	return c.Reply(message.String(), tele.ModeMarkdown)
+	err := c.Reply(message.String(), tele.ModeMarkdown)
+	if err != nil {
+		return c.Reply(message.String())
+	}
+	return nil
 }
 
 // HandleRAGClear clears chat history for current chat

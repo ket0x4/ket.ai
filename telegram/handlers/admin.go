@@ -95,5 +95,9 @@ func HandleList(c tele.Context) error {
 		response.WriteString(fmt.Sprintf("- `%d`\n", chat))
 	}
 	log.Printf("[OK] /list | user:%d chat:%d listed users/chats", c.Sender().ID, c.Chat().ID)
-	return c.Send(response.String(), &tele.SendOptions{ParseMode: tele.ModeMarkdown})
+	err := c.Send(response.String(), &tele.SendOptions{ParseMode: tele.ModeMarkdown})
+	if err != nil {
+		return c.Send(response.String())
+	}
+	return nil
 }
