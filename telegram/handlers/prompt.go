@@ -21,19 +21,24 @@ type PromptTask struct {
 	OriginalContext tele.Context
 }
 
-var promptQueue chan *PromptTask
+var PromptQueue chan *PromptTask
 
 func InitPromptQueue(maxQueueSize int) {
-	promptQueue = make(chan *PromptTask, maxQueueSize)
+	PromptQueue = make(chan *PromptTask, maxQueueSize)
 }
 
 func extractPromptDetails(c tele.Context) (promptText string, targetMessage *tele.Message, err error) {
 	promptText = ""
 	targetMessage = c.Message()
 
-	if c.Message().IsReply() && c.Message().ReplyTo != nil && c.Message().ReplyTo.Text != "" {
-		promptText = c.Message().ReplyTo.Text
-		targetMessage = c.Message().ReplyTo
+	if c.Message().IsReply() && c.Message().ReplyTo != nil {
+		if c.Message().ReplyTo.Sender.IsBot {
+			promptText = c.Message().Text
+			targetMessage = c.Message()
+		} else if c.Message().ReplyTo.Text != "" {
+			promptText = c.Message().ReplyTo.Text
+			targetMessage = c.Message().ReplyTo
+		}
 	} else {
 		rawText := c.Message().Text
 		cmdVariants := []string{config.GetConfig().GenCommand, "/" + config.GetConfig().GenCommand}
@@ -58,8 +63,7 @@ func extractPromptDetails(c tele.Context) (promptText string, targetMessage *tel
 func HandlePrompt(c tele.Context) error {
 	promptText, targetMessage, err := extractPromptDetails(c)
 	if err != nil {
-		log.Printf("Prompt extraction failed for chat ID %d: %v", c.Chat().ID, err)
-		return c.Reply(fmt.Sprintf("The prompt is empty. Usage: /%s <your prompt> or reply to a message with /%s.", config.GetConfig().GenCommand, config.GetConfig().GenCommand))
+		return nil // Ignore empty prompts
 	}
 
 	task := &PromptTask{
@@ -71,8 +75,8 @@ func HandlePrompt(c tele.Context) error {
 	}
 
 	select {
-	case promptQueue <- task:
-		queueLen := len(promptQueue)
+	case PromptQueue <- task:
+		queueLen := len(PromptQueue)
 		replyMsg := fmt.Sprintf("Your request has been queued <code>(position %d/%d)</code>", queueLen, config.GetConfig().BotSetup.MaxQueue)
 		sentMsg, err := c.Bot().Reply(c.Message(), replyMsg, tele.ModeHTML)
 		if err == nil {
@@ -87,7 +91,7 @@ func HandlePrompt(c tele.Context) error {
 
 func StartPromptWorker(systemPrompt string, bot *tele.Bot) {
 	go func() {
-		for task := range promptQueue {
+		for task := range PromptQueue {
 			processPrompt(task, systemPrompt, bot)
 		}
 	}()

@@ -35,7 +35,7 @@ func InitBot() *tele.Bot {
 	bot.Handle(&tele.InlineButton{Unique: "model_select"}, handlers.HandleModelSelect)
 
 	// Register text handler
-	bot.Handle(tele.OnText, HandleText)
+	bot.Handle(tele.OnText, handlers.HandlePrompt)
 
 	return bot.Bot
 }
