@@ -71,8 +71,7 @@ func HandleAddUser(c tele.Context) error {
 	}
 	err := permissions.AddUser(userID)
 	if err != nil {
-		log.Printf("[FAIL] /adduser | user:%d chat:%d error:%v", c.Sender().ID, c.Chat().ID, err)
-		return c.Reply(fmt.Sprintf("Error adding user: %v", err))
+		return sendError(c, "Error adding user", err)
 	}
 	log.Printf("[OK] /adduser | user:%d chat:%d added user:%d", c.Sender().ID, c.Chat().ID, userID)
 	return c.Reply(fmt.Sprintf("User %d added successfully.", userID))
@@ -89,8 +88,7 @@ func HandleRemoveUser(c tele.Context) error {
 	}
 	err := permissions.RemoveUser(userID)
 	if err != nil {
-		log.Printf("[FAIL] /rmuser | user:%d chat:%d error:%v", c.Sender().ID, c.Chat().ID, err)
-		return c.Reply(fmt.Sprintf("Error removing user: %v", err))
+		return sendError(c, "Error removing user", err)
 	}
 	log.Printf("[OK] /rmuser | user:%d chat:%d removed user:%d", c.Sender().ID, c.Chat().ID, userID)
 	return c.Reply(fmt.Sprintf("User %d removed successfully.", userID))
@@ -107,8 +105,7 @@ func HandleAddChat(c tele.Context) error {
 	}
 	err := permissions.AddChat(chatID)
 	if err != nil {
-		log.Printf("[FAIL] /addchat | user:%d chat:%d error:%v", c.Sender().ID, c.Chat().ID, err)
-		return c.Reply(fmt.Sprintf("Error adding chat: %v", err))
+		return sendError(c, "Error adding chat", err)
 	}
 	log.Printf("[OK] /addchat | user:%d chat:%d added chat:%d", c.Sender().ID, c.Chat().ID, chatID)
 	return c.Reply(fmt.Sprintf("Chat %d added successfully.", chatID))
@@ -125,8 +122,7 @@ func HandleRemoveChat(c tele.Context) error {
 	}
 	err := permissions.RemoveChat(chatID)
 	if err != nil {
-		log.Printf("[FAIL] /rmchat | user:%d chat:%d error:%v", c.Sender().ID, c.Chat().ID, err)
-		return c.Reply(fmt.Sprintf("Error removing chat: %v", err))
+		return sendError(c, "Error removing chat", err)
 	}
 	log.Printf("[OK] /rmchat | user:%d chat:%d removed chat:%d", c.Sender().ID, c.Chat().ID, chatID)
 	return c.Reply(fmt.Sprintf("Chat %d removed successfully.", chatID))
@@ -191,8 +187,7 @@ func HandleModelCommand(c tele.Context) error {
 	c.Send("Fetching models from backend...", tele.ModeHTML)
 	models, err := backend.FetchModels(context.Background())
 	if err != nil {
-		log.Printf("[FAIL] /model | user:%d error: %v", c.Sender().ID, err)
-		return c.Reply("Failed to fetch models: " + err.Error())
+		return sendError(c, "Failed to fetch models", err)
 	}
 
 	modelIDMap = make(map[string]string)
@@ -284,3 +279,4 @@ func HandleModelSelect(c tele.Context) error {
 	}
 	return c.Edit("<b>Model changed to:</b> <code>"+model+"</code>", &tele.SendOptions{ParseMode: tele.ModeHTML})
 }
+

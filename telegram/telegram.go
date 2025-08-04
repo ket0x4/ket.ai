@@ -28,16 +28,23 @@ func ignoreOldMessagesMiddleware(next tele.HandlerFunc) tele.HandlerFunc {
 func processPrompt(task *PromptTask, systemPrompt string) {
 	log.Printf("Processing prompt for chat ID %d from queue.", task.ChatID)
 
+	// Ensure queue message is deleted even if processing fails
+	defer func() {
+		if task.QueueMessage != nil {
+			err := task.OriginalContext.Bot().Delete(task.QueueMessage)
+			if err != nil {
+				log.Printf("Failed to delete queue message %d in chat %d: %v", task.QueueMessage.ID, task.ChatID, err)
+			}
+		}
+	}()
+
 	response, err := rag.GetRagResponse(context.Background(), task.Prompt, task.ChatID, task.UserID, task.OriginalContext.Sender().Username, systemPrompt)
 	if err != nil {
 		log.Printf("Error getting RAG response for chat ID %d: %v", task.ChatID, err)
+		// Fallback to standard generation
 		response, err = backend.GetResponse(context.Background(), task.Prompt, systemPrompt)
 		if err != nil {
-			log.Printf("Error getting fallback response from backend for chat ID %d: %v", task.ChatID, err)
-			_, replyErr := task.OriginalContext.Bot().Reply(task.TargetMessage, "Error processing your request: "+err.Error())
-			if replyErr != nil {
-				log.Printf("Error sending error reply to chat ID %d: %v", task.ChatID, replyErr)
-			}
+			sendError(task.OriginalContext, "Error processing your request", err)
 			return
 		}
 	}
@@ -49,13 +56,6 @@ func processPrompt(task *PromptTask, systemPrompt string) {
 		log.Printf("Error sending response to chat ID %d: %v", task.ChatID, sendErr)
 	}
 	log.Printf("Successfully sent response to chat ID %d.", task.ChatID)
-
-	if task.QueueMessage != nil {
-		err := task.OriginalContext.Bot().Delete(task.QueueMessage)
-		if err != nil {
-			log.Printf("Failed to delete queue message %d in chat %d: %v", task.QueueMessage.ID, task.ChatID, err)
-		}
-	}
 }
 
 func startPromptWorker(systemPrompt string) {
