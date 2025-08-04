@@ -50,13 +50,15 @@ func HandleHelp(c tele.Context) error {
 	• <code>/list</code> List all allowed users and chats
 	
 	<b>▶ Retrieval-Augmented Generation</b>
-	RAG system enhances responses with relevant context
-	The bot works better with context from previous conversations
+	RAG (Retrieval-Augmented Generation) system enhances responses with relevant context
+	Bot works better with context from previous conversations.
+	Bot stores context for each chat, which can be viewed and managed.
 	• <code>/reset</code> to clear the context and start fresh
 	• <code>/history</code> to view the context history
 
 	<b>▶ Auto-Response</b>
-	Auto-response feature is enabled by default
+	Auto-response, reads last %s messages and generates a response
+	Enabled by default, can be toggled in the config file
 	• <code>/autoreply</code> to manage auto-responses
 	`
 

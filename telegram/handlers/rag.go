@@ -24,8 +24,13 @@ func HandleRAGHistory(c tele.Context) error {
 		history = history[len(history)-15:]
 	}
 
+	var sanitizedHistory []string
+	for _, entry := range history {
+		sanitizedHistory = append(sanitizedHistory, strings.ReplaceAll(entry, "```", "´´´"))
+	}
+
 	message.WriteString("```\n")
-	message.WriteString(strings.Join(history, "\n"))
+	message.WriteString(strings.Join(sanitizedHistory, "\n"))
 	message.WriteString("\n```")
 
 	msg := message.String()
