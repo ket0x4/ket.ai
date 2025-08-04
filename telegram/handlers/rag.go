@@ -28,9 +28,14 @@ func HandleRAGHistory(c tele.Context) error {
 	message.WriteString(strings.Join(history, "\n"))
 	message.WriteString("\n```")
 
-	err := c.Reply(message.String(), tele.ModeMarkdown)
+	msg := message.String()
+	if len(msg) > 4000 {
+		msg = msg[:4000] + "...\n```"
+	}
+
+	err := c.Reply(msg, tele.ModeMarkdown)
 	if err != nil {
-		return c.Reply(message.String())
+		return c.Reply(msg)
 	}
 	return nil
 }
@@ -38,7 +43,5 @@ func HandleRAGHistory(c tele.Context) error {
 // HandleRAGClear clears chat history for current chat
 func HandleRAGClear(c tele.Context) error {
 	rag.ClearChatHistory(c.Chat().ID)
-
-	return c.Reply("RAG History cleaned for this chat.")
+	return c.Reply("✔️ Message history cleaned for this chat.")
 }
-

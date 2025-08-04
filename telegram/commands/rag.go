@@ -8,8 +8,6 @@ import (
 )
 
 func RegisterRAGCommands(b *tele.Bot) {
-	b.Handle("/raghistory", middleware.RequireUser(handlers.HandleRAGHistory))
-	b.Handle("/rh", middleware.RequireUser(handlers.HandleRAGHistory))
-	b.Handle("/ragclear", middleware.RequireUser(handlers.HandleRAGClear))
-	b.Handle("/rc", middleware.RequireUser(handlers.HandleRAGClear))
+	b.Handle("/history", middleware.RequireUser(handlers.HandleRAGHistory))
+	b.Handle("/reset", middleware.RequireUser(handlers.HandleRAGClear))
 }

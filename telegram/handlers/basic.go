@@ -40,8 +40,8 @@ func HandleHelp(c tele.Context) error {
 	• <code>/model</code> List available LLM models
 
 	<b>▶ YouTube Commands</b>
-	• <code>/yt</code> or <code>/ytsum [URL]</code> Summarize a YouTube video
-	
+	• <code>/ytsum</code>, <code>/yt</code>, <code>/youtube [URL]</code> Summarize a YouTube video or reply to a YouTube link with <code>/yt</code> to summarize it
+
 	<b>▶ User Management</b>
 	• <code>/adduser [user_id]</code> Add a user to the allowed users list
 	• <code>/rmuser [user_id]</code> Remove a user from the allowed users list
@@ -53,6 +53,7 @@ func HandleHelp(c tele.Context) error {
 	RAG system enhances responses with relevant context
 	The bot works better with context from previous conversations
 	• <code>/reset</code> to clear the context and start fresh
+	• <code>/history</code> to view the context history
 
 	<b>▶ Auto-Response</b>
 	Auto-response feature is enabled by default

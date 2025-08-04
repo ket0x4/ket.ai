@@ -10,4 +10,5 @@ import (
 func RegisterYouTubeCommands(b *tele.Bot) {
 	b.Handle("/yt", middleware.RequireUser(handlers.HandleYTCommand))
 	b.Handle("/ytsum", middleware.RequireUser(handlers.HandleYTCommand))
+	b.Handle("/youtube", middleware.RequireUser(handlers.HandleYTCommand))
 }
