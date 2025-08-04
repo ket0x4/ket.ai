@@ -1,7 +1,6 @@
 package utils
 
 import (
-	"context"
 	"fmt"
 	"ket/backend"
 	"ket/config"
@@ -163,11 +162,8 @@ func GetSystemStats() string {
 	// Board Name
 	boardName = getBoardName()
 
-	// Backend Health
 	backendHealth = "N/A"
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	if backend.HealthCheck(ctx) {
+	if backend.HealthCheck() {
 		backendHealth = "✓ Healthy"
 	} else {
 		backendHealth = "✗ Down"
