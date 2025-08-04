@@ -40,7 +40,7 @@ func HandleText(c tele.Context) error {
 			log.Printf("[AutoResponse] GenerateAutoResponse error: %v", err)
 			return nil
 		}
-		_, sendErr := c.Bot().Reply(c.Message(), response)
+		_, sendErr := c.Bot().Send(c.Chat(), response)
 		if sendErr != nil {
 			log.Printf("[AutoResponse] Send error: %v", sendErr)
 		}
