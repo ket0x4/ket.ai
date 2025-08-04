@@ -67,13 +67,13 @@ func ReadConfig() {
 
 	sysPrompt, err := os.ReadFile("system_prompt.txt")
 	if err != nil {
-		log.Fatalf("Error loading system prompt: %v", err)
+		log.Printf("Error loading system prompt: %v", err)
 	}
 	loadedConfig.BackendSetup.SysPrompt = string(sysPrompt)
 
 	autoPrompt, err := os.ReadFile("auto_prompt.txt")
 	if err != nil {
-		log.Fatalf("Error loading auto prompt: %v", err)
+		log.Printf("Error loading auto prompt: %v", err)
 	}
 	loadedConfig.BackendSetup.AutoPrompt = string(autoPrompt)
 

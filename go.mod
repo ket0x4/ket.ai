@@ -4,7 +4,7 @@ go 1.24.5
 
 require (
 	github.com/sashabaranov/go-openai v1.40.5
-	github.com/shirou/gopsutil/v4 v4.25.6
+	github.com/shirou/gopsutil/v4 v4.25.7
 	gopkg.in/telebot.v4 v4.0.0-beta.5
 )
 
