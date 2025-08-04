@@ -1,4 +1,4 @@
-package telegram
+package handlers
 
 import (
 	"ket/youtube"

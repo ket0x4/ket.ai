@@ -1,129 +1,50 @@
 package telegram
 
 import (
-	"context"
-	"ket/backend"
 	"ket/config"
-	"ket/rag"
+	"ket/telegram/commands"
+	"ket/telegram/handlers"
 	"log"
-	"time"
 
 	tele "gopkg.in/telebot.v4"
 )
 
-var botStartTime time.Time
-
-func ignoreOldMessagesMiddleware(next tele.HandlerFunc) tele.HandlerFunc {
-	return func(c tele.Context) error {
-		if c.Message() != nil {
-			if c.Message().Time().Before(botStartTime) {
-				log.Printf("Ignoring old message from %v", c.Message().Time())
-				return nil
-			}
-		}
-		return next(c)
-	}
-}
-
-func processPrompt(task *PromptTask, systemPrompt string) {
-	log.Printf("Processing prompt for chat ID %d from queue.", task.ChatID)
-
-	// Ensure queue message is deleted even if processing fails
-	defer func() {
-		if task.QueueMessage != nil {
-			err := task.OriginalContext.Bot().Delete(task.QueueMessage)
-			if err != nil {
-				log.Printf("Failed to delete queue message %d in chat %d: %v", task.QueueMessage.ID, task.ChatID, err)
-			}
-		}
-	}()
-
-	response, err := rag.GetRagResponse(context.Background(), task.Prompt, task.ChatID, task.UserID, task.OriginalContext.Sender().Username, systemPrompt)
-	if err != nil {
-		log.Printf("Error getting RAG response for chat ID %d: %v", task.ChatID, err)
-		// Fallback to standard generation
-		response, err = backend.GetResponse(context.Background(), task.Prompt, systemPrompt)
-		if err != nil {
-			sendError(task.OriginalContext, "Error processing your request", err)
-			return
-		}
-	}
-
-	log.Printf("User: %d, Prompt: %s.", task.ChatID, task.Prompt)
-
-	_, sendErr := task.OriginalContext.Bot().Reply(task.TargetMessage, response)
-	if sendErr != nil {
-		log.Printf("Error sending response to chat ID %d: %v", task.ChatID, sendErr)
-	}
-	log.Printf("Successfully sent response to chat ID %d.", task.ChatID)
-}
-
-func startPromptWorker(systemPrompt string) {
-	promptQueue = make(chan *PromptTask, MaxQueueSize)
-	go func() {
-		for task := range promptQueue {
-			processPrompt(task, systemPrompt)
-		}
-	}()
-	log.Println("Prompt processing worker started.")
-}
-
 func InitBot() *tele.Bot {
-	botStartTime = time.Now()
 	cfg := config.GetConfig()
 
-	settings := tele.Settings{
-		Synchronous: false,
-		Updates:     5,
-		ParseMode:   tele.ModeMarkdown,
-		Poller:      &tele.LongPoller{Timeout: 10 * time.Second},
-		OnError: func(err error, c tele.Context) {
-			if c != nil && c.Message() != nil {
-				log.Printf("Error in context for message '%s': %v", c.Message().Text, err)
-			} else {
-				log.Printf("Error with nil context or message: %v", err)
-			}
-		},
-		Token: cfg.BotSetup.Token,
-	}
-
-	if settings.Token == "" {
-		log.Fatalf("BOT_TOKEN not set")
-	}
-
-	bot, err := tele.NewBot(settings)
+	bot, err := NewBot(&cfg)
 	if err != nil {
 		log.Fatalf("Failed to create new bot: %v", err)
 	}
 
-	bot.Use(ignoreOldMessagesMiddleware)
+	bot.Use(ignoreOldMessagesMiddleware(bot.botStartTime))
 
 	log.Println("Telegram bot created successfully")
 
-	startPromptWorker("default")
+	handlers.InitPromptQueue(bot.cfg.BotSetup.MaxQueue)
+	handlers.StartPromptWorker("default", bot.Bot)
 
-	RegisterCommands(bot)
-	RegisterInlineHandlers(bot)
-	RegisterTextHandler(bot)
+	commands.RegisterBasicCommands(bot.Bot)
+	commands.RegisterAdminCommands(bot.Bot)
+	commands.RegisterRAGCommands(bot.Bot)
+	commands.RegisterYouTubeCommands(bot.Bot)
+	commands.RegisterPromptCommand(bot.Bot)
 
-	return bot
-}
+	// Register inline handlers
+	bot.Handle(&tele.InlineButton{Unique: "status_refresh"}, handlers.HandleStatusRefresh)
+	bot.Handle(&tele.InlineButton{Unique: "model_select"}, handlers.HandleModelSelect)
 
-func Start(bot *tele.Bot) {
-	if bot == nil {
-		log.Println("Bot is nil, cannot start.")
-		return
-	}
-	log.Println("Starting bot polling...")
-	bot.Start()
-	log.Println("Bot stopped polling.")
+	// Register text handler
+	bot.Handle(tele.OnText, HandleText)
+
+	return bot.Bot
 }
 
 func Run() {
 	bot := InitBot()
 
 	log.Println("Application setup complete. Bot is initializing and starting...")
-	go Start(bot)
+	go bot.Start()
 
 	select {}
 }

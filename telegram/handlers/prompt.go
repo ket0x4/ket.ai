@@ -1,9 +1,11 @@
-package telegram
+package handlers
 
 import (
+	"context"
 	"fmt"
+	"ket/backend"
 	"ket/config"
-	"ket/permissions"
+	"ket/rag"
 	"log"
 	"strings"
 
@@ -20,7 +22,10 @@ type PromptTask struct {
 }
 
 var promptQueue chan *PromptTask
-var MaxQueueSize = config.GetConfig().BotSetup.MaxQueue
+
+func InitPromptQueue(maxQueueSize int) {
+	promptQueue = make(chan *PromptTask, maxQueueSize)
+}
 
 func extractPromptDetails(c tele.Context) (promptText string, targetMessage *tele.Message, err error) {
 	promptText = ""
@@ -50,12 +55,7 @@ func extractPromptDetails(c tele.Context) (promptText string, targetMessage *tel
 	return promptText, targetMessage, nil
 }
 
-func HandlePrompt2(c tele.Context) error {
-	if !permissions.IsAllowed(c.Chat().ID) {
-		log.Printf("Unauthorized access attempt by chat ID: %d", c.Chat().ID)
-		return c.Reply("You are not authorized to use this bot.")
-	}
-
+func HandlePrompt(c tele.Context) error {
 	promptText, targetMessage, err := extractPromptDetails(c)
 	if err != nil {
 		log.Printf("Prompt extraction failed for chat ID %d: %v", c.Chat().ID, err)
@@ -73,7 +73,7 @@ func HandlePrompt2(c tele.Context) error {
 	select {
 	case promptQueue <- task:
 		queueLen := len(promptQueue)
-		replyMsg := fmt.Sprintf("Your request has been queued <code>(position %d/%d)</code>", queueLen, MaxQueueSize)
+		replyMsg := fmt.Sprintf("Your request has been queued <code>(position %d/%d)</code>", queueLen, config.GetConfig().BotSetup.MaxQueue)
 		sentMsg, err := c.Bot().Reply(c.Message(), replyMsg, tele.ModeHTML)
 		if err == nil {
 			task.QueueMessage = sentMsg
@@ -83,4 +83,46 @@ func HandlePrompt2(c tele.Context) error {
 	}
 
 	return nil
+}
+
+func StartPromptWorker(systemPrompt string, bot *tele.Bot) {
+	go func() {
+		for task := range promptQueue {
+			processPrompt(task, systemPrompt, bot)
+		}
+	}()
+	log.Println("Prompt processing worker started.")
+}
+
+func processPrompt(task *PromptTask, systemPrompt string, bot *tele.Bot) {
+	log.Printf("Processing prompt for chat ID %d from queue.", task.ChatID)
+
+	// Ensure queue message is deleted even if processing fails
+	defer func() {
+		if task.QueueMessage != nil {
+			err := bot.Delete(task.QueueMessage)
+			if err != nil {
+				log.Printf("Failed to delete queue message %d in chat %d: %v", task.QueueMessage.ID, task.ChatID, err)
+			}
+		}
+	}()
+
+	response, err := rag.GetRagResponse(context.Background(), task.Prompt, task.ChatID, task.UserID, task.OriginalContext.Sender().Username, systemPrompt)
+	if err != nil {
+		log.Printf("Error getting RAG response for chat ID %d: %v", task.ChatID, err)
+		// Fallback to standard generation
+		response, err = backend.GetResponse(context.Background(), task.Prompt, systemPrompt)
+		if err != nil {
+			sendError(task.OriginalContext, "Error processing your request", err)
+			return
+		}
+	}
+
+	log.Printf("User: %d, Prompt: %s.", task.ChatID, task.Prompt)
+
+	_, sendErr := bot.Reply(task.TargetMessage, response)
+	if sendErr != nil {
+		log.Printf("Error sending response to chat ID %d: %v", task.ChatID, sendErr)
+	}
+	log.Printf("Successfully sent response to chat ID %d.", task.ChatID)
 }

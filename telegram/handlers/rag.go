@@ -1,8 +1,7 @@
-package telegram
+package handlers
 
 import (
 	"fmt"
-	"ket/permissions"
 	"ket/rag"
 	"strings"
 
@@ -11,10 +10,6 @@ import (
 
 // HandleRAGHistory shows recent chat history
 func HandleRAGHistory(c tele.Context) error {
-	if !permissions.IsAllowed(c.Chat().ID) {
-		return c.Reply("You are not authorized to use this bot.")
-	}
-
 	history := rag.GetChatHistory(c.Chat().ID)
 
 	if len(history) == 0 {
@@ -38,11 +33,8 @@ func HandleRAGHistory(c tele.Context) error {
 
 // HandleRAGClear clears chat history for current chat
 func HandleRAGClear(c tele.Context) error {
-	if !permissions.IsAllowed(c.Chat().ID) {
-		return c.Reply("You are not authorized to use this bot.")
-	}
-
 	rag.ClearChatHistory(c.Chat().ID)
 
 	return c.Reply("RAG History cleaned for this chat.")
 }
+
