@@ -6,6 +6,7 @@ import (
 	"ket/backend"
 	"ket/config"
 	"ket/rag"
+	"ket/random"
 	"log"
 	"strings"
 
@@ -27,17 +28,20 @@ func InitPromptQueue(maxQueueSize int) {
 	PromptQueue = make(chan *PromptTask, maxQueueSize)
 }
 
-func extractPromptDetails(c tele.Context) (promptText string, targetMessage *tele.Message, err error) {
+func extractPromptDetails(c tele.Context) (promptText string, targetMessage *tele.Message, isPrompt bool) {
 	promptText = ""
 	targetMessage = c.Message()
+	isPrompt = false
 
 	if c.Message().IsReply() && c.Message().ReplyTo != nil {
 		if c.Message().ReplyTo.Sender.IsBot {
 			promptText = c.Message().Text
 			targetMessage = c.Message()
+			isPrompt = true
 		} else if c.Message().ReplyTo.Text != "" {
 			promptText = c.Message().ReplyTo.Text
 			targetMessage = c.Message().ReplyTo
+			isPrompt = true
 		}
 	} else {
 		rawText := c.Message().Text
@@ -47,43 +51,56 @@ func extractPromptDetails(c tele.Context) (promptText string, targetMessage *tel
 				trimmedText := strings.TrimSpace(strings.TrimPrefix(rawText, cmd))
 				if trimmedText != "" {
 					promptText = trimmedText
+					isPrompt = true
 					break
 				}
 			}
 		}
 	}
 
-	if promptText == "" {
-		return "", targetMessage, fmt.Errorf("prompt is empty")
-	}
-
-	return promptText, targetMessage, nil
+	return promptText, targetMessage, isPrompt
 }
 
 func HandlePrompt(c tele.Context) error {
-	promptText, targetMessage, err := extractPromptDetails(c)
-	if err != nil {
-		return nil // Ignore empty prompts
-	}
+	promptText, targetMessage, isPrompt := extractPromptDetails(c)
 
-	task := &PromptTask{
-		ChatID:          c.Chat().ID,
-		UserID:          c.Sender().ID,
-		Prompt:          promptText,
-		TargetMessage:   targetMessage,
-		OriginalContext: c,
-	}
-
-	select {
-	case PromptQueue <- task:
-		queueLen := len(PromptQueue)
-		replyMsg := fmt.Sprintf("Your request has been queued <code>(position %d/%d)</code>", queueLen, config.GetConfig().BotSetup.MaxQueue)
-		sentMsg, err := c.Bot().Reply(c.Message(), replyMsg, tele.ModeHTML)
-		if err == nil {
-			task.QueueMessage = sentMsg
+	if isPrompt {
+		task := &PromptTask{
+			ChatID:          c.Chat().ID,
+			UserID:          c.Sender().ID,
+			Prompt:          promptText,
+			TargetMessage:   targetMessage,
+			OriginalContext: c,
 		}
-	default:
-		return c.Reply("The bot is currently busy. Please try again in a few moments.")
+
+		select {
+		case PromptQueue <- task:
+			queueLen := len(PromptQueue)
+			replyMsg := fmt.Sprintf("Your request has been queued <code>(position %d/%d)</code>", queueLen, config.GetConfig().BotSetup.MaxQueue)
+			sentMsg, err := c.Bot().Reply(c.Message(), replyMsg, tele.ModeHTML)
+			if err == nil {
+				task.QueueMessage = sentMsg
+			}
+		default:
+			return c.Reply("The bot is currently busy. Please try again in a few moments.")
+		}
+	} else {
+		ok, err := random.LogMessage(c.Chat().ID, c.Sender().Username, c.Sender().ID, c.Message().Text)
+		if err != nil {
+			log.Printf("[AutoResponse] LogMessage error: %v", err)
+		}
+		if ok {
+			log.Printf("[AutoResponse] Triggered for chat %d", c.Chat().ID)
+			response, err := random.GenerateAutoResponse(context.Background(), c.Chat().ID)
+			if err != nil {
+				log.Printf("[AutoResponse] GenerateAutoResponse error: %v", err)
+				return nil
+			}
+			_, sendErr := c.Bot().Send(c.Chat(), response)
+			if sendErr != nil {
+				log.Printf("[AutoResponse] Send error: %v", sendErr)
+			}
+		}
 	}
 
 	return nil
