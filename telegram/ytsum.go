@@ -1,7 +1,6 @@
 package telegram
 
 import (
-	"ket/utils"
 	"ket/youtube"
 	"log"
 	"strings"
@@ -16,7 +15,7 @@ func HandleYTCommand(c tele.Context) error {
 	//user := c.Sender().Username
 	user := c.Sender().ID
 	log.Printf("Received /yt command from %d", user)
-	links := utils.DetectYT(text)
+	links := youtube.DetectYT(text)
 
 	// If no links are found, reply with an error message
 	if len(links) == 0 {

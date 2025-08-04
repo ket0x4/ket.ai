@@ -1,10 +1,8 @@
-package utils
+package youtube
 
 import (
 	"regexp"
 )
-
-// Various helper functions for entire codebase
 
 // DetectYT returns a list of YouTube video links found in the given text.
 // It specifically looks for youtube.com/watch?v= or youtu.be/ patterns.
