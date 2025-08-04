@@ -45,15 +45,12 @@ func extractPromptDetails(c tele.Context) (promptText string, targetMessage *tel
 		}
 	} else {
 		rawText := c.Message().Text
-		cmdVariants := []string{config.GetConfig().GenCommand, "/" + config.GetConfig().GenCommand}
-		for _, cmd := range cmdVariants {
-			if strings.HasPrefix(rawText, cmd) {
-				trimmedText := strings.TrimSpace(strings.TrimPrefix(rawText, cmd))
-				if trimmedText != "" {
-					promptText = trimmedText
-					isPrompt = true
-					break
-				}
+		genCommand := "/" + config.GetConfig().GenCommand
+		if strings.HasPrefix(rawText, genCommand) {
+			trimmedText := strings.TrimSpace(strings.TrimPrefix(rawText, genCommand))
+			if trimmedText != "" {
+				promptText = trimmedText
+				isPrompt = true
 			}
 		}
 	}
@@ -64,27 +61,7 @@ func extractPromptDetails(c tele.Context) (promptText string, targetMessage *tel
 func HandlePrompt(c tele.Context) error {
 	promptText, targetMessage, isPrompt := extractPromptDetails(c)
 
-	if isPrompt {
-		task := &PromptTask{
-			ChatID:          c.Chat().ID,
-			UserID:          c.Sender().ID,
-			Prompt:          promptText,
-			TargetMessage:   targetMessage,
-			OriginalContext: c,
-		}
-
-		select {
-		case PromptQueue <- task:
-			queueLen := len(PromptQueue)
-			replyMsg := fmt.Sprintf("Your request has been queued <code>(position %d/%d)</code>", queueLen, config.GetConfig().BotSetup.MaxQueue)
-			sentMsg, err := c.Bot().Reply(c.Message(), replyMsg, tele.ModeHTML)
-			if err == nil {
-				task.QueueMessage = sentMsg
-			}
-		default:
-			return c.Reply("The bot is currently busy. Please try again in a few moments.")
-		}
-	} else {
+	if !isPrompt {
 		ok, err := random.LogMessage(c.Chat().ID, c.Sender().Username, c.Sender().ID, c.Message().Text)
 		if err != nil {
 			log.Printf("[AutoResponse] LogMessage error: %v", err)
@@ -101,6 +78,27 @@ func HandlePrompt(c tele.Context) error {
 				log.Printf("[AutoResponse] Send error: %v", sendErr)
 			}
 		}
+		return nil
+	}
+
+	task := &PromptTask{
+		ChatID:          c.Chat().ID,
+		UserID:          c.Sender().ID,
+		Prompt:          promptText,
+		TargetMessage:   targetMessage,
+		OriginalContext: c,
+	}
+
+	select {
+	case PromptQueue <- task:
+		queueLen := len(PromptQueue)
+		replyMsg := fmt.Sprintf("Your request has been queued <code>(position %d/%d)</code>", queueLen, config.GetConfig().BotSetup.MaxQueue)
+		sentMsg, err := c.Bot().Reply(c.Message(), replyMsg, tele.ModeHTML)
+		if err == nil {
+			task.QueueMessage = sentMsg
+		}
+	default:
+		return c.Reply("The bot is currently busy. Please try again in a few moments.")
 	}
 
 	return nil
@@ -148,7 +146,6 @@ func processPrompt(task *PromptTask, systemPrompt string, bot *tele.Bot) {
 		if sendErr != nil {
 			log.Printf("Error sending plain text response to chat ID %d: %v", task.ChatID, sendErr)
 			sendError(task.OriginalContext, "Failed to send response.", sendErr)
-			return
 		}
 	}
 	log.Printf("Successfully sent response to chat ID %d.", task.ChatID)
