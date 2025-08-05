@@ -2,6 +2,7 @@ package telegram
 
 import (
 	"ket/config"
+	"ket/random"
 	"ket/telegram/commands"
 	"ket/telegram/handlers"
 	"log"
@@ -20,6 +21,10 @@ func InitBot() *tele.Bot {
 	bot.Use(ignoreOldMessagesMiddleware(bot.botStartTime))
 
 	log.Println("Telegram bot created successfully")
+
+	random.SetConfig(random.AutoResponseConfig{
+		Enabled: cfg.BotSetup.Random,
+	})
 
 	handlers.InitPromptQueue(bot.cfg.BotSetup.MaxQueue)
 	handlers.StartPromptWorker("default", bot.Bot)

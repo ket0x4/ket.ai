@@ -38,10 +38,6 @@ func extractPromptDetails(c tele.Context) (promptText string, targetMessage *tel
 			promptText = c.Message().Text
 			targetMessage = c.Message()
 			isPrompt = true
-		} else if c.Message().ReplyTo.Text != "" {
-			promptText = c.Message().ReplyTo.Text
-			targetMessage = c.Message().ReplyTo
-			isPrompt = true
 		}
 	} else {
 		rawText := c.Message().Text
