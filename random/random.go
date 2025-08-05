@@ -109,8 +109,7 @@ func GenerateAutoResponse(ctx context.Context, chatID int64) (string, error) {
 
 	fullPrompt := currentConfig.PrePrompt + "\n\nSon mesajlar:\n" + allMessages
 
-	autoPrompt := config.GetConfig().BackendSetup.AutoPrompt
-	response, err := backend.GetResponse(ctx, fullPrompt, autoPrompt)
+	response, err := backend.GetResponse(ctx, fullPrompt, config.GetConfig().BackendSetup.AutoPrompt)
 	if err != nil {
 		return "", fmt.Errorf("failed to generate response: %w", err)
 	}
