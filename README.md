@@ -17,16 +17,10 @@ Ket.AI is an telegram bot that functions as a chatbot powered by an OpenAI compa
 - `/help` provides information on how to use the bot and its commands.
 - `/status` to check the current status of the host device.
 
-### Youtube Commands
-- `/yt` or `/ytsum` to summarize a YouTube video by providing the video URL.
-
-Note: User can also reply to a YouTube video link with same commands to summarize it.
 
 ### User Management
 Note: Only admins can manage users and chats.
 
-- `/adduser` to add a user to the allowed users list.
-- `/rmuser` to remove a user from the allowed users list.
 - `/addchat` to add a chat to the allowed chats list.
 - `/rmchat` to remove a chat from the allowed chats list.
 - `/list` to list all allowed users and chats.
@@ -40,46 +34,28 @@ Note: Only admins can manage users and chats.
 
 ```json
 {
-    "Version": "6.5",
-    "BotName": "ket.ai",
-    "GenCommand": "ket",
     "BotSetup": {
         "token": "TELEGRAM_BOT_TOKEN",
         "max_queue": 10,
-        "random": true,
         "MaxMessagesPerGroup": 40,
-        "TriggerProbability": 0.10
+        "TriggerProbability": 0.10,
+        "Admins": [ID1, ID2]
     },
     "BackendSetup": {
         "api_url": "OPENAI_COMPATIBLE_API_URL",
         "api_key": "API_KEY",
         "model": "LLM_MODEL",
-        "input_length": 2048,
-        "yt-language": "tr"
+        "input_length": 2048
     },
-    "logging": {
-        "level": "info",
-        "file": "ket.log"
-    },
-    "http_proxy": "HTTP_PROXY_ADDRESS:PORT"
-}
-```
-
-### `chats.json` structure:
-
-```json
-{
-    "admins": [
-        207588255,
-        2087606991
-    ],
-    "allowed_chats": [
-        -1001541497652,
-        -1001253259500,
-        -1001054130924
+    "AllowedChats": [
+        ID2,
+        ID3,
+        -ID4,
+        -ID5
     ]
 }
 ```
+
 
 ## Installation
 ### Prerequisites
@@ -117,14 +93,11 @@ Note: add these commands to your bot using BotFather.
 start - Start the bot and get an introduction
 help - Get help on how to use the bot
 status - Check the current status of the host device
-adduser - Add a user to the allowed users list
-rmuser - Remove a user from the allowed users list
 addchat - Add a chat to the allowed chats list
 rmchat - Remove a chat from the allowed chats list
 list - List all allowed users and chats
 reset - Clear the context and start a new conversation
 history - View the context history of the current chat
-ytsum - Summarize a YouTube video by providing the video URL
 ```
 
 ## License
