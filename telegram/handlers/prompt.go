@@ -41,7 +41,7 @@ func extractPromptDetails(c tele.Context) (promptText string, targetMessage *tel
 		}
 	} else {
 		rawText := c.Message().Text
-		genCommand := "/" + config.GetConfig().GenCommand
+		genCommand := "/" + config.GenCommand
 		if strings.HasPrefix(rawText, genCommand) {
 			trimmedText := strings.TrimSpace(strings.TrimPrefix(rawText, genCommand))
 			if trimmedText != "" {

@@ -9,6 +9,6 @@ import (
 )
 
 func RegisterPromptCommand(b *tele.Bot) {
-	genCommand := config.GetConfig().GenCommand
+	genCommand := config.GenCommand
 	b.Handle("/"+genCommand, middleware.RequireUser(handlers.HandlePrompt))
 }

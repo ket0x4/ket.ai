@@ -1,12 +1,10 @@
 {
-    "Version": "6.5",
-    "BotName": "ket.ai",
-    "GenCommand": "ket",
     "BotSetup": {
         "token": "TELEGRAM_BOT_TOKEN",
         "max_queue": 10,
         "MaxMessagesPerGroup": 40,
-        "TriggerProbability": 0.10
+        "TriggerProbability": 0.10,
+        "Admins": [207588255, 2087606991]
     },
     "BackendSetup": {
         "api_url": "OPENAI_COMPATIBLE_API_URL",
@@ -14,9 +12,11 @@
         "model": "LLM_MODEL",
         "input_length": 2048
     },
-    "logging": {
-        "level": "info",
-        "file": "ket.log"
-    },
-    "http_proxy": "HTTP_PROXY_ADDRESS:PORT"
+    "AllowedChats": [
+        207588255,
+        2087606991,
+        -1001541497652,
+        -1001253259500,
+        -1001054130924
+    ]
 }

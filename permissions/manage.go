@@ -1,114 +1,57 @@
 package permissions
 
 import (
-	"encoding/json"
-	"fmt"
-	"log"
-	"os"
 	"slices"
+
+	"ket/config"
 )
 
-// saveAllowedIDs saves the current state of allowedIDsData to the JSON file.
-func saveAllowedIDs() error {
-	allowedIDsDataMutex.Lock()
-	defer allowedIDsDataMutex.Unlock()
-
-	data, err := json.MarshalIndent(allowedIDsData, "", "  ")
-	if err != nil {
-		return fmt.Errorf("error marshalling allowed IDs: %w", err)
-	}
-
-	err = os.WriteFile(chatsFilePath, data, 0644)
-	if err != nil {
-		return fmt.Errorf("error writing allowed IDs file: %w", err)
-	}
-
-	log.Printf("Successfully saved allowed IDs to %s", chatsFilePath)
-	return nil
-}
-
-// AddUser adds a user to the allowed list and saves it to the file.
+// AddUser adds a user ID to the merged AllowedChats/Users list.
+// Since allowed users and chats are unified for Telegram, we append to Permissions.AllowedChats.
 func AddUser(id int64) error {
-	loadAllowedIDs()
-	if loadError != nil {
-		return loadError
+	cfg := config.GetConfig()
+	// ensure slice exists
+	if !slices.Contains(cfg.Permissions.AllowedChats, id) {
+		cfg.Permissions.AllowedChats = append(cfg.Permissions.AllowedChats, id)
 	}
-
-	allowedIDsDataMutex.Lock()
-	if !slices.Contains(allowedIDsData.AllowedUsers, id) {
-		allowedIDsData.AllowedUsers = append(allowedIDsData.AllowedUsers, id)
-	}
-	allowedIDsDataMutex.Unlock()
-
-	return saveAllowedIDs()
+	config.UpdateConfig(cfg)
+	return config.SaveConfig()
 }
 
-// RemoveUser removes a user from the allowed list and saves it.
+// RemoveUser removes a user ID from the merged AllowedChats list.
 func RemoveUser(id int64) error {
-	loadAllowedIDs()
-	if loadError != nil {
-		return loadError
-	}
-
-	allowedIDsDataMutex.Lock()
-	allowedIDsData.AllowedUsers = slices.DeleteFunc(allowedIDsData.AllowedUsers, func(i int64) bool {
-		return i == id
-	})
-	allowedIDsDataMutex.Unlock()
-
-	return saveAllowedIDs()
+	cfg := config.GetConfig()
+	cfg.Permissions.AllowedChats = slices.DeleteFunc(cfg.Permissions.AllowedChats, func(i int64) bool { return i == id })
+	config.UpdateConfig(cfg)
+	return config.SaveConfig()
 }
 
-// AddChat adds a chat to the allowed list and saves it.
+// AddChat adds a chat ID to the merged AllowedChats list.
 func AddChat(id int64) error {
-	loadAllowedIDs()
-	if loadError != nil {
-		return loadError
+	cfg := config.GetConfig()
+	if !slices.Contains(cfg.Permissions.AllowedChats, id) {
+		cfg.Permissions.AllowedChats = append(cfg.Permissions.AllowedChats, id)
 	}
-
-	allowedIDsDataMutex.Lock()
-	if !slices.Contains(allowedIDsData.AllowedChats, id) {
-		allowedIDsData.AllowedChats = append(allowedIDsData.AllowedChats, id)
-	}
-	allowedIDsDataMutex.Unlock()
-
-	return saveAllowedIDs()
+	config.UpdateConfig(cfg)
+	return config.SaveConfig()
 }
 
-// RemoveChat removes a chat from the allowed list and saves it.
+// RemoveChat removes a chat ID from the merged AllowedChats list.
 func RemoveChat(id int64) error {
-	loadAllowedIDs()
-	if loadError != nil {
-		return loadError
-	}
-
-	allowedIDsDataMutex.Lock()
-	allowedIDsData.AllowedChats = slices.DeleteFunc(allowedIDsData.AllowedChats, func(i int64) bool {
-		return i == id
-	})
-	allowedIDsDataMutex.Unlock()
-
-	return saveAllowedIDs()
+	cfg := config.GetConfig()
+	cfg.Permissions.AllowedChats = slices.DeleteFunc(cfg.Permissions.AllowedChats, func(i int64) bool { return i == id })
+	config.UpdateConfig(cfg)
+	return config.SaveConfig()
 }
 
-// ListUsers returns a slice of allowed user IDs.
+// ListUsers returns the merged AllowedChats list (users are included in the same list for Telegram compatibility).
 func ListUsers() []int64 {
-	loadAllowedIDs()
-	if loadError != nil {
-		return nil
-	}
-	allowedIDsDataMutex.RLock()
-	defer allowedIDsDataMutex.RUnlock()
-	return allowedIDsData.AllowedUsers
+	cfg := config.GetConfig()
+	return cfg.Permissions.AllowedChats
 }
 
-// ListChats returns a slice of allowed chat IDs.
+// ListChats returns the merged AllowedChats list.
 func ListChats() []int64 {
-	loadAllowedIDs()
-	if loadError != nil {
-		return nil
-	}
-	allowedIDsDataMutex.RLock()
-	defer allowedIDsDataMutex.RUnlock()
-	return allowedIDsData.AllowedChats
+	cfg := config.GetConfig()
+	return cfg.Permissions.AllowedChats
 }

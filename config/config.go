@@ -6,11 +6,25 @@ import (
 	"os"
 )
 
+// Now hardcoded
+const configFilePath = "config.json"
+const Version = "7.0"
+const GenCommand = "/dave"
+const BotName = "Dave"
+
+var loadedConfig Config
+
+func init() {
+	ReadConfig()
+}
+
 type BotSetup struct {
 	Token               string  `json:"token"`
 	MaxQueue            int     `json:"max_queue"`
 	MaxMessagesPerGroup int     `json:"MaxMessagesPerGroup"`
 	TriggerProbability  float64 `json:"TriggerProbability"`
+	// Admins may be provided at the BotSetup level in older configs
+	Admins []int64 `json:"Admins"`
 }
 
 type BackendSetup struct {
@@ -22,24 +36,19 @@ type BackendSetup struct {
 	AutoPrompt  string `json:"-"` // used for auto response
 }
 
-type Logging struct {
-	Level string `json:"level"`
-	File  string `json:"file"`
+type Permissions struct {
+	Users        []int64 `json:"AllowedUsers"`
+	AllowedChats []int64 `json:"allowed_chats"`
+	Admins       []int64 `json:"admins"`
 }
 
 type Config struct {
-	Version      string       `json:"Version"`
-	BotName      string       `json:"BotName"`
-	GenCommand   string       `json:"GenCommand"`
 	BotSetup     BotSetup     `json:"BotSetup"`
 	BackendSetup BackendSetup `json:"BackendSetup"`
-	Logging      Logging      `json:"logging"`
-	HttpProxy    string       `json:"http_proxy"`
+	Permissions  Permissions  `json:"Permissions"`
+	// Backwards-compatible top-level AllowedChats (moved from chats.json)
+	AllowedChats []int64 `json:"AllowedChats"`
 }
-
-var loadedConfig Config
-
-const configFilePath = "config.json"
 
 func parseConfigFile(filePath string) (Config, error) {
 	var config Config
@@ -61,6 +70,14 @@ func ReadConfig() {
 	if err != nil {
 		log.Fatalf("Error loading config: %v", err)
 	}
+	// If AllowedChats provided at top-level, copy into Permissions.AllowedChats for compatibility
+	if len(c.AllowedChats) > 0 && len(c.Permissions.AllowedChats) == 0 {
+		c.Permissions.AllowedChats = c.AllowedChats
+	}
+	// If Admins provided under BotSetup, copy into Permissions.Admins for compatibility
+	if len(c.BotSetup.Admins) > 0 && len(c.Permissions.Admins) == 0 {
+		c.Permissions.Admins = c.BotSetup.Admins
+	}
 	loadedConfig = c
 
 	sysPrompt, err := os.ReadFile("system_prompt.txt")
@@ -79,11 +96,8 @@ func ReadConfig() {
 }
 
 func LogConfig() {
-	log.Println("Loading config.json...")
 	log.Println("------------------------------------------")
-	log.Println("Version:", loadedConfig.Version)
-	log.Println("BotName:", loadedConfig.BotName)
-	log.Println("GenCommand:", loadedConfig.GenCommand)
+	log.Println("Version:", Version)
 	log.Println("API URL:", loadedConfig.BackendSetup.ApiUrl)
 	log.Println("Model:", loadedConfig.BackendSetup.Model)
 	log.Println("Max Queue Size:", loadedConfig.BotSetup.MaxQueue)
@@ -110,8 +124,4 @@ func SaveConfig() error {
 		return err
 	}
 	return os.WriteFile(configFilePath, data, 0644)
-}
-
-func init() {
-	ReadConfig()
 }

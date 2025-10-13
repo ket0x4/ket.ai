@@ -107,8 +107,8 @@ func GetSystemStats() string {
 
 	// Version
 	version = "N/A"
-	if cfg.Version != "" {
-		version = cfg.Version
+	if config.Version != "" {
+		version = config.Version
 	}
 
 	// LLM Model

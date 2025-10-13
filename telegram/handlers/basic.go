@@ -47,6 +47,8 @@ func HandleHelp(c tele.Context) error {
 	• <code>/rmuser [user_id]</code> Remove a user from the allowed users list
 	• <code>/addchat [chat_id]</code> Add a chat to the allowed chats list
 	• <code>/rmchat [chat_id]</code> Remove a chat from the allowed chats list
+	• <code>/addchat [id]</code> Add a user or chat to the allowed list
+	• <code>/rmchat [id]</code> Remove a user or chat from the allowed list
 	• <code>/list</code> List all allowed users and chats
 	
 	<b>▶ Retrieval-Augmented Generation</b>
