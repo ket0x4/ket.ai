@@ -26,7 +26,7 @@ func parseSingleIDArg(c tele.Context, usage string) (int64, bool) {
 }
 
 func HandleAddUser(c tele.Context) error {
-	log.Printf("[CMD] /adduser | user:%d chat:%d args:%q", c.Sender().ID, c.Chat().ID, c.Message().Text)
+	log.Printf("/adduser | user:%d chat:%d args:%q", c.Sender().ID, c.Chat().ID, c.Message().Text)
 	userID, ok := parseSingleIDArg(c, "Usage: /adduser <user_id>")
 	if !ok {
 		return nil
@@ -35,12 +35,12 @@ func HandleAddUser(c tele.Context) error {
 	if err != nil {
 		return sendError(c, "Error adding user", err)
 	}
-	log.Printf("[OK] /adduser | user:%d chat:%d added user:%d", c.Sender().ID, c.Chat().ID, userID)
+	log.Printf("/adduser | user:%d chat:%d added user:%d", c.Sender().ID, c.Chat().ID, userID)
 	return c.Reply(fmt.Sprintf("User %d added successfully.", userID))
 }
 
 func HandleRemoveUser(c tele.Context) error {
-	log.Printf("[CMD] /rmuser | user:%d chat:%d args:%q", c.Sender().ID, c.Chat().ID, c.Message().Text)
+	log.Printf("/rmuser | user:%d chat:%d args:%q", c.Sender().ID, c.Chat().ID, c.Message().Text)
 	userID, ok := parseSingleIDArg(c, "Usage: /rmuser <user_id>")
 	if !ok {
 		return nil
@@ -49,12 +49,12 @@ func HandleRemoveUser(c tele.Context) error {
 	if err != nil {
 		return sendError(c, "Error removing user", err)
 	}
-	log.Printf("[OK] /rmuser | user:%d chat:%d removed user:%d", c.Sender().ID, c.Chat().ID, userID)
+	log.Printf("/rmuser | user:%d chat:%d removed user:%d", c.Sender().ID, c.Chat().ID, userID)
 	return c.Reply(fmt.Sprintf("User %d removed successfully.", userID))
 }
 
 func HandleAddChat(c tele.Context) error {
-	log.Printf("[CMD] /addchat | user:%d chat:%d args:%q", c.Sender().ID, c.Chat().ID, c.Message().Text)
+	log.Printf("/addchat | user:%d chat:%d args:%q", c.Sender().ID, c.Chat().ID, c.Message().Text)
 	chatID, ok := parseSingleIDArg(c, "Usage: /addchat <chat_id>")
 	if !ok {
 		return nil
@@ -63,12 +63,12 @@ func HandleAddChat(c tele.Context) error {
 	if err != nil {
 		return sendError(c, "Error adding chat", err)
 	}
-	log.Printf("[OK] /addchat | user:%d chat:%d added chat:%d", c.Sender().ID, c.Chat().ID, chatID)
+	log.Printf("/addchat | user:%d chat:%d added chat:%d", c.Sender().ID, c.Chat().ID, chatID)
 	return c.Reply(fmt.Sprintf("Chat %d added successfully.", chatID))
 }
 
 func HandleRemoveChat(c tele.Context) error {
-	log.Printf("[CMD] /rmchat | user:%d chat:%d args:%q", c.Sender().ID, c.Chat().ID, c.Message().Text)
+	log.Printf("/rmchat | user:%d chat:%d args:%q", c.Sender().ID, c.Chat().ID, c.Message().Text)
 	chatID, ok := parseSingleIDArg(c, "Usage: /rmchat <chat_id>")
 	if !ok {
 		return nil
@@ -77,12 +77,12 @@ func HandleRemoveChat(c tele.Context) error {
 	if err != nil {
 		return sendError(c, "Error removing chat", err)
 	}
-	log.Printf("[OK] /rmchat | user:%d chat:%d removed chat:%d", c.Sender().ID, c.Chat().ID, chatID)
+	log.Printf("/rmchat | user:%d chat:%d removed chat:%d", c.Sender().ID, c.Chat().ID, chatID)
 	return c.Reply(fmt.Sprintf("Chat %d removed successfully.", chatID))
 }
 
 func HandleList(c tele.Context) error {
-	log.Printf("[CMD] /list | user:%d chat:%d", c.Sender().ID, c.Chat().ID)
+	log.Printf("/list | user:%d chat:%d", c.Sender().ID, c.Chat().ID)
 	users := permissions.ListUsers()
 	chats := permissions.ListChats()
 	var response strings.Builder
@@ -94,7 +94,7 @@ func HandleList(c tele.Context) error {
 	for _, chat := range chats {
 		response.WriteString(fmt.Sprintf("- `%d`\n", chat))
 	}
-	log.Printf("[OK] /list | user:%d chat:%d listed users/chats", c.Sender().ID, c.Chat().ID)
+	log.Printf("/list | user:%d chat:%d listed users/chats", c.Sender().ID, c.Chat().ID)
 	err := c.Send(response.String(), &tele.SendOptions{ParseMode: tele.ModeMarkdown})
 	if err != nil {
 		return c.Send(response.String())

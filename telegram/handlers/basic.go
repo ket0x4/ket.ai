@@ -36,17 +36,10 @@ func HandleHelp(c tele.Context) error {
 	• <code>/start</code> Get an introduction and available commands
 	• <code>/help</code> Provides this help message
 	• <code>/status</code> Check the current status of the host device
-	• <code>/ket [prompt]</code> Send a prompt to the AI
+	• <code>/dave [prompt]</code> Send a prompt to the AI
 	• <code>/model</code> List available LLM models
 
-	<b>▶ YouTube Commands</b>
-	• <code>/ytsum</code>, <code>/yt</code>, <code>/youtube [URL]</code> Summarize a YouTube video or reply to a YouTube link with <code>/yt</code> to summarize it
-
 	<b>▶ User Management</b>
-	• <code>/adduser [user_id]</code> Add a user to the allowed users list
-	• <code>/rmuser [user_id]</code> Remove a user from the allowed users list
-	• <code>/addchat [chat_id]</code> Add a chat to the allowed chats list
-	• <code>/rmchat [chat_id]</code> Remove a chat from the allowed chats list
 	• <code>/addchat [id]</code> Add a user or chat to the allowed list
 	• <code>/rmchat [id]</code> Remove a user or chat from the allowed list
 	• <code>/list</code> List all allowed users and chats
@@ -61,7 +54,6 @@ func HandleHelp(c tele.Context) error {
 	<b>▶ Auto-Response</b>
 	Auto-response, reads last %s messages and generates a response
 	Enabled by default, can be toggled in the config file
-	• <code>/autoreply</code> to manage auto-responses
 	`
 
 	return c.Send(helpMessage, &tele.SendOptions{ParseMode: tele.ModeHTML})
