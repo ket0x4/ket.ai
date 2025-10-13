@@ -2,7 +2,6 @@ package telegram
 
 import (
 	"ket/config"
-	"ket/random"
 	"ket/telegram/commands"
 	"ket/telegram/handlers"
 	"log"
@@ -22,17 +21,12 @@ func InitBot() *tele.Bot {
 
 	log.Println("Telegram bot created successfully")
 
-	random.SetConfig(random.AutoResponseConfig{
-		Enabled: cfg.BotSetup.Random,
-	})
-
 	handlers.InitPromptQueue(bot.cfg.BotSetup.MaxQueue)
 	handlers.StartPromptWorker("default", bot.Bot)
 
 	commands.RegisterBasicCommands(bot.Bot)
 	commands.RegisterAdminCommands(bot.Bot)
 	commands.RegisterRAGCommands(bot.Bot)
-	commands.RegisterYouTubeCommands(bot.Bot)
 	commands.RegisterPromptCommand(bot.Bot)
 
 	// Register inline handlers

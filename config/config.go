@@ -9,7 +9,6 @@ import (
 type BotSetup struct {
 	Token               string  `json:"token"`
 	MaxQueue            int     `json:"max_queue"`
-	Random              bool    `json:"random"`
 	MaxMessagesPerGroup int     `json:"MaxMessagesPerGroup"`
 	TriggerProbability  float64 `json:"TriggerProbability"`
 }
@@ -19,7 +18,6 @@ type BackendSetup struct {
 	ApiKey      string `json:"api_key"`
 	Model       string `json:"model"`
 	InputLength int    `json:"input_length"`
-	YtLanguage  string `json:"yt-language"`
 	SysPrompt   string `json:"-"` // never marshal to JSON
 	AutoPrompt  string `json:"-"` // used for auto response
 }
@@ -86,12 +84,9 @@ func LogConfig() {
 	log.Println("Version:", loadedConfig.Version)
 	log.Println("BotName:", loadedConfig.BotName)
 	log.Println("GenCommand:", loadedConfig.GenCommand)
-	log.Println("Proxy:", loadedConfig.HttpProxy)
-	log.Println("YouTube Language:", loadedConfig.BackendSetup.YtLanguage)
 	log.Println("API URL:", loadedConfig.BackendSetup.ApiUrl)
 	log.Println("Model:", loadedConfig.BackendSetup.Model)
 	log.Println("Max Queue Size:", loadedConfig.BotSetup.MaxQueue)
-	log.Println("Random:", loadedConfig.BotSetup.Random)
 	log.Println("Max Messages Per Group:", loadedConfig.BotSetup.MaxMessagesPerGroup)
 	log.Println("Trigger Probability:", loadedConfig.BotSetup.TriggerProbability)
 	log.Println("------------------------------------------")
