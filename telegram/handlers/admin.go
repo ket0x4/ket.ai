@@ -25,36 +25,7 @@ func parseSingleIDArg(c tele.Context, usage string) (int64, bool) {
 	return id, true
 }
 
-func HandleAddUser(c tele.Context) error {
-	log.Printf("/adduser | user:%d chat:%d args:%q", c.Sender().ID, c.Chat().ID, c.Message().Text)
-	userID, ok := parseSingleIDArg(c, "Usage: /adduser <user_id>")
-	if !ok {
-		return nil
-	}
-	err := permissions.AddUser(userID)
-	if err != nil {
-		return sendError(c, "Error adding user", err)
-	}
-	log.Printf("/adduser | user:%d chat:%d added user:%d", c.Sender().ID, c.Chat().ID, userID)
-	return c.Reply(fmt.Sprintf("User %d added successfully.", userID))
-}
-
-func HandleRemoveUser(c tele.Context) error {
-	log.Printf("/rmuser | user:%d chat:%d args:%q", c.Sender().ID, c.Chat().ID, c.Message().Text)
-	userID, ok := parseSingleIDArg(c, "Usage: /rmuser <user_id>")
-	if !ok {
-		return nil
-	}
-	err := permissions.RemoveUser(userID)
-	if err != nil {
-		return sendError(c, "Error removing user", err)
-	}
-	log.Printf("/rmuser | user:%d chat:%d removed user:%d", c.Sender().ID, c.Chat().ID, userID)
-	return c.Reply(fmt.Sprintf("User %d removed successfully.", userID))
-}
-
 func HandleAddChat(c tele.Context) error {
-	log.Printf("/addchat | user:%d chat:%d args:%q", c.Sender().ID, c.Chat().ID, c.Message().Text)
 	chatID, ok := parseSingleIDArg(c, "Usage: /addchat <chat_id>")
 	if !ok {
 		return nil
@@ -68,7 +39,6 @@ func HandleAddChat(c tele.Context) error {
 }
 
 func HandleRemoveChat(c tele.Context) error {
-	log.Printf("/rmchat | user:%d chat:%d args:%q", c.Sender().ID, c.Chat().ID, c.Message().Text)
 	chatID, ok := parseSingleIDArg(c, "Usage: /rmchat <chat_id>")
 	if !ok {
 		return nil
@@ -82,14 +52,8 @@ func HandleRemoveChat(c tele.Context) error {
 }
 
 func HandleList(c tele.Context) error {
-	log.Printf("/list | user:%d chat:%d", c.Sender().ID, c.Chat().ID)
-	users := permissions.ListUsers()
 	chats := permissions.ListChats()
 	var response strings.Builder
-	response.WriteString("Allowed Users:\n")
-	for _, user := range users {
-		response.WriteString(fmt.Sprintf("- `%d`\n", user))
-	}
 	response.WriteString("\nAllowed Chats:\n")
 	for _, chat := range chats {
 		response.WriteString(fmt.Sprintf("- `%d`\n", chat))

@@ -60,18 +60,18 @@ func HandlePrompt(c tele.Context) error {
 	if !isPrompt {
 		ok, err := random.LogMessage(c.Chat().ID, c.Sender().Username, c.Sender().ID, c.Message().Text)
 		if err != nil {
-			log.Printf("[AutoResponse] LogMessage error: %v", err)
+			log.Printf("AutoResponse logMessage error: %v", err)
 		}
 		if ok {
-			log.Printf("[AutoResponse] Triggered for chat %d", c.Chat().ID)
+			log.Printf("Triggered AutoResponse for chat %d", c.Chat().ID)
 			response, err := random.GenerateAutoResponse(context.Background(), c.Chat().ID)
 			if err != nil {
-				log.Printf("[AutoResponse] GenerateAutoResponse error: %v", err)
+				log.Printf(" GenerateAutoResponse error: %v", err)
 				return nil
 			}
 			_, sendErr := c.Bot().Send(c.Chat(), response)
 			if sendErr != nil {
-				log.Printf("[AutoResponse] Send error: %v", sendErr)
+				log.Printf("AutoResponse Send error: %v", sendErr)
 			}
 		}
 		return nil
@@ -88,15 +88,14 @@ func HandlePrompt(c tele.Context) error {
 	select {
 	case PromptQueue <- task:
 		queueLen := len(PromptQueue)
-		replyMsg := fmt.Sprintf("Your request has been queued <code>(position %d/%d)</code>", queueLen, config.GetConfig().BotSetup.MaxQueue)
+		replyMsg := fmt.Sprintf("Queued <code>(position %d/%d)</code>", queueLen, config.GetConfig().BotSetup.MaxQueue)
 		sentMsg, err := c.Bot().Reply(c.Message(), replyMsg, tele.ModeHTML)
 		if err == nil {
 			task.QueueMessage = sentMsg
 		}
 	default:
-		return c.Reply("The bot is currently busy. Please try again in a few moments.")
+		return c.Reply("Dave is currently busy.")
 	}
-
 	return nil
 }
 

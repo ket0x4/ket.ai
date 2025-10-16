@@ -24,7 +24,7 @@ var (
 )
 
 func HandleStartCommand(c tele.Context) error {
-	log.Printf("[CMD] /start | user:%d chat:%d", c.Sender().ID, c.Chat().ID)
+	log.Printf("/start | user:%d chat:%d", c.Sender().ID, c.Chat().ID)
 	return c.Send(`Bot Running!`)
 }
 
@@ -43,7 +43,7 @@ func HandleHelp(c tele.Context) error {
 	• <code>/addchat [id]</code> Add a user or chat to the allowed list
 	• <code>/rmchat [id]</code> Remove a user or chat from the allowed list
 	• <code>/list</code> List all allowed users and chats
-	
+
 	<b>▶ Retrieval-Augmented Generation</b>
 	RAG (Retrieval-Augmented Generation) system enhances responses with relevant context
 	Bot works better with context from previous conversations.
@@ -60,20 +60,21 @@ func HandleHelp(c tele.Context) error {
 }
 
 func HandleStatus(c tele.Context) error {
-	log.Printf("[CMD] /status | user:%d chat:%d", c.Sender().ID, c.Chat().ID)
+	log.Printf("/status | user:%d chat:%d", c.Sender().ID, c.Chat().ID)
 	markup := &tele.ReplyMarkup{}
 	markup.InlineKeyboard = [][]tele.InlineButton{{statusRefreshButton}}
 	return c.Send(utils.GetSystemStats(), markup, tele.ModeHTML)
 }
 
 func HandleStatusRefresh(c tele.Context) error {
+	//refreshMessages :=
 	userID := c.Sender().ID
 	if !permissions.IsAdmin(userID) {
-		return c.Respond(&tele.CallbackResponse{Text: "Only admins can refresh status.", ShowAlert: true})
+		return c.Respond(&tele.CallbackResponse{Text: "Not authorized.", ShowAlert: true})
 	}
 	last, ok := statusRefreshRateLimit[userID]
 	if ok && time.Since(last) < 3*time.Second {
-		return c.Respond(&tele.CallbackResponse{Text: "Rate limit: 1 refresh per 3 seconds.", ShowAlert: true})
+		return c.Respond(&tele.CallbackResponse{Text: "Rate limit.", ShowAlert: true})
 	}
 	statusRefreshRateLimit[userID] = time.Now()
 	return c.Edit(utils.GetSystemStats(), &tele.ReplyMarkup{InlineKeyboard: [][]tele.InlineButton{{statusRefreshButton}}}, tele.ModeHTML)
@@ -137,15 +138,15 @@ func HandleModelSelect(c tele.Context) error {
 	config.UpdateConfig(cfg)
 	err = config.SaveConfig()
 	if err != nil {
-		log.Printf("[FAIL] /model button | user:%d error saving config: %v", userID, err)
-		return c.Respond(&tele.CallbackResponse{Text: "Failed to save config.", ShowAlert: true})
+		log.Printf("/model button | user:%d error saving config: %v", userID, err)
+		return c.Respond(&tele.CallbackResponse{Text: "Failed to update config.", ShowAlert: true})
 	}
 	return c.Edit("<b>Model changed to:</b> <code>"+model+"</code>", &tele.SendOptions{ParseMode: tele.ModeHTML})
 }
 
 // sendError is a helper function to send a formatted error message to the user and log it.
 func sendError(c tele.Context, message string, err error) error {
-	log.Printf("[FAIL] user:%d chat:%d | Error: %v", c.Sender().ID, c.Chat().ID, err)
+	log.Printf("User:%d chat:%d | Error: %v", c.Sender().ID, c.Chat().ID, err)
 
 	// Using ModeHTML to allow for better formatting.
 	errorMsg := fmt.Sprintf("%s\n\n<b>Error:</b>\n<code>%v</code>", message, err)

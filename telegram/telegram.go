@@ -11,19 +11,18 @@ import (
 
 func InitBot() *tele.Bot {
 	cfg := config.GetConfig()
-
 	bot, err := NewBot(&cfg)
 	if err != nil {
 		log.Fatalf("Failed to create new bot: %v", err)
 	}
 
+	// ignore previous messages
 	bot.Use(ignoreOldMessagesMiddleware(bot.botStartTime))
-
-	log.Println("Telegram bot created successfully")
 
 	handlers.InitPromptQueue(bot.cfg.BotSetup.MaxQueue)
 	handlers.StartPromptWorker("default", bot.Bot)
 
+	// Register commands
 	commands.RegisterBasicCommands(bot.Bot)
 	commands.RegisterAdminCommands(bot.Bot)
 	commands.RegisterRAGCommands(bot.Bot)

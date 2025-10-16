@@ -48,5 +48,5 @@ func HandleRAGHistory(c tele.Context) error {
 // HandleRAGClear clears chat history for current chat
 func HandleRAGClear(c tele.Context) error {
 	rag.ClearChatHistory(c.Chat().ID, c.Sender().ID)
-	return c.Reply("✔️ Message history cleaned for this chat.")
+	return c.Reply("✓ Message history cleaned for this chat.")
 }
