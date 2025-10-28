@@ -71,7 +71,7 @@ func (ds *DebouncedSaver) Trigger() {
 	}
 
 	ds.timer = time.AfterFunc(ds.wait, func() {
-		log.Println("RAG: Debouncer triggered, persisting data...")
+		log.Println("RAG: Persisting data...")
 		ds.action()
 	})
 }
@@ -98,14 +98,14 @@ func GetRagResponse(ctx context.Context, prompt string, chatID int64, userID int
 	// Get response from backend
 	response, err := backend.GetResponseWithRAG(ctx, prompt, finalPrompt, systemPrompt)
 	if err != nil {
-		return "", fmt.Errorf("failed to get response from backend: %w", err)
+		return "", fmt.Errorf("Failed to get response from backend: %w", err)
 	}
 
 	// Add bot's response to history
 	botMessage := fmt.Sprintf("bot:%s", response)
 	addMessageToHistory(chatID, userID, botMessage)
 
-	log.Printf("RAG: Successfully processed prompt for chat %d", chatID)
+	log.Printf("RAG: Processed prompt for chat %d", chatID)
 	return cleanMarkdown(response), nil
 }
 
@@ -299,9 +299,9 @@ func init() {
 			rwMutex.RUnlock()
 
 			if err := SaveChatHistories(dataToSave); err != nil {
-				log.Printf("RAG: Debounced save failed: %v", err)
+				log.Printf("RAG: Save failed: %v", err)
 			} else {
-				log.Println("RAG: Chat data successfully persisted via debouncer.")
+				log.Println("RAG: Chat data successfully persisted.")
 			}
 		})
 	})

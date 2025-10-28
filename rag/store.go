@@ -13,7 +13,7 @@ var (
 	fileMutex   sync.RWMutex
 )
 
-// saveChatHistories persists the RAG data to disk.
+// Persists the RAG data to disk.
 // It writes to a temporary file first, then renames it to the final destination.
 // This ensures that the original data file is not corrupted if the write is interrupted.
 func saveChatHistories(data []Document) error {
@@ -32,7 +32,7 @@ func saveChatHistories(data []Document) error {
 	if err != nil {
 		return err
 	}
-	defer os.Remove(tempFile.Name()) // Clean up the temp file on exit.
+	defer os.Remove(tempFile.Name())
 
 	// Encode the data to the temporary file.
 	encoder := json.NewEncoder(tempFile)
@@ -56,7 +56,7 @@ func saveChatHistories(data []Document) error {
 	return nil
 }
 
-// loadChatHistories loads the RAG data from disk.
+// Load the RAG data from disk.
 func loadChatHistories() ([]Document, error) {
 	fileMutex.RLock()
 	defer fileMutex.RUnlock()
@@ -88,7 +88,7 @@ func LoadChatHistories() ([]Document, error) {
 	return loadChatHistories()
 }
 
-// backupChatHistories creates a backup of the current RAG data.
+// Creates a backup of the current RAG data.
 func backupChatHistories() error {
 	// This function is called from saveChatHistories, which already holds a lock.
 	sourceFile, err := os.Open(ragDataFile)
@@ -112,7 +112,7 @@ func backupChatHistories() error {
 	return err
 }
 
-// BackupChatHistories creates a backup of the current RAG data using an efficient file copy.
+// Create a backup of the current RAG data using an efficient file copy.
 func BackupChatHistories() error {
 	fileMutex.RLock()
 	defer fileMutex.RUnlock()
