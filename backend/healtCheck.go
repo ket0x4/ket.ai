@@ -12,12 +12,12 @@ func HealthCheck() bool {
 	systemPrompt := "only answer with a number"
 	validResponse := "4"
 
-	log.Println("[HealthCheck] Checking backend health...")
-	log.Println("[HealthCheck] Prompt: ", prompt)
-	log.Println("[HealthCheck] SystemPrompt: ", systemPrompt)
+	log.Println("[Health] Checking backend health...")
+	log.Println("[Health] DummyPrompt: ", prompt)
+	log.Println("[Health] SystemPrompt: ", systemPrompt)
 
 	response, err := GetResponse(ctx, prompt, systemPrompt)
-	log.Println("[HealthCheck] Response: ", response)
+	log.Println("[Health] Response: ", response)
 
 	if err != nil {
 		if response == "" {
