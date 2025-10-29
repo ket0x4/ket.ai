@@ -1,11 +1,9 @@
 *.sum
 *.env
 *.log
+*.bak
+history.json
 config.json
-ket
-chats.json
-rag_data.json
-rag_data.json.bak
+dave
 system_prompt.txt
 auto_prompt.txt
-config.debug
