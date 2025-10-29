@@ -1,4 +1,4 @@
-package rag
+package chatcontext
 
 import (
 	"context"
@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-// Simplified RAG implementation
+// Simplified context implementation
 var (
 	// chatHistories stores the last N messages for each chat.
 	// The string is a formatted line like "username: message" or "bot: message".
@@ -36,7 +36,7 @@ const (
 	summaryTriggerCount = 1000
 )
 
-// Document represents a piece of information in the RAG system (for saving/loading)
+// Document represents a piece of information in the ChatContext system (for saving/loading)
 type Document struct {
 	ChatID         int64    `json:"chat_id"`
 	UserID         int64    `json:"user_id"`
@@ -71,18 +71,18 @@ func (ds *DebouncedSaver) Trigger() {
 	}
 
 	ds.timer = time.AfterFunc(ds.wait, func() {
-		log.Println("RAG: Persisting data...")
+		log.Println("ChatContext: Persisting data...")
 		ds.action()
 	})
 }
 
-// GetRagResponse generates a response using the simplified RAG model.
-func GetRagResponse(ctx context.Context, prompt string, chatID int64, userID int64, userName string, systemPrompt string) (string, error) {
+// Generates a response using the chat history.
+func GetContextResponse(ctx context.Context, prompt string, chatID int64, userID int64, userName string, systemPrompt string) (string, error) {
 	if strings.TrimSpace(prompt) == "" {
 		return "", nil
 	}
 
-	log.Printf("RAG: Processing prompt for chat %d, user %s", chatID, userName)
+	log.Printf("ChatContext: Processing prompt for chat %d, user %s", chatID, userName)
 
 	// Add user's message to history
 	userMessage := fmt.Sprintf("- %s:%d:%s", userName, userID, prompt)
@@ -93,10 +93,10 @@ func GetRagResponse(ctx context.Context, prompt string, chatID int64, userID int
 
 	// Prepare context for the model
 	contextStr := prepareContext(chatID, userID)
-	finalPrompt := buildRAGPrompt(prompt, contextStr)
+	finalPrompt := buildCCPrompt(prompt, contextStr)
 
 	// Get response from backend
-	response, err := backend.GetResponseWithRAG(ctx, prompt, finalPrompt, systemPrompt)
+	response, err := backend.GetResponseWithCC(ctx, prompt, finalPrompt, systemPrompt)
 	if err != nil {
 		return "", fmt.Errorf("Failed to get response from backend: %w", err)
 	}
@@ -105,7 +105,7 @@ func GetRagResponse(ctx context.Context, prompt string, chatID int64, userID int
 	botMessage := fmt.Sprintf("bot:%s", response)
 	addMessageToHistory(chatID, userID, botMessage)
 
-	log.Printf("RAG: Processed prompt for chat %d", chatID)
+	log.Printf("ChatContext: Processed prompt for chat %d", chatID)
 	return cleanMarkdown(response), nil
 }
 
@@ -165,7 +165,7 @@ func handleSummarization(ctx context.Context, chatID int64, userID int64, system
 	historySnapshot := strings.Join(historyForSummary, "\n")
 	rwMutex.RUnlock()
 
-	log.Printf("RAG: Triggering summary for chat %d after %d messages.", chatID, count)
+	log.Printf("ChatContext: Triggering summary for chat %d after %d messages.", chatID, count)
 
 	summaryPrompt := fmt.Sprintf(`This is the message history of the group you are in. Summarize it and write down the things you think should be remembered in bullet points. You will need these later. Just write a summary and keep it short.
 
@@ -175,8 +175,8 @@ History:
 	// Get summary from the model
 	summary, err := backend.GetResponse(ctx, summaryPrompt, systemPrompt)
 	if err != nil {
-		log.Printf("RAG: Failed to create summary for chat %d: %v", chatID, err)
-		// Don't reset counter if summarization fails, try again later.
+		log.Printf("ChatContext: Failed to create summary for chat %d: %v", chatID, err)
+		// Don't reset counter if summarization fails, try again next run.
 		return
 	}
 
@@ -185,7 +185,7 @@ History:
 	messageCounter[key] = 0 // Reset counter
 	rwMutex.Unlock()
 
-	log.Printf("RAG: Successfully created new summary for chat %d.", chatID)
+	log.Printf("ChatContext: Successfully created new summary for chat %d.", chatID)
 	if debouncedSaver != nil {
 		debouncedSaver.Trigger()
 	}
@@ -217,10 +217,11 @@ func prepareContext(chatID int64, userID int64) string {
 	return strings.TrimSpace(contextBuilder.String())
 }
 
-// buildRAGPrompt creates the final prompt for the model.
-func buildRAGPrompt(userPrompt, context string) string {
+// Creates the final prompt for the model.
+func buildCCPrompt(userPrompt, context string) string {
 	// Instruction for the model
-	instruction := "This is the message history of the group you are in. If the question is related to this, answer using the history, otherwise, you can continue normally. Act naturally."
+	// to-do: I know it needs better prompt for managing history but atm should be fine. move it to the config later
+	instruction := "This is the message history of the group you are in. If the question is related to this, answer using the history, otherwise, you can continue following your system prompt."
 
 	if context == "" {
 		return userPrompt // Should not happen if there's history, but as a fallback.
@@ -259,13 +260,13 @@ func ClearChatHistory(chatID int64, userID int64) {
 	delete(chatSummaries, key)
 	delete(messageCounter, key)
 
-	log.Printf("RAG: Cleared all data for chat %d.", chatID)
+	log.Printf("ChatContext: Cleared all data for chat %d.", chatID)
 	if debouncedSaver != nil {
 		debouncedSaver.Trigger()
 	}
 }
 
-// init initializes the RAG system, loading data from storage.
+// init initializes the ChatContext system, loading data from storage.
 func init() {
 	initOnce.Do(func() {
 		if data, err := LoadChatHistories(); err == nil {
@@ -275,9 +276,9 @@ func init() {
 				chatSummaries[key] = doc.Summary
 				messageCounter[key] = doc.MessageCounter
 			}
-			log.Printf("RAG: Loaded chat data for %d chats", len(data))
+			log.Printf("ChatContext: Loaded chat data for %d chats", len(data))
 		} else {
-			log.Printf("RAG: Failed to load chat histories: %v. Starting fresh.", err)
+			log.Printf("ChatContext: Failed to load chat histories: %v. Starting fresh.", err)
 		}
 
 		// Initialize the debounced saver.
@@ -299,9 +300,9 @@ func init() {
 			rwMutex.RUnlock()
 
 			if err := SaveChatHistories(dataToSave); err != nil {
-				log.Printf("RAG: Save failed: %v", err)
+				log.Printf("ChatContext: Save failed: %v", err)
 			} else {
-				log.Println("RAG: Chat data successfully persisted.")
+				log.Println("ChatContext: Chat data successfully persisted.")
 			}
 		})
 	})

@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 	"ket/backend"
+	cc "ket/chatcontext"
 	"ket/config"
-	"ket/rag"
 	"ket/random"
 	"log"
 	"strings"
@@ -121,9 +121,9 @@ func processPrompt(task *PromptTask, systemPrompt string, bot *tele.Bot) {
 		}
 	}()
 
-	response, err := rag.GetRagResponse(context.Background(), task.Prompt, task.ChatID, task.UserID, task.OriginalContext.Sender().Username, systemPrompt)
+	response, err := cc.GetContextResponse(context.Background(), task.Prompt, task.ChatID, task.UserID, task.OriginalContext.Sender().Username, systemPrompt)
 	if err != nil {
-		log.Printf("Error getting RAG response for chat ID %d: %v", task.ChatID, err)
+		log.Printf("Error getting Chatcontext response for chat ID %d: %v", task.ChatID, err)
 		// Fallback to standard generation
 		response, err = backend.GetResponse(context.Background(), task.Prompt, systemPrompt)
 		if err != nil {

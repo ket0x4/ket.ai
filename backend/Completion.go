@@ -57,7 +57,7 @@ func GetResponse(ctx context.Context, prompt string, systemPrompt string) (strin
 	return resp.Choices[0].Message.Content, nil
 }
 
-func GetResponseWithRAG(ctx context.Context, prompt string, contextPrompt string, systemPrompt string) (string, error) {
+func GetResponseWithCC(ctx context.Context, prompt string, contextPrompt string, systemPrompt string) (string, error) {
 	valid, errorMsg := CheckPrompt(prompt)
 	if !valid {
 		log.Println(errorMsg)
