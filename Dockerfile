@@ -1,6 +1,6 @@
 # Stage 1: The Builder Stage
 # We use an official Golang image optimized for compilation.
-FROM golang:1.21-alpine AS builder
+FROM golang:1.24.5-alpine AS builder
 
 # Install necessary tools: upx for compression and git/musl-dev for general build environment setup.
 RUN apk add --no-cache upx musl-dev git
@@ -28,7 +28,7 @@ RUN upx -9 -f --ultra-brute -o /usr/local/bin/dave_compressed /usr/local/bin/dav
 # Stage 2: The Distroless Runtime Stage
 # gcr.io/distroless/static is used for Go binaries which are statically compiled (CGO_ENABLED=0).
 # This image is extremely minimal and does not contain a shell.
-FROM gcr.io/distroless/static-debian12
+FROM gcr.io/distroless/static-debian13
 
 # Set the working directory
 WORKDIR /app
