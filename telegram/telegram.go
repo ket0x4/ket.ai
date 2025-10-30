@@ -1,10 +1,14 @@
 package telegram
 
 import (
+	"ket/chatcontext"
 	"ket/config"
 	"ket/telegram/commands"
 	"ket/telegram/handlers"
 	"log"
+	"os"
+	"os/signal"
+	"syscall"
 
 	tele "gopkg.in/telebot.v4"
 )
@@ -44,5 +48,14 @@ func Run() {
 	log.Println("Application setup complete. Bot is initializing and starting...")
 	go bot.Start()
 
-	select {}
+	// Graceful shutdown
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
+
+	<-stop
+
+	log.Println("Shutting down...")
+	bot.Stop()
+	chatcontext.Close()
+	log.Println("Bot stopped.")
 }

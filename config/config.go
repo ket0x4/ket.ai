@@ -36,6 +36,11 @@ type BackendSetup struct {
 	AutoPrompt  string `json:"-"` // used for auto response
 }
 
+type HistorySetup struct {
+	MaxHistorySize      int `json:"max_history_size"`
+	SummaryTriggerCount int `json:"summary_trigger_count"`
+}
+
 type Permissions struct {
 	Users        []int64 `json:"AllowedUsers"`
 	AllowedChats []int64 `json:"allowed_chats"`
@@ -45,6 +50,7 @@ type Permissions struct {
 type Config struct {
 	BotSetup     BotSetup     `json:"BotSetup"`
 	BackendSetup BackendSetup `json:"BackendSetup"`
+	HistorySetup HistorySetup `json:"HistorySetup"`
 	Permissions  Permissions  `json:"Permissions"`
 	// Backwards-compatible top-level AllowedChats (moved from chats.json)
 	AllowedChats []int64 `json:"AllowedChats"`
@@ -103,6 +109,8 @@ func LogConfig() {
 	log.Println("Max Queue Size:", loadedConfig.BotSetup.MaxQueue)
 	log.Println("Max Messages Per Group:", loadedConfig.BotSetup.MaxMessagesPerGroup)
 	log.Println("Trigger Probability:", loadedConfig.BotSetup.TriggerProbability)
+	log.Println("Max History Size:", loadedConfig.HistorySetup.MaxHistorySize)
+	log.Println("Summary Trigger Count:", loadedConfig.HistorySetup.SummaryTriggerCount)
 	log.Println("------------------------------------------")
 	log.Println("Config loaded successfully.")
 }

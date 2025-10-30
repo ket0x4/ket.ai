@@ -12,6 +12,10 @@
     "model": "LLM_MODEL",
     "input_length": 2048
   },
+  "HistorySetup": {
+    "max_history_size": 300,
+    "summary_trigger_count": 1000
+  },
   "AllowedChats": [
     207588255, 2087606991, -1001541497652, -1001253259500, -1001054130924
   ],

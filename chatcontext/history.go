@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"ket/backend"
+	"ket/config"
 	"log"
 	"strings"
 	"sync"
@@ -14,13 +15,13 @@ import (
 var (
 	// chatHistories stores the last N messages for each chat.
 	// The string is a formatted line like "username: message" or "bot: message".
-	chatHistories = make(map[string][]string)
+	chatHistories = make(map[chatKey][]string)
 
 	// chatSummaries stores the latest summary for each chat.
-	chatSummaries = make(map[string]string)
+	chatSummaries = make(map[chatKey]string)
 
 	// messageCounter tracks the number of messages since the last summary.
-	messageCounter = make(map[string]int)
+	messageCounter = make(map[chatKey]int)
 
 	rwMutex  sync.RWMutex
 	initOnce sync.Once
@@ -29,17 +30,15 @@ var (
 	debouncedSaver *DebouncedSaver
 )
 
-const (
-	// maxHistorySize is the number of messages to keep in the recent history.
-	maxHistorySize = 300
-	// summaryTriggerCount is the number of messages after which a summary is created.
-	summaryTriggerCount = 1000
-)
+// chatKey is the key for the chat context maps.
+type chatKey struct {
+	ChatID int64 `json:"chat_id"`
+	UserID int64 `json:"user_id"`
+}
 
 // Document represents a piece of information in the ChatContext system (for saving/loading)
 type Document struct {
-	ChatID         int64    `json:"chat_id"`
-	UserID         int64    `json:"user_id"`
+	chatKey
 	History        []string `json:"history"`
 	Summary        string   `json:"summary"`
 	MessageCounter int      `json:"message_counter"`
@@ -122,13 +121,13 @@ func addMessageToHistory(chatID int64, userID int64, message string) {
 	rwMutex.Lock()
 	defer rwMutex.Unlock()
 
-	key := fmt.Sprintf("%d:%d", chatID, userID)
+	key := chatKey{ChatID: chatID, UserID: userID}
 	history := chatHistories[key]
 	history = append(history, message)
 
 	// Keep history at the desired size
-	if len(history) > maxHistorySize {
-		history = history[len(history)-maxHistorySize:]
+	if len(history) > config.GetConfig().HistorySetup.MaxHistorySize {
+		history = history[len(history)-config.GetConfig().HistorySetup.MaxHistorySize:]
 	}
 	chatHistories[key] = history
 
@@ -144,11 +143,11 @@ func addMessageToHistory(chatID int64, userID int64, message string) {
 // handleSummarization checks if a summary is needed and triggers it.
 func handleSummarization(ctx context.Context, chatID int64, userID int64, systemPrompt string) {
 	rwMutex.RLock()
-	key := fmt.Sprintf("%d:%d", chatID, userID)
+	key := chatKey{ChatID: chatID, UserID: userID}
 	count := messageCounter[key]
 	rwMutex.RUnlock()
 
-	if count < summaryTriggerCount {
+	if count < config.GetConfig().HistorySetup.SummaryTriggerCount {
 		return
 	}
 
@@ -196,7 +195,7 @@ func prepareContext(chatID int64, userID int64) string {
 	rwMutex.RLock()
 	defer rwMutex.RUnlock()
 
-	key := fmt.Sprintf("%d:%d", chatID, userID)
+	key := chatKey{ChatID: chatID, UserID: userID}
 	summary, hasSummary := chatSummaries[key]
 	history := chatHistories[key]
 
@@ -239,7 +238,7 @@ func GetChatHistory(chatID int64, userID int64) []string {
 	rwMutex.RLock()
 	defer rwMutex.RUnlock()
 
-	key := fmt.Sprintf("%d:%d", chatID, userID)
+	key := chatKey{ChatID: chatID, UserID: userID}
 	// Return a copy
 	history, exists := chatHistories[key]
 	if !exists {
@@ -255,7 +254,7 @@ func ClearChatHistory(chatID int64, userID int64) {
 	rwMutex.Lock()
 	defer rwMutex.Unlock()
 
-	key := fmt.Sprintf("%d:%d", chatID, userID)
+	key := chatKey{ChatID: chatID, UserID: userID}
 	delete(chatHistories, key)
 	delete(chatSummaries, key)
 	delete(messageCounter, key)
@@ -266,12 +265,28 @@ func ClearChatHistory(chatID int64, userID int64) {
 	}
 }
 
+// Close should be called on shutdown to persist any pending changes.
+func Close() {
+	log.Println("ChatContext: Closing and persisting data...")
+	if debouncedSaver != nil {
+		// To prevent a race condition, we stop the timer and save directly.
+		debouncedSaver.mu.Lock()
+		if debouncedSaver.timer != nil {
+			debouncedSaver.timer.Stop()
+		}
+		debouncedSaver.mu.Unlock()
+
+		// Perform a final save.
+		save()
+	}
+}
+
 // init initializes the ChatContext system, loading data from storage.
 func init() {
 	initOnce.Do(func() {
-		if data, err := LoadChatHistories(); err == nil {
+		if data, err := loadChatHistories(); err == nil {
 			for _, doc := range data {
-				key := fmt.Sprintf("%d:%d", doc.ChatID, doc.UserID)
+				key := chatKey{ChatID: doc.ChatID, UserID: doc.UserID}
 				chatHistories[key] = doc.History
 				chatSummaries[key] = doc.Summary
 				messageCounter[key] = doc.MessageCounter
@@ -282,28 +297,27 @@ func init() {
 		}
 
 		// Initialize the debounced saver.
-		debouncedSaver = NewDebouncedSaver(10*time.Second, func() {
-			rwMutex.RLock()
-			// Create a deep copy to avoid holding the lock during I/O.
-			var dataToSave []Document
-			for id, history := range chatHistories {
-				var chatID, userID int64
-				fmt.Sscanf(id, "%d:%d", &chatID, &userID)
-				dataToSave = append(dataToSave, Document{
-					ChatID:         chatID,
-					UserID:         userID,
-					History:        history,
-					Summary:        chatSummaries[id],
-					MessageCounter: messageCounter[id],
-				})
-			}
-			rwMutex.RUnlock()
-
-			if err := SaveChatHistories(dataToSave); err != nil {
-				log.Printf("ChatContext: Save failed: %v", err)
-			} else {
-				log.Println("ChatContext: Chat data successfully persisted.")
-			}
-		})
+		debouncedSaver = NewDebouncedSaver(10*time.Second, save)
 	})
+}
+
+func save() {
+	rwMutex.RLock()
+	// Create a deep copy to avoid holding the lock during I/O.
+	var dataToSave []Document
+	for key, history := range chatHistories {
+		dataToSave = append(dataToSave, Document{
+			chatKey:        key,
+			History:        history,
+			Summary:        chatSummaries[key],
+			MessageCounter: messageCounter[key],
+		})
+	}
+	rwMutex.RUnlock()
+
+	if err := saveChatHistories(dataToSave); err != nil {
+		log.Printf("ChatContext: Save failed: %v", err)
+	} else {
+		log.Println("ChatContext: Chat data successfully persisted.")
+	}
 }
