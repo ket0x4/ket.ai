@@ -7,3 +7,4 @@ config.json
 dave
 system_prompt.txt
 auto_prompt.txt
+.DS_Store

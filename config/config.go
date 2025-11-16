@@ -32,8 +32,8 @@ type BackendSetup struct {
 	ApiKey      string `json:"api_key"`
 	Model       string `json:"model"`
 	InputLength int    `json:"input_length"`
-	SysPrompt   string `json:"-"` // never marshal to JSON
-	AutoPrompt  string `json:"-"` // used for auto response
+	SysPrompt   string `json:"system_prompt"`
+	AutoPrompt  string `json:"auto_prompt"`
 }
 
 type HistorySetup struct {
@@ -85,19 +85,6 @@ func ReadConfig() {
 		c.Permissions.Admins = c.BotSetup.Admins
 	}
 	loadedConfig = c
-
-	sysPrompt, err := os.ReadFile("system_prompt.txt")
-	if err != nil {
-		log.Printf("Error loading system prompt: %v", err)
-	}
-	loadedConfig.BackendSetup.SysPrompt = string(sysPrompt)
-
-	autoPrompt, err := os.ReadFile("auto_prompt.txt")
-	if err != nil {
-		log.Printf("Error loading auto prompt: %v", err)
-	}
-	loadedConfig.BackendSetup.AutoPrompt = string(autoPrompt)
-
 	LogConfig()
 }
 
@@ -123,11 +110,9 @@ func UpdateConfig(newConfig Config) {
 	loadedConfig = newConfig
 }
 
-// SaveConfig writes the current loadedConfig to config.json, excluding SysPrompt from file.
+// SaveConfig writes the current loadedConfig to config.json, including SysPrompt from file.
 func SaveConfig() error {
-	cfgCopy := loadedConfig
-	cfgCopy.BackendSetup.SysPrompt = "" // will not be marshaled due to json:"-"
-	data, err := json.MarshalIndent(cfgCopy, "", "    ")
+	data, err := json.MarshalIndent(loadedConfig, "", "    ")
 	if err != nil {
 		return err
 	}
