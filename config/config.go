@@ -8,7 +8,7 @@ import (
 
 // Now hardcoded
 const configFilePath = "config.json"
-const Version = "7.0"
+const Version = "7.1"
 const GenCommand = "dave"
 const BotName = "Dave"
 

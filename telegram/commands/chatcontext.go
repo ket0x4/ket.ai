@@ -10,9 +10,9 @@ import (
 
 func RegisterRAGCommands(b *tele.Bot, ccService *chatcontext.Service) {
 	b.Handle("/history", middleware.RequireUser(func(c tele.Context) error {
-		return handlers.HandleRAGHistory(c, ccService)
+		return handlers.HandleCCHistory(c, ccService)
 	}))
 	b.Handle("/reset", middleware.RequireUser(func(c tele.Context) error {
-		return handlers.HandleRAGClear(c, ccService)
+		return handlers.HandleCCClear(c, ccService)
 	}))
 }

@@ -8,16 +8,16 @@ import (
 	tele "gopkg.in/telebot.v4"
 )
 
-// HandleRAGHistory shows recent chat history
-func HandleRAGHistory(c tele.Context, ccService *chatcontext.Service) error {
-	history := ccService.GetChatHistory(c.Chat().ID, c.Sender().ID)
+// HandleCCHistory shows recent chat history
+func HandleCCHistory(c tele.Context, ccService *chatcontext.Service) error {
+	history := ccService.GetChatHistory(c.Chat().ID)
 
 	if len(history) == 0 {
 		return c.Reply("There is no chat history available for this chat.")
 	}
 
 	var message strings.Builder
-	message.WriteString(fmt.Sprintf("*Last %d RAG Entries*\n\n", len(history)))
+	message.WriteString(fmt.Sprintf("*Last %d Chat Entries*\n\n", len(history)))
 
 	// Trim history to the last 15 entries for display
 	if len(history) > 15 {
@@ -45,8 +45,8 @@ func HandleRAGHistory(c tele.Context, ccService *chatcontext.Service) error {
 	return nil
 }
 
-// HandleRAGClear clears chat history for current chat
-func HandleRAGClear(c tele.Context, ccService *chatcontext.Service) error {
-	ccService.ClearChatHistory(c.Chat().ID, c.Sender().ID)
-	return c.Reply("✓ Message history cleaned for this chat.")
+// HandleCCClear clears chat history for current chat
+func HandleCCClear(c tele.Context, ccService *chatcontext.Service) error {
+	ccService.ClearChatHistory(c.Chat().ID)
+	return c.Reply("✓ Chat history cleaned for this chat.")
 }
