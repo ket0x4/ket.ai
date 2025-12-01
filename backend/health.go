@@ -6,7 +6,7 @@ import (
 )
 
 // HealthCheck checks the backend health by making an HTTP request.
-func HealthCheck() bool {
+func (s *Service) HealthCheck() bool {
 	ctx := context.Background()
 	prompt := "what is 2+2 ?"
 	systemPrompt := "only answer with a number"
@@ -16,7 +16,7 @@ func HealthCheck() bool {
 	log.Println("[Health] DummyPrompt: ", prompt)
 	log.Println("[Health] SystemPrompt: ", systemPrompt)
 
-	response, err := GetResponse(ctx, prompt, systemPrompt)
+	response, err := s.GetResponse(ctx, prompt, systemPrompt)
 	log.Println("[Health] Response: ", response)
 
 	if err != nil {

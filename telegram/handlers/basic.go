@@ -59,14 +59,14 @@ func HandleHelp(c tele.Context) error {
 	return c.Send(helpMessage, &tele.SendOptions{ParseMode: tele.ModeHTML})
 }
 
-func HandleStatus(c tele.Context) error {
+func HandleStatus(c tele.Context, backendService *backend.Service) error {
 	log.Printf("/status | user:%d chat:%d", c.Sender().ID, c.Chat().ID)
 	markup := &tele.ReplyMarkup{}
 	markup.InlineKeyboard = [][]tele.InlineButton{{statusRefreshButton}}
-	return c.Send(utils.GetSystemStats(), markup, tele.ModeHTML)
+	return c.Send(utils.GetSystemStats(backendService), markup, tele.ModeHTML)
 }
 
-func HandleStatusRefresh(c tele.Context) error {
+func HandleStatusRefresh(c tele.Context, backendService *backend.Service) error {
 	//refreshMessages :=
 	userID := c.Sender().ID
 	if !permissions.IsAdmin(userID) {
@@ -77,15 +77,15 @@ func HandleStatusRefresh(c tele.Context) error {
 		return c.Respond(&tele.CallbackResponse{Text: "Rate limit.", ShowAlert: true})
 	}
 	statusRefreshRateLimit[userID] = time.Now()
-	return c.Edit(utils.GetSystemStats(), &tele.ReplyMarkup{InlineKeyboard: [][]tele.InlineButton{{statusRefreshButton}}}, tele.ModeHTML)
+	return c.Edit(utils.GetSystemStats(backendService), &tele.ReplyMarkup{InlineKeyboard: [][]tele.InlineButton{{statusRefreshButton}}}, tele.ModeHTML)
 }
 
-func HandleModelCommand(c tele.Context) error {
+func HandleModelCommand(c tele.Context, backendService *backend.Service) error {
 	cfg := config.GetConfig()
 	currentModel := cfg.BackendSetup.Model
 
 	c.Send("Fetching models from backend...", tele.ModeHTML)
-	models, err := backend.FetchModels(context.Background())
+	models, err := backendService.FetchModels(context.Background())
 	if err != nil {
 		return sendError(c, "Failed to fetch models", err)
 	}
@@ -109,7 +109,7 @@ func HandleModelCommand(c tele.Context) error {
 	return c.Send("<b>Available Models:</b>", markup, tele.ModeHTML)
 }
 
-func HandleModelSelect(c tele.Context) error {
+func HandleModelSelect(c tele.Context, backendService *backend.Service) error {
 	data := c.Data()
 	userID := c.Sender().ID
 	if !permissions.IsAdmin(userID) {
@@ -120,7 +120,7 @@ func HandleModelSelect(c tele.Context) error {
 	if !ok {
 		return c.Respond(&tele.CallbackResponse{Text: "Invalid model selection.", ShowAlert: true})
 	}
-	models, err := backend.FetchModels(context.Background())
+	models, err := backendService.FetchModels(context.Background())
 	if err != nil {
 		return c.Respond(&tele.CallbackResponse{Text: "Failed to fetch models.", ShowAlert: true})
 	}

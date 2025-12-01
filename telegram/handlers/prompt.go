@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"ket/backend"
-	cc "ket/chatcontext"
+	"ket/chatcontext"
 	"ket/config"
 	"ket/random"
 	"log"
@@ -54,7 +54,7 @@ func extractPromptDetails(c tele.Context) (promptText string, targetMessage *tel
 	return promptText, targetMessage, isPrompt
 }
 
-func HandlePrompt(c tele.Context) error {
+func HandlePrompt(c tele.Context, backendService *backend.Service) error {
 	promptText, targetMessage, isPrompt := extractPromptDetails(c)
 
 	if !isPrompt {
@@ -64,7 +64,7 @@ func HandlePrompt(c tele.Context) error {
 		}
 		if ok {
 			log.Printf("Triggered AutoResponse for chat %d", c.Chat().ID)
-			response, err := random.GenerateAutoResponse(context.Background(), c.Chat().ID)
+			response, err := random.GenerateAutoResponse(context.Background(), c.Chat().ID, backendService)
 			if err != nil {
 				log.Printf(" GenerateAutoResponse error: %v", err)
 				return nil
@@ -99,16 +99,16 @@ func HandlePrompt(c tele.Context) error {
 	return nil
 }
 
-func StartPromptWorker(systemPrompt string, bot *tele.Bot) {
+func StartPromptWorker(systemPrompt string, bot *tele.Bot, ccService *chatcontext.Service, backendService *backend.Service) {
 	go func() {
 		for task := range PromptQueue {
-			processPrompt(task, systemPrompt, bot)
+			processPrompt(task, systemPrompt, bot, ccService, backendService)
 		}
 	}()
 	log.Println("Prompt processing worker started.")
 }
 
-func processPrompt(task *PromptTask, systemPrompt string, bot *tele.Bot) {
+func processPrompt(task *PromptTask, systemPrompt string, bot *tele.Bot, ccService *chatcontext.Service, backendService *backend.Service) {
 	log.Printf("Processing prompt for chat ID %d from queue.", task.ChatID)
 
 	// Ensure queue message is deleted even if processing fails
@@ -121,11 +121,11 @@ func processPrompt(task *PromptTask, systemPrompt string, bot *tele.Bot) {
 		}
 	}()
 
-	response, err := cc.GetContextResponse(context.Background(), task.Prompt, task.ChatID, task.UserID, task.OriginalContext.Sender().Username, systemPrompt)
+	response, err := ccService.GetContextResponse(context.Background(), task.Prompt, task.ChatID, task.UserID, task.OriginalContext.Sender().Username, systemPrompt)
 	if err != nil {
 		log.Printf("Error getting Chatcontext response for chat ID %d: %v", task.ChatID, err)
 		// Fallback to standard generation
-		response, err = backend.GetResponse(context.Background(), task.Prompt, systemPrompt)
+		response, err = backendService.GetResponse(context.Background(), task.Prompt, systemPrompt)
 		if err != nil {
 			sendError(task.OriginalContext, "Error processing your request", err)
 			return

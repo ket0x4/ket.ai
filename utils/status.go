@@ -98,7 +98,7 @@ func getUptime() (string, error) {
 	return d.String(), nil
 }
 
-func GetSystemStats() string {
+func GetSystemStats(backendService *backend.Service) string {
 	cfg := config.GetConfig()
 
 	var wg sync.WaitGroup
@@ -163,7 +163,7 @@ func GetSystemStats() string {
 	boardName = getBoardName()
 
 	backendHealth = "N/A"
-	if backend.HealthCheck() {
+	if backendService.HealthCheck() {
 		backendHealth = "✓ Healthy"
 	} else {
 		backendHealth = "✗ Down"

@@ -2,15 +2,15 @@ package handlers
 
 import (
 	"fmt"
-	cc "ket/chatcontext"
+	"ket/chatcontext"
 	"strings"
 
 	tele "gopkg.in/telebot.v4"
 )
 
 // HandleRAGHistory shows recent chat history
-func HandleRAGHistory(c tele.Context) error {
-	history := cc.GetChatHistory(c.Chat().ID, c.Sender().ID)
+func HandleRAGHistory(c tele.Context, ccService *chatcontext.Service) error {
+	history := ccService.GetChatHistory(c.Chat().ID, c.Sender().ID)
 
 	if len(history) == 0 {
 		return c.Reply("There is no chat history available for this chat.")
@@ -46,7 +46,7 @@ func HandleRAGHistory(c tele.Context) error {
 }
 
 // HandleRAGClear clears chat history for current chat
-func HandleRAGClear(c tele.Context) error {
-	cc.ClearChatHistory(c.Chat().ID, c.Sender().ID)
+func HandleRAGClear(c tele.Context, ccService *chatcontext.Service) error {
+	ccService.ClearChatHistory(c.Chat().ID, c.Sender().ID)
 	return c.Reply("✓ Message history cleaned for this chat.")
 }

@@ -1,10 +1,12 @@
 package telegram
 
 import (
+	"ket/backend"
 	"ket/chatcontext"
 	"ket/config"
 	"ket/telegram/commands"
 	"ket/telegram/handlers"
+	"ket/telegram/middleware"
 	"log"
 	"os"
 	"os/signal"
@@ -13,37 +15,48 @@ import (
 	tele "gopkg.in/telebot.v4"
 )
 
-func InitBot() *tele.Bot {
+func InitBot() (*tele.Bot, *chatcontext.Service) {
 	cfg := config.GetConfig()
+
+	// Initialize services
+	backendService := backend.NewService(&cfg)
+	chatContextService := chatcontext.NewService(backendService)
+
 	bot, err := NewBot(&cfg)
 	if err != nil {
 		log.Fatalf("Failed to create new bot: %v", err)
 	}
 
 	// ignore previous messages
-	bot.Use(ignoreOldMessagesMiddleware(bot.botStartTime))
+	bot.Use(middleware.IgnoreOldMessagesMiddleware(bot.botStartTime))
 
 	handlers.InitPromptQueue(bot.cfg.BotSetup.MaxQueue)
-	handlers.StartPromptWorker("default", bot.Bot)
+	handlers.StartPromptWorker("default", bot.Bot, chatContextService, backendService)
 
 	// Register commands
-	commands.RegisterBasicCommands(bot.Bot)
+	commands.RegisterBasicCommands(bot.Bot, backendService)
 	commands.RegisterAdminCommands(bot.Bot)
-	commands.RegisterRAGCommands(bot.Bot)
-	commands.RegisterPromptCommand(bot.Bot)
+	commands.RegisterRAGCommands(bot.Bot, chatContextService)
+	commands.RegisterPromptCommand(bot.Bot, backendService)
 
 	// Register inline handlers
-	bot.Handle(&tele.InlineButton{Unique: "status_refresh"}, handlers.HandleStatusRefresh)
-	bot.Handle(&tele.InlineButton{Unique: "model_select"}, handlers.HandleModelSelect)
+	bot.Handle(&tele.InlineButton{Unique: "status_refresh"}, func(c tele.Context) error {
+		return handlers.HandleStatusRefresh(c, backendService)
+	})
+	bot.Handle(&tele.InlineButton{Unique: "model_select"}, func(c tele.Context) error {
+		return handlers.HandleModelSelect(c, backendService)
+	})
 
 	// Register text handler
-	bot.Handle(tele.OnText, handlers.HandlePrompt)
+	bot.Handle(tele.OnText, func(c tele.Context) error {
+		return handlers.HandlePrompt(c, backendService)
+	})
 
-	return bot.Bot
+	return bot.Bot, chatContextService
 }
 
 func Run() {
-	bot := InitBot()
+	bot, chatContextService := InitBot()
 
 	log.Println("Application setup complete. Bot is initializing and starting...")
 	go bot.Start()
@@ -56,6 +69,6 @@ func Run() {
 
 	log.Println("Shutting down...")
 	bot.Stop()
-	chatcontext.Close()
+	chatContextService.Close()
 	log.Println("Bot stopped.")
 }

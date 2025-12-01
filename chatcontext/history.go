@@ -11,26 +11,35 @@ import (
 	"time"
 )
 
-// Simplified context implementation
-var (
+type Service struct {
+	backendService *backend.Service
+
 	// chatHistories stores the last N messages for each chat.
-	// The string is a formatted line like "username: message" or "bot: message".
-	chatHistories = make(map[int64][]string)
+	chatHistories map[int64][]string
 
 	// chatSummaries stores the latest summary for each chat.
-	chatSummaries = make(map[int64]string)
+	chatSummaries map[int64]string
 
 	// messageCounter tracks the number of messages since the last summary.
-	messageCounter = make(map[int64]int)
+	messageCounter map[int64]int
 
-	rwMutex  sync.RWMutex
-	initOnce sync.Once
+	rwMutex sync.RWMutex
 
 	// debouncedSaver for persisting data.
 	debouncedSaver *DebouncedSaver
-)
+}
 
+func NewService(backendService *backend.Service) *Service {
+	s := &Service{
+		backendService: backendService,
+		chatHistories:  make(map[int64][]string),
+		chatSummaries:  make(map[int64]string),
+		messageCounter: make(map[int64]int),
+	}
 
+	s.init()
+	return s
+}
 
 // Document represents a piece of information in the ChatContext system (for saving/loading)
 type Document struct {
@@ -73,7 +82,7 @@ func (ds *DebouncedSaver) Trigger() {
 }
 
 // Generates a response using the chat history.
-func GetContextResponse(ctx context.Context, prompt string, chatID int64, userID int64, userName string, systemPrompt string) (string, error) {
+func (s *Service) GetContextResponse(ctx context.Context, prompt string, chatID int64, userID int64, userName string, systemPrompt string) (string, error) {
 	if strings.TrimSpace(prompt) == "" {
 		return "", nil
 	}
@@ -82,24 +91,24 @@ func GetContextResponse(ctx context.Context, prompt string, chatID int64, userID
 
 	// Add user's message to history
 	userMessage := fmt.Sprintf("- %s:%d:%s", userName, userID, prompt)
-	addMessageToHistory(chatID, userID, userMessage)
+	s.addMessageToHistory(chatID, userID, userMessage)
 
 	// Check if it's time to summarize
-	go handleSummarization(ctx, chatID, userID, systemPrompt)
+	go s.handleSummarization(ctx, chatID, userID, systemPrompt)
 
 	// Prepare context for the model
-	contextStr := prepareContext(chatID, userID)
+	contextStr := s.prepareContext(chatID, userID)
 	finalPrompt := buildCCPrompt(prompt, contextStr)
 
 	// Get response from backend
-	response, err := backend.GetResponseWithCC(ctx, prompt, finalPrompt, systemPrompt)
+	response, err := s.backendService.GetResponseWithCC(ctx, prompt, finalPrompt, systemPrompt)
 	if err != nil {
 		return "", fmt.Errorf("Failed to get response from backend: %w", err)
 	}
 
 	// Add bot's response to history
 	botMessage := fmt.Sprintf("bot:%s", response)
-	addMessageToHistory(chatID, userID, botMessage)
+	s.addMessageToHistory(chatID, userID, botMessage)
 
 	log.Printf("ChatContext: Processed prompt for chat %d", chatID)
 	return cleanMarkdown(response), nil
@@ -114,42 +123,42 @@ func cleanMarkdown(text string) string {
 }
 
 // addMessageToHistory adds a new message to the chat's history and trims if necessary.
-func addMessageToHistory(chatID int64, userID int64, message string) {
-	rwMutex.Lock()
-	defer rwMutex.Unlock()
+func (s *Service) addMessageToHistory(chatID int64, userID int64, message string) {
+	s.rwMutex.Lock()
+	defer s.rwMutex.Unlock()
 
-	history := chatHistories[chatID]
+	history := s.chatHistories[chatID]
 	history = append(history, message)
 
 	// Keep history at the desired size
 	if len(history) > config.GetConfig().HistorySetup.MaxHistorySize {
 		history = history[len(history)-config.GetConfig().HistorySetup.MaxHistorySize:]
 	}
-	chatHistories[chatID] = history
+	s.chatHistories[chatID] = history
 
 	// Increment message counter for summarization
-	messageCounter[chatID]++
+	s.messageCounter[chatID]++
 
 	// Persist changes
-	if debouncedSaver != nil {
-		debouncedSaver.Trigger()
+	if s.debouncedSaver != nil {
+		s.debouncedSaver.Trigger()
 	}
 }
 
 // handleSummarization checks if a summary is needed and triggers it.
-func handleSummarization(ctx context.Context, chatID int64, userID int64, systemPrompt string) {
-	rwMutex.RLock()
-	count := messageCounter[chatID]
-	rwMutex.RUnlock()
+func (s *Service) handleSummarization(ctx context.Context, chatID int64, userID int64, systemPrompt string) {
+	s.rwMutex.RLock()
+	count := s.messageCounter[chatID]
+	s.rwMutex.RUnlock()
 
 	if count < config.GetConfig().HistorySetup.SummaryTriggerCount {
 		return
 	}
 
 	// Create a snapshot of the history for summarization, excluding bot messages.
-	rwMutex.RLock()
+	s.rwMutex.RLock()
 	var historyForSummary []string
-	history := chatHistories[chatID]
+	history := s.chatHistories[chatID]
 	for _, msg := range history {
 		// Exclude bot messages from the summary context to avoid feedback loops.
 		if !strings.HasPrefix(strings.TrimSpace(msg), "bot:") {
@@ -157,38 +166,38 @@ func handleSummarization(ctx context.Context, chatID int64, userID int64, system
 		}
 	}
 	historySnapshot := strings.Join(historyForSummary, "\n")
-	rwMutex.RUnlock()
+	s.rwMutex.RUnlock()
 
 	log.Printf("ChatContext: Triggering summary for chat %d after %d messages.", chatID, count)
 
 	summaryPrompt := fmt.Sprintf(`This is the message history of the group you are in. Summarize it and write down the things you think should be remembered in bullet points. You will need these later. Just write a summary and keep it short.\n\nHistory:\n%s`, historySnapshot)
 
 	// Get summary from the model
-	summary, err := backend.GetResponse(ctx, summaryPrompt, systemPrompt)
+	summary, err := s.backendService.GetResponse(ctx, summaryPrompt, systemPrompt)
 	if err != nil {
 		log.Printf("ChatContext: Failed to create summary for chat %d: %v", chatID, err)
 		// Don't reset counter if summarization fails, try again next run.
 		return
 	}
 
-	rwMutex.Lock()
-	chatSummaries[chatID] = summary
-	messageCounter[chatID] = 0 // Reset counter
-	rwMutex.Unlock()
+	s.rwMutex.Lock()
+	s.chatSummaries[chatID] = summary
+	s.messageCounter[chatID] = 0 // Reset counter
+	s.rwMutex.Unlock()
 
 	log.Printf("ChatContext: Successfully created new summary for chat %d.", chatID)
-	if debouncedSaver != nil {
-		debouncedSaver.Trigger()
+	if s.debouncedSaver != nil {
+		s.debouncedSaver.Trigger()
 	}
 }
 
 // prepareContext creates the context string from summary and recent history.
-func prepareContext(chatID int64, userID int64) string {
-	rwMutex.RLock()
-	defer rwMutex.RUnlock()
+func (s *Service) prepareContext(chatID int64, userID int64) string {
+	s.rwMutex.RLock()
+	defer s.rwMutex.RUnlock()
 
-	summary, hasSummary := chatSummaries[chatID]
-	history := chatHistories[chatID]
+	summary, hasSummary := s.chatSummaries[chatID]
+	history := s.chatHistories[chatID]
 
 	var contextBuilder strings.Builder
 
@@ -222,12 +231,12 @@ User Question: %s`, instruction, context, userPrompt)
 }
 
 // GetChatHistory returns the conversation history for a chat
-func GetChatHistory(chatID int64, userID int64) []string {
-	rwMutex.RLock()
-	defer rwMutex.RUnlock()
+func (s *Service) GetChatHistory(chatID int64, userID int64) []string {
+	s.rwMutex.RLock()
+	defer s.rwMutex.RUnlock()
 
 	// Return a copy
-	history, exists := chatHistories[chatID]
+	history, exists := s.chatHistories[chatID]
 	if !exists {
 		return []string{}
 	}
@@ -237,73 +246,71 @@ func GetChatHistory(chatID int64, userID int64) []string {
 }
 
 // ClearChatHistory removes all data for a specific chat
-func ClearChatHistory(chatID int64, userID int64) {
-	rwMutex.Lock()
-	defer rwMutex.Unlock()
+func (s *Service) ClearChatHistory(chatID int64, userID int64) {
+	s.rwMutex.Lock()
+	defer s.rwMutex.Unlock()
 
-	delete(chatHistories, chatID)
-	delete(chatSummaries, chatID)
-	delete(messageCounter, chatID)
+	delete(s.chatHistories, chatID)
+	delete(s.chatSummaries, chatID)
+	delete(s.messageCounter, chatID)
 
 	log.Printf("ChatContext: Cleared all data for chat %d.", chatID)
-	if debouncedSaver != nil {
-		debouncedSaver.Trigger()
+	if s.debouncedSaver != nil {
+		s.debouncedSaver.Trigger()
 	}
 }
 
 // Close should be called on shutdown to persist any pending changes.
-func Close() {
+func (s *Service) Close() {
 	log.Println("ChatContext: Closing and persisting data...")
-	if debouncedSaver != nil {
+	if s.debouncedSaver != nil {
 		// To prevent a race condition, we stop the timer and save directly.
-		debouncedSaver.mu.Lock()
-		if debouncedSaver.timer != nil {
-			debouncedSaver.timer.Stop()
+		s.debouncedSaver.mu.Lock()
+		if s.debouncedSaver.timer != nil {
+			s.debouncedSaver.timer.Stop()
 		}
-		debouncedSaver.mu.Unlock()
+		s.debouncedSaver.mu.Unlock()
 
 		// Perform a final save.
-		save()
+		s.save()
 	}
 }
 
 // init initializes the ChatContext system, loading data from storage.
-func init() {
-	initOnce.Do(func() {
-		if data, err := loadChatHistories(); err == nil {
-			for _, doc := range data {
-				// Assuming ChatID is the unique key for group history now.
-				// For old data with multiple userIDs for the same ChatID, this will overwrite
-				// history, effectively taking the last user's history for that chat.
-				// A more robust migration would merge histories or pick one strategically.
-				chatHistories[doc.ChatID] = doc.History
-				chatSummaries[doc.ChatID] = doc.Summary
-				messageCounter[doc.ChatID] = doc.MessageCounter
-			}
-			log.Printf("ChatContext: Loaded chat data for %d chats", len(data))
-		} else {
-			log.Printf("ChatContext: Failed to load chat histories: %v. Starting fresh.", err)
+func (s *Service) init() {
+	if data, err := loadChatHistories(); err == nil {
+		for _, doc := range data {
+			// Assuming ChatID is the unique key for group history now.
+			// For old data with multiple userIDs for the same ChatID, this will overwrite
+			// history, effectively taking the last user's history for that chat.
+			// A more robust migration would merge histories or pick one strategically.
+			s.chatHistories[doc.ChatID] = doc.History
+			s.chatSummaries[doc.ChatID] = doc.Summary
+			s.messageCounter[doc.ChatID] = doc.MessageCounter
 		}
+		log.Printf("ChatContext: Loaded chat data for %d chats", len(data))
+	} else {
+		log.Printf("ChatContext: Failed to load chat histories: %v. Starting fresh.", err)
+	}
 
-		// Initialize the debounced saver.
-		debouncedSaver = NewDebouncedSaver(10*time.Second, save)
-	})
+	// Initialize the debounced saver.
+	s.debouncedSaver = NewDebouncedSaver(10*time.Second, s.save)
 }
 
-func save() {
-	rwMutex.RLock()
+func (s *Service) save() {
+	s.rwMutex.RLock()
 	// Create a deep copy to avoid holding the lock during I/O.
 	var dataToSave []Document
-	for chatID, history := range chatHistories {
+	for chatID, history := range s.chatHistories {
 		dataToSave = append(dataToSave, Document{
 			ChatID:         chatID,
 			UserID:         0, // UserID is no longer used for keying, set to 0 for persistence
 			History:        history,
-			Summary:        chatSummaries[chatID],
-			MessageCounter: messageCounter[chatID],
+			Summary:        s.chatSummaries[chatID],
+			MessageCounter: s.messageCounter[chatID],
 		})
 	}
-	rwMutex.RUnlock()
+	s.rwMutex.RUnlock()
 
 	if err := saveChatHistories(dataToSave); err != nil {
 		log.Printf("ChatContext: Save failed: %v", err)

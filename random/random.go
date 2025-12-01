@@ -97,7 +97,7 @@ func GetLatestMessage(chatID int64) (string, error) {
 	return latestMessage, nil
 }
 
-func GenerateAutoResponse(ctx context.Context, chatID int64) (string, error) {
+func GenerateAutoResponse(ctx context.Context, chatID int64, backendService *backend.Service) (string, error) {
 	if !currentConfig.Enabled {
 		return "", fmt.Errorf("auto-response feature is disabled")
 	}
@@ -109,7 +109,7 @@ func GenerateAutoResponse(ctx context.Context, chatID int64) (string, error) {
 
 	fullPrompt := currentConfig.PrePrompt + "\n\nSon mesajlar:\n" + allMessages
 
-	response, err := backend.GetResponse(ctx, fullPrompt, config.GetConfig().BackendSetup.AutoPrompt)
+	response, err := backendService.GetResponse(ctx, fullPrompt, config.GetConfig().BackendSetup.AutoPrompt)
 	if err != nil {
 		return "", fmt.Errorf("failed to generate response: %w", err)
 	}
