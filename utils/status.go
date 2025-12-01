@@ -171,17 +171,20 @@ func GetSystemStats(backendService *backend.Service) string {
 
 	return fmt.Sprintf(`
 <b>System Status</b>
-- - - - - - - - - - - - - - - - -
-<b>Version:</b> <code>%s</code>
-<b>Board:</b> <code>%s</code>
-<b>Platform:</b> <code>%s</code>
-<b>Uptime:</b> <code>%s</code>
-- - - - - - - - - - - - - - - - -
-<b>CPU:</b> <code>%s</code>
-<b>RAM:</b> <code>%s</code>
-<b>CPU Temp:</b> <code>%s</code>
-- - - - - - - - - - - - - - - - -
-<b>LLM Model:</b> <code>%s</code>
-<b>Backend:</b> <code>%s</code>
-`, version, boardName, osName, uptime, cpuUsage, memoryUsage, cpuTemp, llmModel, backendHealth)
+----------------
+<b>Device Info</b>
+• <b>Board:</b> <code>%s</code>
+• <b>OS:</b> <code>%s</code>
+• <b>Uptime:</b> <code>%s</code>
+• <b>Version:</b> <code>%s</code>
+
+<b>Resources</b>
+• <b>RAM:</b> <code>%s</code>
+• <b>CPU:</b> <code>%s</code>
+• <b>Temp:</b> <code>%s</code>
+
+<b>AI Service</b>
+• <b>Model:</b> <code>%s</code>
+• <b>Backend:</b> <code>%s</code>
+`, boardName, osName, uptime, version, memoryUsage, cpuUsage, cpuTemp, llmModel, backendHealth)
 }
