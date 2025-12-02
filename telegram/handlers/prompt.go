@@ -54,17 +54,17 @@ func extractPromptDetails(c tele.Context) (promptText string, targetMessage *tel
 	return promptText, targetMessage, isPrompt
 }
 
-func HandlePrompt(c tele.Context, backendService *backend.Service) error {
+func HandlePrompt(c tele.Context, backendService *backend.Service, randomService *random.Service) error {
 	promptText, targetMessage, isPrompt := extractPromptDetails(c)
 
 	if !isPrompt {
-		ok, err := random.LogMessage(c.Chat().ID, c.Sender().Username, c.Sender().ID, c.Message().Text)
+		ok, err := randomService.LogMessage(c.Chat().ID, c.Sender().Username, c.Sender().ID, c.Message().Text)
 		if err != nil {
 			log.Printf("AutoResponse logMessage error: %v", err)
 		}
 		if ok {
 			log.Printf("Triggered AutoResponse for chat %d", c.Chat().ID)
-			response, err := random.GenerateAutoResponse(context.Background(), c.Chat().ID, backendService)
+			response, err := randomService.GenerateAutoResponse(context.Background(), c.Chat().ID)
 			if err != nil {
 				log.Printf(" GenerateAutoResponse error: %v", err)
 				return nil

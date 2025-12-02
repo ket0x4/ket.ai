@@ -12,20 +12,23 @@ func (s *Service) HealthCheck() bool {
 	systemPrompt := "only answer with a number"
 	validResponse := "4"
 
-	log.Println("[Health] Checking backend health...")
-	log.Println("[Health] DummyPrompt: ", prompt)
-	log.Println("[Health] SystemPrompt: ", systemPrompt)
+	log.Println("Health Checking backend health...")
+	//log.Println("Health DummyPrompt: ", prompt)
+	//log.Println("Health SystemPrompt: ", systemPrompt)
 
 	response, err := s.GetResponse(ctx, prompt, systemPrompt)
-	log.Println("[Health] Response: ", response)
+	//log.Println("[Health] Response: ", response)
 
 	if err != nil {
 		if response == "" {
+			log.Println("Health Check failed: ", err)
 			return false
 		}
 	}
 	if response != validResponse {
+		log.Println("Health Check failed: ", err)
 		return false
 	}
+	log.Println("Health Check passed")
 	return true
 }

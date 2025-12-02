@@ -31,7 +31,6 @@ type BackendSetup struct {
 	Model       string `json:"model"`
 	InputLength int    `json:"input_length"`
 	SysPrompt   string `json:"system_prompt"`
-	AutoPrompt  string `json:"auto_prompt"`
 }
 
 type HistorySetup struct {

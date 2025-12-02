@@ -4,6 +4,7 @@ import (
 	"ket/backend"
 	"ket/chatcontext"
 	"ket/config"
+	"ket/random"
 	"ket/telegram/commands"
 	"ket/telegram/handlers"
 	"ket/telegram/middleware"
@@ -21,6 +22,7 @@ func InitBot() (*tele.Bot, *chatcontext.Service) {
 	// Initialize services
 	backendService := backend.NewService(&cfg)
 	chatContextService := chatcontext.NewService(backendService)
+	randomService := random.NewService(chatContextService, backendService)
 
 	bot, err := NewBot(&cfg)
 	if err != nil {
@@ -37,7 +39,7 @@ func InitBot() (*tele.Bot, *chatcontext.Service) {
 	commands.RegisterBasicCommands(bot.Bot, backendService)
 	commands.RegisterAdminCommands(bot.Bot)
 	commands.RegisterRAGCommands(bot.Bot, chatContextService)
-	commands.RegisterPromptCommand(bot.Bot, backendService)
+	commands.RegisterPromptCommand(bot.Bot, backendService, randomService)
 
 	// Register inline handlers
 	bot.Handle(&tele.InlineButton{Unique: "status_refresh"}, func(c tele.Context) error {
@@ -49,7 +51,7 @@ func InitBot() (*tele.Bot, *chatcontext.Service) {
 
 	// Register text handler
 	bot.Handle(tele.OnText, func(c tele.Context) error {
-		return handlers.HandlePrompt(c, backendService)
+		return handlers.HandlePrompt(c, backendService, randomService)
 	})
 
 	return bot.Bot, chatContextService

@@ -43,7 +43,7 @@ func (s *Service) GetContextResponse(ctx context.Context, prompt string, chatID 
 	log.Printf("ChatContext: Processing prompt for chat %d, user %s", chatID, userName)
 
 	// Add user's message to history
-	if err := s.addMessageToHistory(chatID, userID, "user", userName, prompt); err != nil {
+	if err := s.AddMessage(chatID, userID, "user", userName, prompt); err != nil {
 		log.Printf("ChatContext: Failed to add user message: %v", err)
 	}
 
@@ -65,7 +65,7 @@ func (s *Service) GetContextResponse(ctx context.Context, prompt string, chatID 
 	}
 
 	// Add bot's response to history
-	if err := s.addMessageToHistory(chatID, userID, "assistant", config.BotName, response); err != nil {
+	if err := s.AddMessage(chatID, userID, "assistant", config.BotName, response); err != nil {
 		log.Printf("ChatContext: Failed to add bot message: %v", err)
 	}
 
@@ -81,8 +81,8 @@ func cleanMarkdown(text string) string {
 	return text
 }
 
-// addMessageToHistory adds a new message to the chat's history.
-func (s *Service) addMessageToHistory(chatID int64, userID int64, role, name, content string) error {
+// AddMessage adds a new message to the chat's history.
+func (s *Service) AddMessage(chatID int64, userID int64, role, name, content string) error {
 	return AddMessage(s.db, chatID, userID, role, name, content)
 }
 
