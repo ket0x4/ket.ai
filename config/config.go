@@ -21,10 +21,8 @@ func init() {
 type BotSetup struct {
 	Token               string  `json:"token"`
 	MaxQueue            int     `json:"max_queue"`
-	MaxMessagesPerGroup int     `json:"MaxMessagesPerGroup"`
-	TriggerProbability  float64 `json:"TriggerProbability"`
-	// Admins may be provided at the BotSetup level in older configs
-	Admins []int64 `json:"Admins"`
+	MaxMessagesPerGroup int     `json:"max_messages_per_group"`
+	TriggerProbability  float64 `json:"trigger_probability"`
 }
 
 type BackendSetup struct {
@@ -42,18 +40,15 @@ type HistorySetup struct {
 }
 
 type Permissions struct {
-	Users        []int64 `json:"AllowedUsers"`
 	AllowedChats []int64 `json:"allowed_chats"`
 	Admins       []int64 `json:"admins"`
 }
 
 type Config struct {
-	BotSetup     BotSetup     `json:"BotSetup"`
-	BackendSetup BackendSetup `json:"BackendSetup"`
-	HistorySetup HistorySetup `json:"HistorySetup"`
-	Permissions  Permissions  `json:"Permissions"`
-	// Backwards-compatible top-level AllowedChats (moved from chats.json)
-	AllowedChats []int64 `json:"AllowedChats"`
+	BotSetup     BotSetup     `json:"bot_setup"`
+	BackendSetup BackendSetup `json:"backend_setup"`
+	HistorySetup HistorySetup `json:"history_setup"`
+	Permissions  Permissions  `json:"permissions"`
 }
 
 func parseConfigFile(filePath string) (Config, error) {
@@ -75,14 +70,6 @@ func ReadConfig() {
 	c, err := parseConfigFile(configFilePath)
 	if err != nil {
 		log.Fatalf("Error loading config: %v", err)
-	}
-	// If AllowedChats provided at top-level, copy into Permissions.AllowedChats for compatibility
-	if len(c.AllowedChats) > 0 && len(c.Permissions.AllowedChats) == 0 {
-		c.Permissions.AllowedChats = c.AllowedChats
-	}
-	// If Admins provided under BotSetup, copy into Permissions.Admins for compatibility
-	if len(c.BotSetup.Admins) > 0 && len(c.Permissions.Admins) == 0 {
-		c.Permissions.Admins = c.BotSetup.Admins
 	}
 	loadedConfig = c
 	LogConfig()

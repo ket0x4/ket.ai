@@ -1,12 +1,11 @@
 {
-  "BotSetup": {
+  "bot_setup": {
     "token": "TELEGRAM_BOT_TOKEN",
     "max_queue": 10,
-    "MaxMessagesPerGroup": 40,
-    "TriggerProbability": 0.1,
-    "Admins": [207588255, 2087606991]
+    "max_messages_per_group": 40,
+    "trigger_probability": 0.1
   },
-  "BackendSetup": {
+  "backend_setup": {
     "api_url": "OPENAI_COMPATIBLE_API_URL",
     "api_key": "API_KEY",
     "model": "LLM_MODEL",
@@ -14,12 +13,21 @@
     "system_prompt": "Please place your system prompt here.",
     "auto_prompt": "Please place your auto prompt here."
   },
-  "HistorySetup": {
+  "history_setup": {
     "max_history_size": 300,
     "summary_trigger_count": 1000
   },
-  "AllowedChats": [
-    207588255, 2087606991, -1001541497652, -1001253259500, -1001054130924
-  ],
-  "Admins": []
+  "permissions": {
+    "allowed_chats": [
+      207588255,
+      2087606991,
+      -1001541497652,
+      -1001253259500,
+      -1001054130924
+    ],
+    "admins": [
+      207588255,
+      2087606991
+    ]
+  }
 }

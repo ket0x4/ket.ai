@@ -2,9 +2,7 @@
 *.env
 *.log
 *.bak
-history.json
-config.json
 dave
-system_prompt.txt
-auto_prompt.txt
+config.json
 .DS_Store
+history.db
