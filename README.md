@@ -1,105 +1,72 @@
+# Ket AI - Telegram Bot
 
-# Ket.AI Bot
+Ket is a highly capable AI bot designed to participate in Telegram groups. Powered by **Google Gemini AI**, Ket acts more like a fun buddy in your chat group rather than a standard, boring "How can I help you?" assistant.
 
-## Overview
-Ket.AI is an telegram bot that functions as a chatbot powered by an OpenAI compatible API (Thats mean you can use it with any server like llama.cpp). It is designed to provide a conversational interface for users, allowing them to interact with the bot in a natural language format.
+It doesn't just reply to direct messages; it understands the flow of the conversation, keeps track of the context, and can spontaneously jump in with its own comments!
 
-### Supported backends
-- **Llama.cpp**: `https://github.com/ggml-org/llama.cpp`
-- **OpenAI API**: `https://openai.com/api/`
-- **Openrouter**: `https://openrouter.ai/`
-- **Gemini(Openai compatible)**: `https://generativelanguage.googleapis.com/v1beta/openai/`
+## Features
 
-## Commands
+- **Advanced LLM Responses:** Utilizing Google Gemini (`gemini-3.1-pro` / `gemini-3.5-flash`), Ket delivers highly intelligent and entertaining chats while maintaining the context of previous messages.
+- **Vector-Based Memory (RAG):** Features a group-specific, long-term memory capacity of up to 2,000 facts using vector embeddings. Whenever you teach it something or it notices important information (e.g., "My favorite car is a Nissan"), it saves it into an SQLite database as a vector using the `gemini-embedding-001` model. When asked about it later, it retrieves the memory instantly via Cosine Similarity!
+- **Image and Audio Recognition:** It can view photos and listen to voice messages shared in the group, and reply with fitting, humorous, "shitposter buddy" style responses.
+- **Spontaneous Mode:** Ket can spontaneously jump into the chat flow with a certain probability (e.g., 5%) to drop a funny or sarcastic comment, making the group chat feel alive.
 
-### General Commands
-- `/start` to get an introduction and available commands.
-- `/help` provides information on how to use the bot and its commands.
-- `/status` to check the current status of the host device.
+## Technology Stack
 
+- **Runtime:** [Bun](https://bun.sh/) (Blazing fast JavaScript/TypeScript runtime)
+- **Language:** TypeScript
+- **Database:** `bun:sqlite` (Built-in, ultra-fast SQLite solution)
+- **AI API:** `@google/genai` (Google Gemini API)
+- **Telegram Integration:** Telegram Bot API (Custom webhook/polling integration similar to node-telegram-bot-api)
+- **Containerization:** Docker (with Alpine/Debian distroless architecture)
 
-### User Management
-Note: Only admins can manage users and chats.
+## Setup & Running
 
-- `/addchat` to add a chat to the allowed chats list.
-- `/rmchat` to remove a chat from the allowed chats list.
-- `/list` to list all allowed users and chats.
-
-### Retrieval-Augmented Generation Commands
-
-- `/reset` to clear the context and start a new conversation.
-- `/history` to view the context history of the current chat.
-
-### `config/config.json` structure:
+### 1. Environment Variables (Config)
+Create a `config.json` file in the root directory of the project:
 
 ```json
 {
-    "BotSetup": {
-        "token": "TELEGRAM_BOT_TOKEN",
-        "max_queue": 10,
-        "MaxMessagesPerGroup": 40,
-        "TriggerProbability": 0.10,
-        "Admins": [ID1, ID2]
-    },
-    "BackendSetup": {
-        "api_url": "OPENAI_COMPATIBLE_API_URL",
-        "api_key": "API_KEY",
-        "model": "LLM_MODEL",
-        "input_length": 2048
-    },
-    "AllowedChats": [
-        ID2,
-        ID3,
-        -ID4,
-        -ID5
-    ]
+  "BOT_TOKEN": "YOUR_TELEGRAM_BOT_TOKEN",
+  "GEMINI_API_KEY": "YOUR_GEMINI_API_KEY",
+  "ADMIN_IDS": [123456789],
+  "GEMINI_MODEL": "gemini-3.1-flash-lite",
+  "POLLING_INTERVAL": 1000
 }
 ```
+You also need a `system.txt` file in the root directory that defines the bot's persona and instructions.
 
+### 2. Running Locally (with Bun)
 
-## Installation
-### Prerequisites
-- Go 1.20 or later
-- Docker (optional, for containerization)
-- Telegram Bot Token (create a bot using [BotFather](https://t.me/botfather))
+If you have **Bun** installed on your machine:
 
+Install dependencies:
+```bash
+bun install
+```
 
-### Build image
+Run in development mode:
+```bash
+bun run dev
+```
+
+Build with bun:
+```bash
+bun bun build --compile --minify src/index.ts --outfile ket
+```
+
+### 3. Running with Docker (Recommended)
+
+To run it on any server or device with Docker installed:
 
 ```bash
-docker build -t ket.ai .
-docker run -d --name ketai
+docker compose up --build -d
 ```
+*Note: The system compiles the app into a standalone distroless binary via the Dockerfile to maximize performance and security.*
 
-### Build binary
-
-```bash
-go mod tidy
-CCGO_ENABLED=0 go build -ldflags '-w -s' -o ket main.go
-```
-
-### To-do
-
-- Implement multimodality support
-- Improve error handling
-- Improve user management features
-- Support replying to responses
-- move sqlite from json to a proper database
-- Add more backend support
-
-### Telegram Bot Setup commands
-Note: add these commands to your bot using BotFather.
-```
-start - Start the bot and get an introduction
-help - Get help on how to use the bot
-status - Check the current status of the host device
-addchat - Add a chat to the allowed chats list
-rmchat - Remove a chat from the allowed chats list
-list - List all allowed users and chats
-reset - Clear the context and start a new conversation
-history - View the context history of the current chat
-```
+## How to Test?
+- You can get a direct reply by sending a message to the bot privately or in a group.
+- Teach the bot a specific fact about yourself (e.g., "Ket, my birthday is July 15th"). Talk about completely different topics for a while to clear the recent context. Later, ask "When was my birthday?". Thanks to its vector memory, it will instantly fetch the exact right answer for you!
 
 ## License
-
-This project is licensed under the terms of the [GNU General Public License v3.0](LICENSE).
+This project was developed for private purposes. Please adhere to the Telegram API and Google API Terms of Service when using it.

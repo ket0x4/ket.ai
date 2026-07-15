@@ -1,8 +1,6 @@
-*.sum
-*.env
-*.log
-*.bak
+node_modules/
+*.exe
 *.db
-dave
+.env
 config.json
-.DS_Store
+dist/

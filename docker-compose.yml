@@ -1,0 +1,13 @@
+services:
+  ketai:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ketai
+    restart: unless-stopped
+    volumes:
+      # Mount configuration and system prompt files (read-only)
+      - ./config.json:/app/config.json:rw
+      - ./system.txt:/app/system.txt:ro
+      # Mount the SQLite database file directly (read-write)
+      - ./bot.db:/app/bot.db:rw

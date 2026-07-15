@@ -1,0 +1,98 @@
+import { readFileSync, existsSync } from "fs";
+
+let configJson: any = {};
+const CONFIG_FILE_PATH = "config.json";
+
+if (existsSync(CONFIG_FILE_PATH)) {
+  try {
+    const raw = readFileSync(CONFIG_FILE_PATH, "utf-8");
+    configJson = JSON.parse(raw);
+  } catch (e) {
+    console.error("Error reading or parsing config.json:", e);
+  }
+}
+
+export let CONFIG = {
+  TELEGRAM_BOT_TOKEN:
+    configJson.telegram_bot_token || process.env.TELEGRAM_BOT_TOKEN || "",
+  GEMINI_API_KEY: configJson.gemini_api_key || process.env.GEMINI_API_KEY || "",
+  GEMINI_MODEL:
+    configJson.gemini_model ||
+    process.env.GEMINI_MODEL ||
+    "gemini-3.1-flash-lite",
+  CHAT_HISTORY_LIMIT:
+    typeof configJson.chat_history_limit === "number"
+      ? configJson.chat_history_limit
+      : 8,
+  IMAGE_HISTORY_LIMIT:
+    typeof configJson.image_history_limit === "number"
+      ? configJson.image_history_limit
+      : 5,
+  DEFAULT_REPLY_PROBABILITY:
+    typeof configJson.default_reply_probability === "number"
+      ? configJson.default_reply_probability
+      : 0.05,
+  DB_PATH: configJson.db_path || process.env.DB_PATH || "bot.db",
+  BOT_OWNER_ID:
+    configJson.bot_owner_id ||
+    (process.env.BOT_OWNER_ID
+      ? parseInt(process.env.BOT_OWNER_ID, 10)
+      : undefined),
+  ALLOWED_CHAT_IDS: Array.isArray(configJson.allowed_chat_ids)
+    ? configJson.allowed_chat_ids.map((id: any) => id.toString())
+    : process.env.ALLOWED_CHAT_IDS
+      ? process.env.ALLOWED_CHAT_IDS.split(",").map((id) => id.trim())
+      : [],
+  MESSAGES: {
+    unauthorized_group_reply:
+      configJson.messages?.unauthorized_group_reply ||
+      "I don't have permission to talk in this group, I'm out! Contact my owner to add me.",
+    private_chat_unauthorized:
+      configJson.messages?.private_chat_unauthorized ||
+      "Hey I only chat in groups approved by my owner. You can contact my owner to add me to your own group.",
+    gemini_empty_reply_fallback:
+      configJson.messages?.gemini_empty_reply_fallback ||
+      "I didn't know what to say.",
+    gemini_error_reply_fallback:
+      configJson.messages?.gemini_error_reply_fallback ||
+      "My mind went blank, let's talk later.",
+    gemini_empty_image_fallback:
+      configJson.messages?.gemini_empty_image_fallback ||
+      "Nice picture, but I didn't know what to say about it.",
+    gemini_error_image_fallback:
+      configJson.messages?.gemini_error_image_fallback ||
+      "Couldn't check the photo, must have gotten something in my eye.",
+    image_download_failed:
+      configJson.messages?.image_download_failed ||
+      "Couldn't download the photo, Telegram blocked it.",
+    image_processing_failed:
+      configJson.messages?.image_processing_failed ||
+      "Got confused while looking at the photo, try again later.",
+    not_authorized_command:
+      configJson.messages?.not_authorized_command ||
+      "Only group admins or my owner can use this command!",
+  },
+};
+
+// Validate critical config — fail fast if essentials are missing
+const missingKeys: string[] = [];
+if (!CONFIG.TELEGRAM_BOT_TOKEN) missingKeys.push("TELEGRAM_BOT_TOKEN");
+if (!CONFIG.GEMINI_API_KEY) missingKeys.push("GEMINI_API_KEY");
+
+if (missingKeys.length > 0) {
+  console.error(
+    `FATAL: Missing required configuration: ${missingKeys.join(", ")}`,
+  );
+  console.error("Please set them in config.json or as environment variables.");
+  process.exit(1);
+}
+
+if (CONFIG.CHAT_HISTORY_LIMIT < 1 || CONFIG.CHAT_HISTORY_LIMIT > 100) {
+  console.warn("WARNING: CHAT_HISTORY_LIMIT should be between 1 and 100.");
+}
+if (
+  CONFIG.DEFAULT_REPLY_PROBABILITY < 0 ||
+  CONFIG.DEFAULT_REPLY_PROBABILITY > 1
+) {
+  console.warn("WARNING: DEFAULT_REPLY_PROBABILITY should be between 0 and 1.");
+}

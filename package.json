@@ -1,0 +1,17 @@
+{
+  "name": "ket-ai",
+  "version": "7.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "bun run src/index.ts",
+    "dev": "bun --watch src/index.ts",
+    "build": "bun build --compile --minify src/index.ts --outfile ket.exe"
+  },
+  "dependencies": {
+    "@google/genai": "^2.11.0",
+    "grammy": "^1.44.0"
+  },
+  "devDependencies": {
+    "bun-types": "latest"
+  }
+}

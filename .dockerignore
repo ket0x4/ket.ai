@@ -1,0 +1,8 @@
+node_modules/
+*.exe
+*.db
+.env
+.git/
+.gitignore
+.dockerignore
+README.md
