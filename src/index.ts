@@ -3,7 +3,7 @@ import { startBot, bot } from "./services/bot.ts";
 
 async function main() {
   console.log("-----------------------------------------");
-  console.log("Starting ket.ai");
+  console.log("Starting ket.ai 2");
   console.log("-----------------------------------------");
 
   // 1. Run migrations to initialize SQLite tables

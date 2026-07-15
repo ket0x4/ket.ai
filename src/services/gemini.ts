@@ -83,7 +83,16 @@ async function getRelevantMemories(chatId: string, query: string, topK = 5): Pro
   }));
   
   scored.sort((a, b) => b.score - a.score);
-  return scored.slice(0, topK).map(s => s.text);
+  const THRESHOLD = 0.60;
+  const topMemories = scored
+    .filter(s => s.score >= THRESHOLD)
+    .slice(0, topK)
+    .map(s => s.text);
+  if (topMemories.length > 0) {
+    console.log(`[Memory RAG] Retrieved ${topMemories.length} memories for query: "${query}"`);
+    console.log(`[Memory RAG] Memories:`, topMemories);
+  }
+  return topMemories;
 }
 
 export const GeminiService = {
@@ -156,7 +165,7 @@ export const GeminiService = {
               },
               new_memory_update: {
                 type: "STRING",
-                description: "Gelecekte de hatırlaman gereken kalıcı bir kural, takma ad, tercih veya önemli bilgi varsa bunu 1 net cümleyle özetle (örn: 'Kullanıcı Ket kendisine reis denmesini istiyor.'). Yoksa boş bırak."
+                description: "Gelecekte hatırlamanın faydalı olacağı kalıcı tercihleri veya kişisel bilgileri 1 net cümleyle özetle. ÖNEMLİ: Bilgiyi kaydederken ASLA 'Kullanıcı' deme, her zaman bilgiyi veren kişinin mesaj geçmişindeki ismini kullan (örn: 'Ket arch linux kullanıyor'). Anlık muhabbetleri kaydetme. Değerli bilgi yoksa boş bırak."
               }
             },
             required: ["reply"]
@@ -305,7 +314,7 @@ export const GeminiService = {
               },
               new_memory_update: {
                 type: "STRING",
-                description: "Gelecekte de hatırlaman gereken kalıcı bir kural, takma ad, tercih veya önemli bilgi varsa bunu 1 net cümleyle özetle. Yoksa boş bırak."
+                description: "Gelecekte hatırlamanın faydalı olacağı kalıcı tercihleri veya kişisel bilgileri 1 net cümleyle özetle. ÖNEMLİ: Bilgiyi kaydederken ASLA 'Kullanıcı' deme, her zaman bilgiyi veren kişinin mesaj geçmişindeki ismini kullan (örn: 'Ket arch linux kullanıyor'). Anlık muhabbetleri kaydetme. Değerli bilgi yoksa boş bırak."
               }
             },
             required: ["reply"]
@@ -401,7 +410,7 @@ export const GeminiService = {
               },
               new_memory_update: {
                 type: "STRING",
-                description: "Gelecekte de hatırlaman gereken kalıcı bir kural, takma ad, tercih veya önemli bilgi varsa bunu 1 net cümleyle özetle. Yoksa boş bırak."
+                description: "Gelecekte hatırlamanın faydalı olacağı kalıcı tercihleri veya kişisel bilgileri 1 net cümleyle özetle. ÖNEMLİ: Bilgiyi kaydederken ASLA 'Kullanıcı' deme, her zaman bilgiyi veren kişinin mesaj geçmişindeki ismini kullan (örn: 'Ket arch linux kullanıyor'). Anlık muhabbetleri kaydetme. Değerli bilgi yoksa boş bırak."
               }
             },
             required: ["reply"]

@@ -178,10 +178,10 @@ export function registerCommands(bot: Bot) {
       return;
     }
 
-    const memoryList = memories.map((memory, index) => `${index + 1}. ${memory}`).join("\n");
+    const memoryList = memories.map((memory, index) => `${index + 1}. ${memory.text}`).join("\n");
 
     await ctx.reply(
-      `**Saved Memories** (${memories.length}/50):\n\n${memoryList}\n\n` +
+      `**Saved Memories** (${memories.length}/2000):\n\n${memoryList}\n\n` +
       `To delete: \`/memories clear\``,
       { parse_mode: "Markdown" }
     );
