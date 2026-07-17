@@ -61,6 +61,7 @@ export function registerImageHandlers(bot: Bot) {
         const buffer = Buffer.from(arrayBuffer);
 
         // Fetch recent history for context
+        const activeTopic = await GeminiService.ensureTopicSummary(chatIdStr, chatSettings.current_topic);
         const history = Repository.getRecentMessages(chatIdStr, CONFIG.IMAGE_HISTORY_LIMIT);
 
         console.log(`[Image] Sending photo to Gemini for analysis...`);
@@ -68,7 +69,7 @@ export function registerImageHandlers(bot: Bot) {
           buffer,
           "image/jpeg", // Telegram converts all photo files to JPEG
           history,
-          chatSettings.current_topic
+          activeTopic
         );
 
         // Reply to the photo message

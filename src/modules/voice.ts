@@ -60,6 +60,7 @@ export function registerVoiceHandlers(bot: Bot) {
         const mimeType = fileDetails.file_path.endsWith(".oga") ? "audio/ogg" : "audio/ogg";
 
         // Fetch recent history for context
+        const activeTopic = await GeminiService.ensureTopicSummary(chatIdStr, chatSettings.current_topic);
         const history = Repository.getRecentMessages(chatIdStr, CONFIG.IMAGE_HISTORY_LIMIT);
 
         console.log(`[Voice] Sending voice message to Gemini for analysis...`);
@@ -67,7 +68,7 @@ export function registerVoiceHandlers(bot: Bot) {
           buffer,
           mimeType,
           history,
-          chatSettings.current_topic
+          activeTopic
         );
 
         // Reply to the voice message

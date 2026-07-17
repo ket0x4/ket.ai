@@ -40,10 +40,11 @@ export function registerChatHandlers(bot: Bot) {
     if (isDirectInteraction) {
       // Direct interaction: reply immediately
       await withTyping(ctx, async () => {
+        const activeTopic = await GeminiService.ensureTopicSummary(chatIdStr, chatSettings.current_topic);
         const history = Repository.getRecentMessages(chatIdStr, CONFIG.CHAT_HISTORY_LIMIT);
         const reply = await GeminiService.generateReply(
           history,
-          chatSettings.current_topic,
+          activeTopic,
           false
         );
 
@@ -72,10 +73,11 @@ export function registerChatHandlers(bot: Bot) {
         Repository.updateChatSettings(chatIdStr, { last_random_reply_at: now });
 
         await withTyping(ctx, async () => {
+          const activeTopic = await GeminiService.ensureTopicSummary(chatIdStr, chatSettings.current_topic);
           const history = Repository.getRecentMessages(chatIdStr, CONFIG.CHAT_HISTORY_LIMIT);
           const reply = await GeminiService.generateReply(
             history,
-            chatSettings.current_topic,
+            activeTopic,
             true
           );
 

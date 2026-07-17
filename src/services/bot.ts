@@ -159,28 +159,6 @@ export async function initBot() {
       sentAt: msg.date,
     });
 
-    // Run Topic Summarizer in background every 30 user messages
-    if (textContent && !from.is_bot) {
-      const count = Repository.getMessageCount(chatIdStr);
-      if (count > 0 && count % 30 === 0) {
-        // Async background task (non-blocking)
-        (async () => {
-          try {
-            console.log(`[Summarizer] Triggering topic summary for group ${chatIdStr}...`);
-            const history = Repository.getRecentMessages(chatIdStr, 30);
-            const summary = await GeminiService.summarizeTopic(history);
-            if (summary) {
-              Repository.updateChatSettings(chatIdStr, { current_topic: summary });
-              console.log(`[Summarizer] New topic summary for ${chatIdStr}: "${summary}"`);
-            }
-          } catch (err) {
-            console.error("[Summarizer] Error summarizing chat topic:", err);
-          }
-        })();
-      }
-    }
-
-
     // Run message retention cleanup every 100 user messages
     if (!from.is_bot) {
       const retentionCount = Repository.getMessageCount(chatIdStr);

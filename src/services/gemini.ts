@@ -7,6 +7,7 @@ import { cosineSimilarity } from "../utils/vector.ts";
 
 // Initialize the Google Gen AI client
 const ai = new GoogleGenAI({ apiKey: CONFIG.GEMINI_API_KEY });
+const lastSummarizedCount = new Map<string, number>();
 
 function getSystemInstruction(): string {
   const SYSTEM_PROMPT_FILE = "system.txt";
@@ -96,6 +97,30 @@ async function getRelevantMemories(chatId: string, query: string, topK = 5): Pro
 }
 
 export const GeminiService = {
+  /**
+   * Ensures the topic summary is up-to-date before generating a reply.
+   * Runs the summarizer only if enough messages have passed or no topic exists.
+   */
+  async ensureTopicSummary(chatIdStr: string, currentTopic: string | null): Promise<string> {
+    const currentCount = Repository.getMessageCount(chatIdStr);
+    const lastCount = lastSummarizedCount.get(chatIdStr) || 0;
+    
+    // If we have no topic yet, or if 20+ messages have passed
+    if (!currentTopic || currentCount - lastCount >= 20) {
+      console.log(`[Summarizer] Triggering on-demand topic summary for group ${chatIdStr}...`);
+      const history = Repository.getRecentMessages(chatIdStr, 30);
+      const summary = await this.summarizeTopic(history);
+      if (summary) {
+        Repository.updateChatSettings(chatIdStr, { current_topic: summary });
+        lastSummarizedCount.set(chatIdStr, currentCount);
+        console.log(`[Summarizer] New topic summary for ${chatIdStr}: "${summary}"`);
+        return summary;
+      }
+    }
+    
+    return currentTopic || "";
+  },
+
   /**
    * Generates a reply to the group chat based on recent history and active topic.
    */
