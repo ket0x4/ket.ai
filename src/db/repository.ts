@@ -43,7 +43,8 @@ const stmts = {
   deleteMemories: db.prepare("DELETE FROM memories WHERE chat_id = ?"),
   resetTopic: db.prepare("UPDATE chats SET current_topic = NULL WHERE chat_id = ?"),
   insertMemory: db.prepare("INSERT INTO memories (chat_id, memory_text, embedding, created_at) VALUES (?, ?, ?, ?)"),
-  getMemories: db.prepare("SELECT memory_text, embedding FROM memories WHERE chat_id = ? ORDER BY created_at ASC"),
+  getMemories: db.prepare("SELECT id, memory_text, embedding FROM memories WHERE chat_id = ? ORDER BY created_at ASC"),
+  deleteMemoryById: db.prepare("DELETE FROM memories WHERE id = ?"),
   getMemoryCount: db.prepare("SELECT COUNT(*) as count FROM memories WHERE chat_id = ?"),
   deleteOldestMemory: db.prepare(
     `DELETE FROM memories WHERE id = (SELECT id FROM memories WHERE chat_id = ? ORDER BY created_at ASC LIMIT 1)`
@@ -204,12 +205,26 @@ export const Repository = {
   /**
    * Retrieves all memory facts for a chat with their embeddings.
    */
-  getMemories(chatId: string): { text: string; embedding: number[] }[] {
-    const rows = stmts.getMemories.all(chatId) as { memory_text: string; embedding: string | null }[];
+  getMemories(chatId: string): { id: number; text: string; embedding: number[] }[] {
+    const rows = stmts.getMemories.all(chatId) as { id: number; memory_text: string; embedding: string | null }[];
     return rows.map((row) => ({
+      id: row.id,
       text: row.memory_text,
       embedding: row.embedding ? JSON.parse(row.embedding) : []
     }));
+  },
+
+  /**
+   * Deletes specific memories by their IDs.
+   */
+  deleteMemoriesByIds(ids: number[]): void {
+    if (ids.length === 0) return;
+    const deleteMany = db.transaction((memoryIds: number[]) => {
+      for (const id of memoryIds) {
+        stmts.deleteMemoryById.run(id);
+      }
+    });
+    deleteMany(ids);
   },
 
   /**

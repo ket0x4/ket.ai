@@ -1,7 +1,10 @@
 import { ai } from "./client";
-import { runWithRetry } from "./utils";
+import { runWithRetry, getSystemInstruction } from "./utils";
 import { Repository } from "../../db/repository";
 import { cosineSimilarity } from "../../utils/vector";
+import { CONFIG } from "../../config/index";
+
+const newMemoriesCount = new Map<string, number>();
 
 export async function generateEmbedding(text: string): Promise<number[]> {
   try {
@@ -36,6 +39,14 @@ export async function processNewMemory(chatIdStr: string, memoryText: string) {
 
   console.log(`[Memory Store] Adding memory to chat ${chatIdStr}:`, memText);
   Repository.addMemory(chatIdStr, memText, emb);
+
+  const count = (newMemoriesCount.get(chatIdStr) || 0) + 1;
+  if (count >= 20) {
+    newMemoriesCount.set(chatIdStr, 0);
+    consolidateMemories(chatIdStr).catch(e => console.error("Memory consolidation error:", e));
+  } else {
+    newMemoriesCount.set(chatIdStr, count);
+  }
 }
 
 export async function getRelevantMemories(chatId: string, query: string, topK = 5): Promise<string[]> {
@@ -64,4 +75,51 @@ export async function getRelevantMemories(chatId: string, query: string, topK = 
     console.log(`[Memory RAG] Memories:`, topMemories);
   }
   return topMemories;
+}
+
+export async function consolidateMemories(chatIdStr: string) {
+  const allMemories = Repository.getMemories(chatIdStr);
+  if (allMemories.length < 10) return;
+
+  const memoryListText = allMemories.map(m => `ID: ${m.id} | ${m.text}`).join("\n");
+
+  const prompt = `Review the following memory list.
+Find exact duplicates, resolved contradictions (e.g. if one says user lives in X and a newer one says user lives in Y, the older one is a contradiction), or completely useless/spam facts. 
+Return ONLY a JSON array of the integer IDs of memories that should be permanently DELETED. Return an empty array [] if all memories are important and distinct.
+
+Memories:
+${memoryListText}`;
+
+  console.log(`[Memory Consolidation] Triggered for chat ${chatIdStr}. Analyzing ${allMemories.length} memories...`);
+
+  try {
+    const response = await runWithRetry(() => ai.models.generateContent({
+      model: CONFIG.GEMINI_MODEL,
+      contents: prompt,
+      config: {
+        systemInstruction: getSystemInstruction(),
+        temperature: 0.2,
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: "ARRAY",
+          items: {
+            type: "INTEGER",
+          },
+          description: "List of memory IDs to delete"
+        }
+      },
+    }));
+
+    const responseText = response.text?.trim() || "[]";
+    const idsToDelete: number[] = JSON.parse(responseText);
+
+    if (Array.isArray(idsToDelete) && idsToDelete.length > 0) {
+      Repository.deleteMemoriesByIds(idsToDelete);
+      console.log(`[Memory Consolidation] Successfully deleted ${idsToDelete.length} redundant/spam memories for chat ${chatIdStr}.`);
+    } else {
+      console.log(`[Memory Consolidation] No redundant memories found for chat ${chatIdStr}.`);
+    }
+  } catch (error) {
+    console.error(`[Memory Consolidation] Error during consolidation for chat ${chatIdStr}:`, error);
+  }
 }
