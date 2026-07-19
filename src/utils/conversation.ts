@@ -1,4 +1,4 @@
-import { Repository } from "../db/repository.ts";
+import { Repository } from "../db/repository";
 
 /**
  * Detects if a message is a quick follow-up in an ongoing conversation.

@@ -1,5 +1,5 @@
-import { db } from "./index.ts";
-import { CONFIG } from "../config/index.ts";
+import { db } from "./index";
+import { CONFIG } from "../config/index";
 
 export interface ChatRow {
   chat_id: string;

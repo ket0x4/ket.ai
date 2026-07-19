@@ -1,6 +1,6 @@
 import { Bot, Context } from "grammy";
-import { CONFIG } from "../config/index.ts";
-import { Repository } from "../db/repository.ts";
+import { CONFIG } from "../config/index";
+import { Repository } from "../db/repository";
 
 /**
  * Checks if the user is the bot owner or an administrator of the group.

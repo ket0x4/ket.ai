@@ -1,5 +1,5 @@
 import { Database } from "bun:sqlite";
-import { CONFIG } from "../config/index.ts";
+import { CONFIG } from "../config/index";
 
 // Initialize the database
 export const db = new Database(CONFIG.DB_PATH, { create: true });
@@ -42,7 +42,7 @@ export function runMigrations() {
 
   // Indexes for faster lookups on message history
   db.run(`
-    CREATE INDEX IF NOT EXISTS idx_messages_chat_id_sent_at 
+    CREATE INDEX IF NOT EXISTS idx_messages_chat_id_sent_at
     ON messages(chat_id, sent_at);
   `);
 
@@ -60,7 +60,7 @@ export function runMigrations() {
 
   // Index for faster lookups on memories
   db.run(`
-    CREATE INDEX IF NOT EXISTS idx_memories_chat_id 
+    CREATE INDEX IF NOT EXISTS idx_memories_chat_id
     ON memories(chat_id);
   `);
 

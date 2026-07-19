@@ -1,9 +1,9 @@
 import { Bot, Context } from "grammy";
-import { botUsername, withTyping } from "../services/bot.ts";
-import { Repository } from "../db/repository.ts";
-import { GeminiService } from "../services/gemini.ts";
-import { CONFIG } from "../config/index.ts";
-import { isConversationFollowUp } from "../utils/conversation.ts";
+import { botUsername, withTyping } from "../services/bot";
+import { Repository } from "../db/repository";
+import { GeminiService } from "../services/gemini/index";
+import { CONFIG } from "../config";
+import { isConversationFollowUp } from "../utils/conversation";
 
 const COOLDOWN_SECONDS = 300; // 5 minutes cooldown between random replies
 
@@ -68,7 +68,7 @@ export function registerChatHandlers(bot: Bot) {
       const roll = Math.random();
       if (roll < chatSettings.reply_probability) {
         console.log(`[Spontaneous] Rolling SUCCESS for chat ${chatIdStr} (Roll: ${roll.toFixed(4)} < ${chatSettings.reply_probability})`);
-        
+
         // Update last random reply timestamp before processing to prevent double triggers
         Repository.updateChatSettings(chatIdStr, { last_random_reply_at: now });
 

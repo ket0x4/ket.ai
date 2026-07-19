@@ -1,9 +1,9 @@
 import { Bot } from "grammy";
-import { CONFIG } from "../config/index.ts";
-import { botUsername, withTyping } from "../services/bot.ts";
-import { Repository } from "../db/repository.ts";
-import { GeminiService } from "../services/gemini.ts";
-import { isConversationFollowUp } from "../utils/conversation.ts";
+import { CONFIG } from "../config/index";
+import { botUsername, withTyping } from "../services/bot";
+import { Repository } from "../db/repository";
+import { GeminiService } from "../services/gemini/index";
+import { isConversationFollowUp } from "../utils/conversation";
 
 export function registerImageHandlers(bot: Bot) {
   // Listen to photo messages
@@ -40,7 +40,7 @@ export function registerImageHandlers(bot: Bot) {
     await withTyping(ctx, async () => {
       try {
         console.log(`[Image] Downloading photo ${photo.file_id} from Telegram...`);
-        
+
         // Fetch file path details from Telegram
         const fileDetails = await ctx.getFile();
         if (!fileDetails.file_path) {

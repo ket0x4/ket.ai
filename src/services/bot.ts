@@ -1,11 +1,11 @@
 import { Bot, Context } from "grammy";
-import { CONFIG } from "../config/index.ts";
-import { Repository } from "../db/repository.ts";
-import { GeminiService } from "./gemini.ts";
-import { registerCommands } from "../modules/commands.ts";
-import { registerChatHandlers } from "../modules/chat.ts";
-import { registerImageHandlers } from "../modules/image.ts";
-import { registerVoiceHandlers } from "../modules/voice.ts";
+import { CONFIG } from "../config/index";
+import { Repository } from "../db/repository";
+import { GeminiService } from "./gemini/index";
+import { registerCommands } from "../modules/commands";
+import { registerChatHandlers } from "../modules/chat";
+import { registerImageHandlers } from "../modules/image";
+import { registerVoiceHandlers } from "../modules/voice";
 
 export const bot = new Bot(CONFIG.TELEGRAM_BOT_TOKEN);
 
@@ -13,16 +13,16 @@ export const bot = new Bot(CONFIG.TELEGRAM_BOT_TOKEN);
 // This is critical because Telegram Bot API does not send updates for messages sent by the bot itself.
 bot.api.config.use(async (prev, method, payload, signal) => {
   const result = await prev(method, payload, signal);
-  
+
   if (method === "sendMessage" && payload && typeof payload === "object" && "chat_id" in payload && "text" in payload) {
     try {
       const chatId = (payload.chat_id ?? "").toString();
       const text = (payload as any).text;
-      
+
       if (result && typeof result === "object" && "message_id" in result) {
         const sentMsg = result as any;
         const from = sentMsg.from;
-        
+
         Repository.saveMessage({
           chatId: chatId,
           messageId: sentMsg.message_id,
@@ -39,7 +39,7 @@ bot.api.config.use(async (prev, method, payload, signal) => {
       console.error("[Bot Outgoing Logger] Failed to archive bot reply:", e);
     }
   }
-  
+
   return result;
 });
 
@@ -94,7 +94,7 @@ export async function initBot() {
         }
         return await next();
       }
-      
+
       // Ignore other users in DM to avoid unauthorized API usage
       await ctx.reply(CONFIG.MESSAGES.private_chat_unauthorized);
       return;

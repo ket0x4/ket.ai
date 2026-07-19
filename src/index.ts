@@ -1,5 +1,5 @@
-import { runMigrations, db } from "./db/index.ts";
-import { startBot, bot } from "./services/bot.ts";
+import { runMigrations, db } from "./db/index";
+import { startBot, bot } from "./services/bot";
 
 async function main() {
   console.log("-----------------------------------------");
