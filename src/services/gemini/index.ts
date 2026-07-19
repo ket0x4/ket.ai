@@ -77,9 +77,23 @@ export const GeminiService = {
           type: "STRING",
           description: options.replyDescription
         },
-        new_memory_update: {
-          type: "STRING",
-          description: "Summarize in 1 clear sentence the interests, preferences, or personal details about the users that may require if remembered in the future. CRITICAL: ONLY extract facts explicitly stated by the users in their previous messages. DO NOT save facts based on your own generated replies, assumptions, or jokes. Save if there is a meaningful detail, otherwise leave blank. Do not say 'User' when saving, use the person's name."
+        new_memory_updates: {
+          type: "ARRAY",
+          description: "List of new facts to remember. ONLY extract facts explicitly stated BY THE USERS in their recent messages. DO NOT save facts based on your own generated replies, assumptions, or jokes. Leave empty [] if no meaningful user facts exist.",
+          items: {
+            type: "OBJECT",
+            properties: {
+              user_name: {
+                type: "STRING",
+                description: "The EXACT name of the user who stated the fact (look at the 'sender' field)."
+              },
+              fact: {
+                type: "STRING",
+                description: "The factual detail stated by the user (e.g., likes pizza, is a software engineer). Do not use the word 'User'."
+              }
+            },
+            required: ["user_name", "fact"]
+          }
         }
       };
 
@@ -105,8 +119,13 @@ export const GeminiService = {
       try {
         const parsed = JSON.parse(responseText);
 
-        if (parsed.new_memory_update && parsed.new_memory_update.trim() && chatIdStr) {
-          await processNewMemory(chatIdStr, parsed.new_memory_update);
+        if (Array.isArray(parsed.new_memory_updates) && chatIdStr) {
+          for (const mem of parsed.new_memory_updates) {
+            if (mem.user_name && mem.fact) {
+              const combinedFact = `${mem.user_name}: ${mem.fact}`;
+              await processNewMemory(chatIdStr, combinedFact);
+            }
+          }
         }
 
         return parsed.reply || options.fallbackEmpty;
