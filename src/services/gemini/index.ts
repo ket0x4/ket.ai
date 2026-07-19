@@ -79,7 +79,7 @@ export const GeminiService = {
         },
         new_memory_update: {
           type: "STRING",
-          description: "Summarize in 1 clear sentence the interests, preferences, or personal details about the users that may require if remembered in the future. Save if there is a meaningful detail, otherwise leave blank."
+          description: "Summarize in 1 clear sentence the interests, preferences, or personal details about the users that may require if remembered in the future. CRITICAL: ONLY extract facts explicitly stated by the users in their previous messages. DO NOT save facts based on your own generated replies, assumptions, or jokes. Save if there is a meaningful detail, otherwise leave blank. Do not say 'User' when saving, use the person's name."
         }
       };
 
