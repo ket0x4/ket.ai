@@ -68,6 +68,28 @@ async function generateEmbedding(text: string): Promise<number[]> {
   }
 }
 
+async function processNewMemory(chatIdStr: string, memoryText: string) {
+  if (!memoryText || !memoryText.trim() || !chatIdStr) return;
+  const memText = memoryText.trim();
+  const emb = await generateEmbedding(memText);
+  
+  const existing = Repository.getMemories(chatIdStr);
+  for (const m of existing) {
+    if (m.embedding.length > 0 && cosineSimilarity(emb, m.embedding) > 0.85) {
+      console.log(`[Memory Store] Skipped duplicate memory for chat ${chatIdStr}:`, memText);
+      return;
+    }
+  }
+  
+  console.log(`[Memory Store] Adding memory to chat ${chatIdStr}:`, memText);
+  Repository.addMemory(chatIdStr, memText, emb);
+}
+
+function cleanUserText(text: string | null): string {
+  if (!text) return "";
+  return text.replace(/\bket\b/gi, "").trim();
+}
+
 async function getRelevantMemories(chatId: string, query: string, topK = 5): Promise<string[]> {
   const allMemories = Repository.getMemories(chatId);
   if (allMemories.length === 0) return [];
@@ -134,7 +156,7 @@ export const GeminiService = {
 
       // Extract the last message which is the target of the reply
       const lastMsg = history[history.length - 1];
-      const lastMessageText = lastMsg ? (lastMsg.text || "[Medya]") : "";
+      const lastMessageText = lastMsg ? (lastMsg.is_bot_reply ? (lastMsg.text || "[Medya]") : cleanUserText(lastMsg.text) || "[Medya]") : "";
       const lastMessageUsernameSuffix = lastMsg && lastMsg.username ? ` (@${lastMsg.username})` : "";
       const lastMessageSender = lastMsg 
         ? (lastMsg.is_bot_reply ? "Sen (ket)" : `Kullanıcı: ${lastMsg.first_name || "İsimsiz"}${lastMessageUsernameSuffix}`)
@@ -147,7 +169,7 @@ export const GeminiService = {
         return {
           sender: senderName,
           reply_to: msg.reply_to_first_name || undefined,
-          text: msg.text || (msg.photo_file_id ? "[Fotoğraf]" : "[Medya]")
+          text: msg.is_bot_reply ? (msg.text || (msg.photo_file_id ? "[Fotoğraf]" : "[Medya]")) : (cleanUserText(msg.text) || (msg.photo_file_id ? "[Fotoğraf]" : "[Medya]"))
         };
       });
 
@@ -190,7 +212,7 @@ export const GeminiService = {
               },
               new_memory_update: {
                 type: "STRING",
-                description: "Gelecekte hatırlamanın faydalı olacağı kalıcı tercihleri veya kişisel bilgileri 1 net cümleyle özetle. ÖNEMLİ: Bilgiyi kaydederken ASLA 'Kullanıcı' deme, her zaman bilgiyi veren kişinin mesaj geçmişindeki ismini kullan (örn: 'Ket arch linux kullanıyor'). Anlık muhabbetleri kaydetme. Değerli bilgi yoksa boş bırak."
+                description: "Kullanıcılar hakkında gelecekte hatırlamanın sohbete renk katacağı ilgi alanlarını, tercihleri veya kişisel detayları (örn: sevdiği oyun, takım, hobisi, tarzı) 1 net cümleyle özetle. Anlık geyikleri ve geçici durumları kaydetme. Anlamlı bir detay varsa kaydet, yoksa boş bırak. Kaydederken 'Kullanıcı' deme, kişinin ismini kullan."
               }
             },
             required: ["reply"]
@@ -204,10 +226,7 @@ export const GeminiService = {
         
         // Save new memory if extracted by the model
         if (parsed.new_memory_update && parsed.new_memory_update.trim() && chatIdStr) {
-          const memText = parsed.new_memory_update.trim();
-          console.log(`[Memory Store] Adding memory to chat ${chatIdStr}:`, memText);
-          const emb = await generateEmbedding(memText);
-          Repository.addMemory(chatIdStr, memText, emb);
+          await processNewMemory(chatIdStr, parsed.new_memory_update);
         }
 
         return parsed.reply || CONFIG.MESSAGES.gemini_empty_reply_fallback;
@@ -294,7 +313,7 @@ export const GeminiService = {
         return {
           sender: senderName,
           reply_to: msg.reply_to_first_name || undefined,
-          text: msg.text || "[Medya]"
+          text: msg.is_bot_reply ? (msg.text || "[Medya]") : (cleanUserText(msg.text) || "[Medya]")
         };
       });
 
@@ -339,7 +358,7 @@ export const GeminiService = {
               },
               new_memory_update: {
                 type: "STRING",
-                description: "Gelecekte hatırlamanın faydalı olacağı kalıcı tercihleri veya kişisel bilgileri 1 net cümleyle özetle. ÖNEMLİ: Bilgiyi kaydederken ASLA 'Kullanıcı' deme, her zaman bilgiyi veren kişinin mesaj geçmişindeki ismini kullan (örn: 'Ket arch linux kullanıyor'). Anlık muhabbetleri kaydetme. Değerli bilgi yoksa boş bırak."
+                description: "Kullanıcılar hakkında gelecekte hatırlamanın sohbete renk katacağı ilgi alanlarını, tercihleri veya kişisel detayları (örn: sevdiği oyun, takım, hobisi, tarzı) 1 net cümleyle özetle. Anlık geyikleri ve geçici durumları kaydetme. Anlamlı bir detay varsa kaydet, yoksa boş bırak. Kaydederken 'Kullanıcı' deme, kişinin ismini kullan."
               }
             },
             required: ["reply"]
@@ -353,10 +372,7 @@ export const GeminiService = {
         
         // Save new memory if extracted by the model
         if (parsed.new_memory_update && parsed.new_memory_update.trim() && chatIdStr) {
-          const memText = parsed.new_memory_update.trim();
-          console.log(`[Memory Store] Adding memory to chat ${chatIdStr}:`, memText);
-          const emb = await generateEmbedding(memText);
-          Repository.addMemory(chatIdStr, memText, emb);
+          await processNewMemory(chatIdStr, parsed.new_memory_update);
         }
 
         return parsed.reply || CONFIG.MESSAGES.gemini_empty_image_fallback;
@@ -390,7 +406,7 @@ export const GeminiService = {
         return {
           sender: senderName,
           reply_to: msg.reply_to_first_name || undefined,
-          text: msg.text || "[Medya]"
+          text: msg.is_bot_reply ? (msg.text || "[Medya]") : (cleanUserText(msg.text) || "[Medya]")
         };
       });
 
@@ -435,7 +451,7 @@ export const GeminiService = {
               },
               new_memory_update: {
                 type: "STRING",
-                description: "Gelecekte hatırlamanın faydalı olacağı kalıcı tercihleri veya kişisel bilgileri 1 net cümleyle özetle. ÖNEMLİ: Bilgiyi kaydederken ASLA 'Kullanıcı' deme, her zaman bilgiyi veren kişinin mesaj geçmişindeki ismini kullan (örn: 'Ket arch linux kullanıyor'). Anlık muhabbetleri kaydetme. Değerli bilgi yoksa boş bırak."
+                description: "Kullanıcılar hakkında gelecekte hatırlamanın sohbete renk katacağı ilgi alanlarını, tercihleri veya kişisel detayları (örn: sevdiği oyun, takım, hobisi, tarzı) 1 net cümleyle özetle. Anlık geyikleri ve geçici durumları kaydetme. Anlamlı bir detay varsa kaydet, yoksa boş bırak. Kaydederken 'Kullanıcı' deme, kişinin ismini kullan."
               }
             },
             required: ["reply"]
@@ -449,10 +465,7 @@ export const GeminiService = {
 
         // Save new memory if extracted by the model
         if (parsed.new_memory_update && parsed.new_memory_update.trim() && chatIdStr) {
-          const memText = parsed.new_memory_update.trim();
-          console.log(`[Memory Store] Adding memory to chat ${chatIdStr}:`, memText);
-          const emb = await generateEmbedding(memText);
-          Repository.addMemory(chatIdStr, memText, emb);
+          await processNewMemory(chatIdStr, parsed.new_memory_update);
         }
 
         return parsed.reply || "Ses mesajını duydum ama ne diyeceğimi bilemedim.";

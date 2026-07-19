@@ -27,6 +27,25 @@ async function isAuthorized(ctx: Context): Promise<boolean> {
   }
 }
 
+async function isOwnerOrCreator(ctx: Context): Promise<boolean> {
+  if (!ctx.from) return false;
+
+  if (CONFIG.BOT_OWNER_ID && ctx.from.id === CONFIG.BOT_OWNER_ID) {
+    return true;
+  }
+
+  if (ctx.chat?.type === "private") {
+    return true;
+  }
+
+  try {
+    const member = await ctx.getChatMember(ctx.from.id);
+    return member.status === "creator";
+  } catch (error) {
+    return false;
+  }
+}
+
 export function registerCommands(bot: Bot) {
   // 1. /start command
   bot.command("start", async (ctx) => {
@@ -58,7 +77,7 @@ export function registerCommands(bot: Bot) {
   bot.command("reset", async (ctx) => {
     if (!ctx.chat) return;
 
-    if (!(await isAuthorized(ctx))) {
+    if (!(await isOwnerOrCreator(ctx))) {
       await ctx.reply(CONFIG.MESSAGES.not_authorized_command);
       return;
     }
@@ -163,7 +182,7 @@ export function registerCommands(bot: Bot) {
     const subCommand = ctx.match?.trim().toLowerCase();
 
     if (subCommand === "clear") {
-      if (!(await isAuthorized(ctx))) {
+      if (!(await isOwnerOrCreator(ctx))) {
         await ctx.reply(CONFIG.MESSAGES.not_authorized_command);
         return;
       }
