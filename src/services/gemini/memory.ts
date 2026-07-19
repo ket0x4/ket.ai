@@ -18,7 +18,12 @@ export async function generateEmbedding(text: string): Promise<number[]> {
 
 export async function processNewMemory(chatIdStr: string, memoryText: string) {
   if (!memoryText || !memoryText.trim() || !chatIdStr) return;
-  const memText = memoryText.trim();
+  
+  const dateStr = new Date().toLocaleString('tr-TR', { 
+    day: '2-digit', month: '2-digit', year: 'numeric', 
+    hour: '2-digit', minute: '2-digit' 
+  });
+  const memText = `[${dateStr}] ${memoryText.trim()}`;
   const emb = await generateEmbedding(memText);
 
   const existing = Repository.getMemories(chatIdStr);

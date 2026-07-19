@@ -78,7 +78,7 @@ export function registerVoiceHandlers(bot: Bot) {
 
       } catch (error) {
         console.error("Error processing voice message:", error);
-        await ctx.reply("Ses mesajını dinlerken kafam karıştı, tekrar dener misin?", {
+        await ctx.reply("Failed to process your voice message. Please try again later.", {
           reply_to_message_id: msg.message_id,
         });
       }

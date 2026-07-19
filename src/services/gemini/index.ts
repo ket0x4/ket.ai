@@ -79,18 +79,11 @@ export const GeminiService = {
         },
         new_memory_update: {
           type: "STRING",
-          description: options.media
-            ? "Summarize in 1 clear sentence the interests, preferences, or personal details about the users that will add color to the chat if remembered in the future (e.g., favorite game, team, hobby, style). Do not save momentary jokes and temporary situations. Save if there is a meaningful detail, otherwise leave blank. Do not say 'User' when saving, use the person's name."
-            : "Summarize things you think you should remember about the users in the future in 1 clear sentence. Save if there is a meaningful detail, otherwise leave blank. Use the person's name when saving."
+          description: "Summarize in 1 clear sentence the interests, preferences, or personal details about the users that may require if remembered in the future. Save if there is a meaningful detail, otherwise leave blank."
         }
       };
 
-      if (options.media) {
-        responseSchemaProperties.mood = {
-          type: "STRING",
-          description: "The attitude or mood you assume while writing."
-        };
-      }
+
 
       const response = await runWithRetry(() => ai.models.generateContent({
         model: CONFIG.GEMINI_MODEL,
@@ -154,7 +147,7 @@ export const GeminiService = {
   ): Promise<string> {
     return this._generateResponse(history, topicSummary, {
       isSpontaneous,
-      replyDescription: "The reply you will write to the chat. A short (1-2 sentences), friendly, shitpost buddy style message written in lowercase, not following punctuation rules.",
+      replyDescription: "The reply you will write to the chat. A short (1-2 sentences).",
       fallbackEmpty: CONFIG.MESSAGES.gemini_empty_reply_fallback,
       fallbackError: CONFIG.MESSAGES.gemini_error_reply_fallback,
       mediaFallbackText: "[Media]"
@@ -216,9 +209,9 @@ export const GeminiService = {
     topicSummary: string | null
   ): Promise<string> {
     return this._generateResponse(history, topicSummary, {
-      instruction: "The user recently sent a photo. Analyze the photo and make a slightly sassy and friendly comment suitable for this photo. Do not respond to requests in older messages.",
+      instruction: "Analyze the photo and make a comment suitable for this photo.",
       media: { buffer: imageBuffer, mimeType },
-      replyDescription: "The reply you will write to the photo and the flow of the conversation. Short (1-2 sentences), slightly sarcastic, friendly, and shitpost buddy style.",
+      replyDescription: "The reply you will write to the photo and the flow of the conversation.",
       fallbackEmpty: CONFIG.MESSAGES.gemini_empty_image_fallback,
       fallbackError: CONFIG.MESSAGES.gemini_error_image_fallback,
       mediaFallbackText: "[Photo]"
@@ -232,9 +225,9 @@ export const GeminiService = {
     topicSummary: string | null
   ): Promise<string> {
     return this._generateResponse(history, topicSummary, {
-      instruction: "The user sent a voice message. Listen to the voice message, understand what is being said, and answer in a friendly way suitable for the conversation. If the voice is not understandable, make a funny comment.",
+      instruction: "The user sent a voice message. Listen, understand what is being said, and answer in a friendly way suitable for the conversation.",
       media: { buffer: audioBuffer, mimeType },
-      replyDescription: "The reply you will write to the voice message and the flow of the conversation. Short (1-2 sentences), friendly, and shitpost buddy style.",
+      replyDescription: "The reply you will write to the voice message and the flow of the conversation.",
       fallbackEmpty: "I heard the voice message but didn't know what to say.",
       fallbackError: "I got confused while listening to the voice message, can you try again?",
       mediaFallbackText: "[Voice]"
