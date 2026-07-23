@@ -4,6 +4,7 @@ import { Repository } from "../db/repository";
 import { GeminiService } from "../services/gemini/index";
 import { CONFIG } from "../config";
 import { isConversationFollowUp } from "../utils/conversation";
+import { sendLongMessage } from "../utils/message";
 
 const COOLDOWN_SECONDS = 300; // 5 minutes cooldown between random replies
 
@@ -49,7 +50,7 @@ export function registerChatHandlers(bot: Bot) {
         );
 
         // Send reply directly referencing the user's message
-        await ctx.reply(reply, {
+        await sendLongMessage(ctx, reply, {
           reply_to_message_id: msg.message_id,
         });
       });
@@ -82,7 +83,7 @@ export function registerChatHandlers(bot: Bot) {
           );
 
           // Spontaneous message: sent directly to the chat without reply tag (like a human chiming in)
-          await ctx.reply(reply);
+          await sendLongMessage(ctx, reply);
         });
       }
     }

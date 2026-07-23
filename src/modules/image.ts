@@ -4,6 +4,7 @@ import { botUsername, withTyping } from "../services/bot";
 import { Repository } from "../db/repository";
 import { GeminiService } from "../services/gemini/index";
 import { isConversationFollowUp } from "../utils/conversation";
+import { sendLongMessage } from "../utils/message";
 
 export function registerImageHandlers(bot: Bot) {
   // Listen to photo messages
@@ -73,7 +74,7 @@ export function registerImageHandlers(bot: Bot) {
         );
 
         // Reply to the photo message
-        await ctx.reply(reply, {
+        await sendLongMessage(ctx, reply, {
           reply_to_message_id: msg.message_id,
         });
 

@@ -1,6 +1,7 @@
 import { Bot, Context, InlineKeyboard } from "grammy";
 import { CONFIG } from "../config/index";
 import { Repository } from "../db/repository";
+import { sendLongMessage } from "../utils/message";
 
 /**
  * Checks if the user is the bot owner or an administrator of the group.
@@ -47,6 +48,9 @@ async function isOwnerOrCreator(ctx: Context): Promise<boolean> {
 }
 
 const MEMORIES_PER_PAGE = 5;
+// Leave room for header (~60 chars), footer (~30 chars), and inline keyboard label
+const MAX_MEMORY_DISPLAY_LENGTH = 300;
+const TELEGRAM_MAX_LENGTH = 4096;
 
 function getMemoriesPagePayload(chatId: string, page: number = 1) {
   const memories = Repository.getMemories(chatId);
@@ -65,23 +69,33 @@ function getMemoriesPagePayload(chatId: string, page: number = 1) {
   const pageMemories = memories.slice(startIndex, startIndex + MEMORIES_PER_PAGE);
 
   const memoryList = pageMemories
-    .map((memory, index) => `${startIndex + index + 1}. ${memory.text}`)
+    .map((memory, index) => {
+      const text = memory.text.length > MAX_MEMORY_DISPLAY_LENGTH
+        ? memory.text.slice(0, MAX_MEMORY_DISPLAY_LENGTH) + "…"
+        : memory.text;
+      return `${startIndex + index + 1}. ${text}`;
+    })
     .join("\n");
 
-  const text =
-    `**Saved Memories** (${memories.length}/2000) — Sayfa ${currentPage}/${totalPages}:\n\n` +
-    `${memoryList}\n\n` +
-    `To delete: \`/memories clear\``;
+  const footer = `To delete: \`/memories clear\``;
+  const header = `**Saved Memories** (${memories.length}/2000) — Page ${currentPage}/${totalPages}:\n\n`;
+
+  let text = header + memoryList + "\n\n" + footer;
+
+  // Hard safety clamp — should not be needed with the per-memory cap, but just in case
+  if (text.length > TELEGRAM_MAX_LENGTH) {
+    text = text.slice(0, TELEGRAM_MAX_LENGTH - 5) + "…";
+  }
 
   let keyboard: InlineKeyboard | undefined;
   if (totalPages > 1) {
     keyboard = new InlineKeyboard();
     if (currentPage > 1) {
-      keyboard.text("< Önceki", `memories:page:${currentPage - 1}`);
+      keyboard.text("< Prev", `memories:page:${currentPage - 1}`);
     }
     keyboard.text(`${currentPage}/${totalPages}`, "memories:noop");
     if (currentPage < totalPages) {
-      keyboard.text("Sonraki >", `memories:page:${currentPage + 1}`);
+      keyboard.text("Next >", `memories:page:${currentPage + 1}`);
     }
   }
 
@@ -109,7 +123,8 @@ export function registerCommands(bot: Bot) {
       "• `/reset` — Clear memory\n" +
       "• `/prob [0-100]` — Probability of random response\n" +
       "• `/stats` — Group statistics\n" +
-      "• `/memories` — View saved memories\n" +
+      "• `/memories` — View saved memories (truncated list)\n" +
+      "• `/memory <number>` — View full text of a specific memory\n" +
       "• `/model [model]` — Change AI model (Owner)",
       { parse_mode: "Markdown" }
     );
@@ -269,7 +284,38 @@ export function registerCommands(bot: Bot) {
     await ctx.answerCallbackQuery().catch(() => {});
   });
 
-  // 11. /model command — switch Gemini model per chat (Owner only)
+  // 11. /memory <number> command — view full text of a specific memory by its list index
+  bot.command("memory", async (ctx) => {
+    if (!ctx.chat) return;
+    const chatId = ctx.chat.id.toString();
+    const arg = ctx.match?.trim();
+
+    if (!arg || isNaN(parseInt(arg, 10))) {
+      await ctx.reply("Usage: `/memory <number>` — e.g. `/memory 3` to see the full text of memory #3.", {
+        parse_mode: "Markdown",
+      });
+      return;
+    }
+
+    const index = parseInt(arg, 10) - 1; // convert 1-based display number to 0-based
+    const memories = Repository.getMemories(chatId);
+
+    if (memories.length === 0) {
+      await ctx.reply("No saved memories for this group yet.");
+      return;
+    }
+
+    if (index < 0 || index >= memories.length) {
+      await ctx.reply(`Invalid number. There are ${memories.length} memories. Use a number between 1 and ${memories.length}.`);
+      return;
+    }
+
+    const memory = memories[index];
+    const header = `📝 **Memory #${index + 1}** (of ${memories.length}):\n\n`;
+    await sendLongMessage(ctx, header + memory.text, { parse_mode: "Markdown" });
+  });
+
+  // 12. /model command — switch Gemini model per chat (Owner only)
   bot.command("model", async (ctx) => {
     if (!CONFIG.BOT_OWNER_ID || ctx.from?.id !== CONFIG.BOT_OWNER_ID) return;
 

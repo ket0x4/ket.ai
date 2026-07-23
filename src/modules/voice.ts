@@ -4,6 +4,7 @@ import { botUsername, withTyping } from "../services/bot";
 import { Repository } from "../db/repository";
 import { GeminiService } from "../services/gemini/index";
 import { isConversationFollowUp } from "../utils/conversation";
+import { sendLongMessage } from "../utils/message";
 
 export function registerVoiceHandlers(bot: Bot) {
   // Listen to voice messages
@@ -72,7 +73,7 @@ export function registerVoiceHandlers(bot: Bot) {
         );
 
         // Reply to the voice message
-        await ctx.reply(reply, {
+        await sendLongMessage(ctx, reply, {
           reply_to_message_id: msg.message_id,
         });
 
