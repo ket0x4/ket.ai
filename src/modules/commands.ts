@@ -1,4 +1,4 @@
-import { Bot, Context } from "grammy";
+import { Bot, Context, InlineKeyboard } from "grammy";
 import { CONFIG } from "../config/index";
 import { Repository } from "../db/repository";
 
@@ -44,6 +44,48 @@ async function isOwnerOrCreator(ctx: Context): Promise<boolean> {
   } catch (error) {
     return false;
   }
+}
+
+const MEMORIES_PER_PAGE = 5;
+
+function getMemoriesPagePayload(chatId: string, page: number = 1) {
+  const memories = Repository.getMemories(chatId);
+  if (memories.length === 0) {
+    return {
+      text: "No saved memories for this group yet.",
+      keyboard: undefined,
+      isEmpty: true,
+    };
+  }
+
+  const totalPages = Math.ceil(memories.length / MEMORIES_PER_PAGE);
+  const currentPage = Math.max(1, Math.min(page, totalPages));
+
+  const startIndex = (currentPage - 1) * MEMORIES_PER_PAGE;
+  const pageMemories = memories.slice(startIndex, startIndex + MEMORIES_PER_PAGE);
+
+  const memoryList = pageMemories
+    .map((memory, index) => `${startIndex + index + 1}. ${memory.text}`)
+    .join("\n");
+
+  const text =
+    `**Saved Memories** (${memories.length}/2000) — Sayfa ${currentPage}/${totalPages}:\n\n` +
+    `${memoryList}\n\n` +
+    `To delete: \`/memories clear\``;
+
+  let keyboard: InlineKeyboard | undefined;
+  if (totalPages > 1) {
+    keyboard = new InlineKeyboard();
+    if (currentPage > 1) {
+      keyboard.text("< Önceki", `memories:page:${currentPage - 1}`);
+    }
+    keyboard.text(`${currentPage}/${totalPages}`, "memories:noop");
+    if (currentPage < totalPages) {
+      keyboard.text("Sonraki >", `memories:page:${currentPage + 1}`);
+    }
+  }
+
+  return { text, keyboard, isEmpty: false };
 }
 
 export function registerCommands(bot: Bot) {
@@ -191,19 +233,40 @@ export function registerCommands(bot: Bot) {
       return;
     }
 
-    const memories = Repository.getMemories(chatId);
-    if (memories.length === 0) {
-      await ctx.reply("No saved memories for this group yet.");
-      return;
+    let initialPage = 1;
+    if (subCommand && !isNaN(parseInt(subCommand, 10))) {
+      initialPage = parseInt(subCommand, 10);
     }
 
-    const memoryList = memories.map((memory, index) => `${index + 1}. ${memory.text}`).join("\n");
+    const payload = getMemoriesPagePayload(chatId, initialPage);
+    await ctx.reply(payload.text, {
+      parse_mode: "Markdown",
+      reply_markup: payload.keyboard,
+    });
+  });
 
-    await ctx.reply(
-      `**Saved Memories** (${memories.length}/2000):\n\n${memoryList}\n\n` +
-      `To delete: \`/memories clear\``,
-      { parse_mode: "Markdown" }
-    );
+  bot.callbackQuery(/^memories:page:(\d+)$/, async (ctx) => {
+    if (!ctx.chat) return;
+    const chatId = ctx.chat.id.toString();
+    const targetPage = parseInt(ctx.match[1], 10);
+
+    const payload = getMemoriesPagePayload(chatId, targetPage);
+    try {
+      await ctx.editMessageText(payload.text, {
+        parse_mode: "Markdown",
+        reply_markup: payload.keyboard,
+      });
+    } catch (e: any) {
+      if (!e.message?.includes("message is not modified")) {
+        console.error("[Memories Callback] Failed to edit message:", e);
+      }
+    }
+
+    await ctx.answerCallbackQuery().catch(() => {});
+  });
+
+  bot.callbackQuery("memories:noop", async (ctx) => {
+    await ctx.answerCallbackQuery().catch(() => {});
   });
 
   // 11. /model command — switch Gemini model per chat (Owner only)
