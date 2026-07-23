@@ -5,6 +5,7 @@ import { Repository } from "../db/repository";
 import { GeminiService } from "../services/gemini/index";
 import { isConversationFollowUp } from "../utils/conversation";
 import { sendLongMessage } from "../utils/message";
+import logger from "../utils/logger";
 
 export function registerVoiceHandlers(bot: Bot) {
   // Listen to voice messages
@@ -21,7 +22,7 @@ export function registerVoiceHandlers(bot: Bot) {
     // Detect quick conversation follow-up
     const isFollowUp = ctx.from ? isConversationFollowUp(chatIdStr, ctx.from.id, msg.date) : false;
     if (isFollowUp) {
-      console.log(`[Voice] Follow-up voice detected for user ${ctx.from?.first_name} in chat ${chatIdStr}`);
+      logger.debug(`[Voice] Follow-up voice detected for user ${ctx.from?.first_name} in chat ${chatIdStr}`);
     }
 
     const isDirectInteraction = isReplyToBot || isPrivateChat || isFollowUp;
@@ -36,7 +37,7 @@ export function registerVoiceHandlers(bot: Bot) {
 
     await withTyping(ctx, async () => {
       try {
-        console.log(`[Voice] Downloading voice message from Telegram...`);
+        logger.info(`[Voice] Downloading voice message from Telegram...`);
 
         // Fetch file path details from Telegram
         const fileDetails = await ctx.getFile();
@@ -64,7 +65,7 @@ export function registerVoiceHandlers(bot: Bot) {
         const activeTopic = await GeminiService.ensureTopicSummary(chatIdStr, chatSettings.current_topic);
         const history = Repository.getRecentMessages(chatIdStr, CONFIG.IMAGE_HISTORY_LIMIT);
 
-        console.log(`[Voice] Sending voice message to Gemini for analysis...`);
+        logger.info(`[Voice] Sending voice message to Gemini for analysis...`);
         const reply = await GeminiService.generateVoiceReply(
           buffer,
           mimeType,
@@ -78,7 +79,7 @@ export function registerVoiceHandlers(bot: Bot) {
         });
 
       } catch (error) {
-        console.error("Error processing voice message:", error);
+        logger.error("Error processing voice message:", error);
         await ctx.reply("Failed to process your voice message. Please try again later.", {
           reply_to_message_id: msg.message_id,
         });

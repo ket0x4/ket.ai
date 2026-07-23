@@ -1,12 +1,13 @@
 import { Database } from "bun:sqlite";
 import { CONFIG } from "../config/index";
+import logger from "../utils/logger";
 
-// Initialize the database
+// Initialize the database and ensure schema is ready
 export const db = new Database(CONFIG.DB_PATH, { create: true });
 
 // Run migrations (create tables)
 export function runMigrations() {
-  console.log("Running database migrations...");
+  logger.info("Running database migrations...");
 
   // Table: chats
   db.run(`
@@ -64,5 +65,7 @@ export function runMigrations() {
     ON memories(chat_id);
   `);
 
-  console.log("Database migrations completed successfully.");
+  logger.info("Database migrations completed successfully.");
 }
+
+runMigrations();

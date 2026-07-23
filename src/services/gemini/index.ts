@@ -4,6 +4,7 @@ import { getRelevantMemories, processNewMemory } from "./memory";
 import { CONFIG } from "../../config";
 import { Repository } from "../../db/repository";
 import type { MessageRow } from "../../db/repository";
+import logger from "../../utils/logger";
 
 const lastSummarizedCount = new Map<string, number>();
 
@@ -130,12 +131,12 @@ export const GeminiService = {
 
         return parsed.reply || options.fallbackEmpty;
       } catch (parseError) {
-        console.warn("[Gemini JSON Parse Warning] Model output was not valid JSON, returning raw text:", responseText);
+        logger.warn("[Gemini JSON Parse Warning] Model output was not valid JSON, returning raw text:", responseText);
         return responseText || options.fallbackEmpty;
       }
 
     } catch (error) {
-      console.error("Error in Gemini _generateResponse:", error);
+      logger.error("Error in Gemini _generateResponse:", error);
       return options.fallbackError;
     }
   },
@@ -145,13 +146,13 @@ export const GeminiService = {
     const lastCount = lastSummarizedCount.get(chatIdStr) || 0;
 
     if (!currentTopic || currentCount - lastCount >= 20) {
-      console.log(`[Summarizer] Triggering on-demand topic summary for group ${chatIdStr}...`);
+      logger.info(`[Summarizer] Triggering on-demand topic summary for group ${chatIdStr}...`);
       const history = Repository.getRecentMessages(chatIdStr, 30);
       const summary = await this.summarizeTopic(history);
       if (summary) {
         Repository.updateChatSettings(chatIdStr, { current_topic: summary });
         lastSummarizedCount.set(chatIdStr, currentCount);
-        console.log(`[Summarizer] New topic summary for ${chatIdStr}: "${summary}"`);
+        logger.info(`[Summarizer] New topic summary for ${chatIdStr}: "${summary}"`);
         return summary;
       }
     }
@@ -216,7 +217,7 @@ export const GeminiService = {
         return responseText;
       }
     } catch (error) {
-      console.error("Error in Gemini summarizeTopic:", error);
+      logger.error("Error in Gemini summarizeTopic:", error);
       return "";
     }
   },

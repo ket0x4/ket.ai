@@ -5,6 +5,7 @@ import { GeminiService } from "../services/gemini/index";
 import { CONFIG } from "../config";
 import { isConversationFollowUp } from "../utils/conversation";
 import { sendLongMessage } from "../utils/message";
+import logger from "../utils/logger";
 
 const COOLDOWN_SECONDS = 300; // 5 minutes cooldown between random replies
 
@@ -29,7 +30,7 @@ export function registerChatHandlers(bot: Bot) {
 
     const isFollowUp = isConversationFollowUp(chatIdStr, from.id, msg.date);
     if (isFollowUp) {
-      console.log(`[Conversation] Follow-up detected for user ${from.first_name} in chat ${chatIdStr}`);
+      logger.debug(`[Conversation] Follow-up detected for user ${from.first_name} in chat ${chatIdStr}`);
     }
 
     const isDirectInteraction = isMentioned || isReplyToBot || isPrivateChat || containsNickname || isFollowUp;
@@ -68,7 +69,7 @@ export function registerChatHandlers(bot: Bot) {
     if (isCooldownOver) {
       const roll = Math.random();
       if (roll < chatSettings.reply_probability) {
-        console.log(`[Spontaneous] Rolling SUCCESS for chat ${chatIdStr} (Roll: ${roll.toFixed(4)} < ${chatSettings.reply_probability})`);
+        logger.info(`[Spontaneous] Rolling SUCCESS for chat ${chatIdStr} (Roll: ${roll.toFixed(4)} < ${chatSettings.reply_probability})`);
 
         // Update last random reply timestamp before processing to prevent double triggers
         Repository.updateChatSettings(chatIdStr, { last_random_reply_at: now });

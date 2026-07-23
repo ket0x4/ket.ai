@@ -1,0 +1,15 @@
+{
+  "telegram_bot_token": "YOUR_TELEGRAM_BOT_TOKEN",
+  "gemini_api_key": "YOUR_GEMINI_API_KEY",
+  "gemini_model": "gemini-3.1-flash-lite",
+  "chat_history_limit": 8,
+  "image_history_limit": 5,
+  "default_reply_probability": 0.05,
+  "db_path": "bot.db",
+  "bot_owner_id": 123456789,
+  "allowed_chat_ids": [],
+  "log_level": "info",
+  "log_dir": "logs",
+  "log_max_size_mb": 5,
+  "log_retention_days": 14
+}

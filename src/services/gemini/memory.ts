@@ -3,6 +3,7 @@ import { runWithRetry, getSystemInstruction } from "./utils";
 import { Repository } from "../../db/repository";
 import { cosineSimilarity } from "../../utils/vector";
 import { CONFIG } from "../../config/index";
+import logger from "../../utils/logger";
 
 const newMemoriesCount = new Map<string, number>();
 
@@ -14,7 +15,7 @@ export async function generateEmbedding(text: string): Promise<number[]> {
     }));
     return response.embeddings?.[0]?.values || [];
   } catch (error) {
-    console.error("Error generating embedding:", error);
+    logger.error("Error generating embedding:", error);
     return [];
   }
 }
@@ -32,18 +33,18 @@ export async function processNewMemory(chatIdStr: string, memoryText: string) {
   const existing = Repository.getMemories(chatIdStr);
   for (const m of existing) {
     if (m.embedding.length > 0 && cosineSimilarity(emb, m.embedding) > 0.85) {
-      console.log(`[Memory Store] Skipped duplicate memory for chat ${chatIdStr}:`, memText);
+      logger.debug(`[Memory Store] Skipped duplicate memory for chat ${chatIdStr}:`, memText);
       return;
     }
   }
 
-  console.log(`[Memory Store] Adding memory to chat ${chatIdStr}:`, memText);
+  logger.info(`[Memory Store] Adding memory to chat ${chatIdStr}:`, memText);
   Repository.addMemory(chatIdStr, memText, emb);
 
   const count = (newMemoriesCount.get(chatIdStr) || 0) + 1;
   if (count >= 20) {
     newMemoriesCount.set(chatIdStr, 0);
-    consolidateMemories(chatIdStr).catch(e => console.error("Memory consolidation error:", e));
+    consolidateMemories(chatIdStr).catch(e => logger.error("Memory consolidation error:", e));
   } else {
     newMemoriesCount.set(chatIdStr, count);
   }
@@ -71,8 +72,8 @@ export async function getRelevantMemories(chatId: string, query: string, topK = 
     .slice(0, topK)
     .map(s => s.text);
   if (topMemories.length > 0) {
-    console.log(`[Memory RAG] Retrieved ${topMemories.length} memories for query: "${query}"`);
-    console.log(`[Memory RAG] Memories:`, topMemories);
+    logger.debug(`[Memory RAG] Retrieved ${topMemories.length} memories for query: "${query}"`);
+    logger.debug(`[Memory RAG] Memories:`, topMemories);
   }
   return topMemories;
 }
@@ -90,7 +91,7 @@ Return ONLY a JSON array of the integer IDs of memories that should be permanent
 Memories:
 ${memoryListText}`;
 
-  console.log(`[Memory Consolidation] Triggered for chat ${chatIdStr}. Analyzing ${allMemories.length} memories...`);
+  logger.info(`[Memory Consolidation] Triggered for chat ${chatIdStr}. Analyzing ${allMemories.length} memories...`);
 
   try {
     const response = await runWithRetry(() => ai.models.generateContent({
@@ -115,11 +116,11 @@ ${memoryListText}`;
 
     if (Array.isArray(idsToDelete) && idsToDelete.length > 0) {
       Repository.deleteMemoriesByIds(idsToDelete);
-      console.log(`[Memory Consolidation] Successfully deleted ${idsToDelete.length} redundant/spam memories for chat ${chatIdStr}.`);
+      logger.info(`[Memory Consolidation] Successfully deleted ${idsToDelete.length} redundant/spam memories for chat ${chatIdStr}.`);
     } else {
-      console.log(`[Memory Consolidation] No redundant memories found for chat ${chatIdStr}.`);
+      logger.info(`[Memory Consolidation] No redundant memories found for chat ${chatIdStr}.`);
     }
   } catch (error) {
-    console.error(`[Memory Consolidation] Error during consolidation for chat ${chatIdStr}:`, error);
+    logger.error(`[Memory Consolidation] Error during consolidation for chat ${chatIdStr}:`, error);
   }
 }

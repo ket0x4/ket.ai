@@ -1,4 +1,5 @@
 import { db } from "./index";
+import logger from "../utils/logger";
 import { CONFIG } from "../config/index";
 
 export interface ChatRow {
@@ -195,7 +196,7 @@ export const Repository = {
     const count = countResult ? countResult.count : 0;
     if (count >= 2000) {
       stmts.deleteOldestMemory.run(chatId);
-      console.log(`[Memory] Max memory limit (2000) reached for chat ${chatId}. Oldest memory removed.`);
+      logger.info(`[Memory] Max memory limit (2000) reached for chat ${chatId}. Oldest memory removed.`);
     }
 
     const now = Math.floor(Date.now() / 1000);

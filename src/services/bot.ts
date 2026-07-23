@@ -6,6 +6,7 @@ import { registerCommands } from "../modules/commands";
 import { registerChatHandlers } from "../modules/chat";
 import { registerImageHandlers } from "../modules/image";
 import { registerVoiceHandlers } from "../modules/voice";
+import logger from "../utils/logger";
 
 export const bot = new Bot(CONFIG.TELEGRAM_BOT_TOKEN);
 
@@ -36,7 +37,7 @@ bot.api.config.use(async (prev, method, payload, signal) => {
         });
       }
     } catch (e) {
-      console.error("[Bot Outgoing Logger] Failed to archive bot reply:", e);
+      logger.error("[Bot Outgoing Logger] Failed to archive bot reply:", e);
     }
   }
 
@@ -71,10 +72,10 @@ export async function withTyping(ctx: Context, action: () => Promise<void>) {
  * Initializes and configures the bot.
  */
 export async function initBot() {
-  console.log("Fetching bot metadata...");
+  logger.info("Fetching bot metadata...");
   const me = await bot.api.getMe();
   botUsername = me.username;
-  console.log(`Bot initialized as @${botUsername}`);
+  logger.info(`Bot initialized as @${botUsername}`);
 
   // 1. Middleware: Whitelist Checker
   bot.use(async (ctx, next) => {
@@ -112,13 +113,13 @@ export async function initBot() {
     const isAllowed = isEnvAllowed || dbChat.is_allowed === 1;
 
     if (!isAllowed) {
-      console.log(`[Security] Bot added/active in unauthorized group: ${chat.title} (${chatIdStr}). Leaving...`);
+      logger.warn(`[Security] Bot added/active in unauthorized group: ${chat.title} (${chatIdStr}). Leaving...`);
       try {
         // Safe reply (catch error if bot has no write access or was kicked)
         await ctx.reply(CONFIG.MESSAGES.unauthorized_group_reply).catch(() => {});
         await ctx.leaveChat();
       } catch (e) {
-        console.log(`[Security] Could not cleanly leave chat ${chatIdStr} (possibly already removed).`);
+        logger.warn(`[Security] Could not cleanly leave chat ${chatIdStr} (possibly already removed).`);
       }
       return;
     }
@@ -167,10 +168,10 @@ export async function initBot() {
           try {
             const pruned = Repository.pruneOldMessages(chatIdStr, 7);
             if (pruned > 0) {
-              console.log(`[Retention] Pruned ${pruned} old messages from chat ${chatIdStr}`);
+              logger.info(`[Retention] Pruned ${pruned} old messages from chat ${chatIdStr}`);
             }
           } catch (err) {
-            console.error("[Retention] Error pruning old messages:", err);
+            logger.error("[Retention] Error pruning old messages:", err);
           }
         })();
       }
@@ -204,11 +205,11 @@ export async function initBot() {
       }
 
       if (!canWrite) {
-        console.log(`[Security] Bot lacks write permissions in ${chat.title || "Group"} (${chat.id}). Leaving...`);
+        logger.warn(`[Security] Bot lacks write permissions in ${chat.title || "Group"} (${chat.id}). Leaving...`);
         await ctx.leaveChat().catch(() => {});
       }
     } catch (e) {
-      console.error("[Security] Error checking permissions on my_chat_member:", e);
+      logger.error("[Security] Error checking permissions on my_chat_member:", e);
     }
   });
 
@@ -217,7 +218,7 @@ export async function initBot() {
   registerImageHandlers(bot);
   registerVoiceHandlers(bot);
 
-  console.log("All bot modules successfully registered.");
+  logger.info("All bot modules successfully registered.");
 }
 
 /**
@@ -225,10 +226,10 @@ export async function initBot() {
  */
 export async function startBot() {
   await initBot();
-  console.log("Bot long polling starting...");
+  logger.info("Bot long polling starting...");
   bot.start({
     onStart(info) {
-      console.log(`Successfully started bot polling for @${info.username}`);
+      logger.info(`Successfully started bot polling for @${info.username}`);
     },
   });
 }

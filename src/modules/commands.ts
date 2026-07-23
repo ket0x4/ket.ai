@@ -2,6 +2,7 @@ import { Bot, Context, InlineKeyboard } from "grammy";
 import { CONFIG } from "../config/index";
 import { Repository } from "../db/repository";
 import { sendLongMessage } from "../utils/message";
+import logger from "../utils/logger";
 
 /**
  * Checks if the user is the bot owner or an administrator of the group.
@@ -273,7 +274,7 @@ export function registerCommands(bot: Bot) {
       });
     } catch (e: any) {
       if (!e.message?.includes("message is not modified")) {
-        console.error("[Memories Callback] Failed to edit message:", e);
+        logger.error("[Memories Callback] Failed to edit message:", e);
       }
     }
 

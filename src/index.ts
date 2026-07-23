@@ -1,10 +1,11 @@
 import { runMigrations, db } from "./db/index";
 import { startBot, bot } from "./services/bot";
+import logger from "./utils/logger";
 
 async function main() {
-  console.log("-----------------------------------------");
-  console.log("Starting ket.ai 2");
-  console.log("-----------------------------------------");
+  logger.info("-----------------------------------------");
+  logger.info("Starting ket.ai 2");
+  logger.info("-----------------------------------------");
 
   // 1. Run migrations to initialize SQLite tables
   runMigrations();
@@ -15,18 +16,18 @@ async function main() {
 
 // Graceful shutdown handling
 const shutdown = () => {
-  console.log("\nReceived shutdown signal. Stopping bot and closing database...");
+  logger.info("Received shutdown signal. Stopping bot and closing database...");
   try {
     bot.stop();
-    console.log("Bot polling stopped.");
+    logger.info("Bot polling stopped.");
   } catch (error) {
-    console.error("Error stopping bot:", error);
+    logger.error("Error stopping bot:", error);
   }
   try {
     db.close();
-    console.log("Database closed successfully. Exiting.");
+    logger.info("Database closed successfully. Exiting.");
   } catch (error) {
-    console.error("Error closing database:", error);
+    logger.error("Error closing database:", error);
   }
   process.exit(0);
 };
@@ -35,6 +36,6 @@ process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
 
 main().catch((err) => {
-  console.error("Fatal error during bot initialization:", err);
+  logger.error("Fatal error during bot initialization:", err);
   process.exit(1);
 });

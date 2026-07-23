@@ -1,9 +1,7 @@
 import { expect, test } from "bun:test";
 import { Repository } from "../src/db/repository";
-import { runMigrations } from "../src/db/index";
 
 test("Memory pagination logic", () => {
-  runMigrations();
   const testChatId = "test_pagination_chat_123";
 
   // Clear existing test memories

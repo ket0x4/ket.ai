@@ -1,16 +1,17 @@
 import { readFileSync, existsSync } from "fs";
 import type { MessageRow } from "../../db/repository";
+import logger from "../../utils/logger";
 
 export function getSystemInstruction(): string {
   const SYSTEM_PROMPT_FILE = "system.txt";
   if (!existsSync(SYSTEM_PROMPT_FILE)) {
-    console.error("FATAL: system.txt not found! Bot cannot function without a system prompt.");
+    logger.error("FATAL: system.txt not found! Bot cannot function without a system prompt.");
     process.exit(1);
   }
   try {
     return readFileSync(SYSTEM_PROMPT_FILE, "utf-8").trim();
   } catch (e) {
-    console.error("FATAL: Error reading system.txt:", e);
+    logger.error("FATAL: Error reading system.txt:", e);
     process.exit(1);
   }
 }
@@ -35,7 +36,7 @@ export async function runWithRetry<T>(fn: () => Promise<T>, retries = 3, delayMs
         errorMessage.includes("high demand");
 
       if (isTransient && i < retries - 1) {
-        console.warn(`[Gemini] Transient error encountered (Attempt ${i + 1}/${retries}). Retrying in ${delayMs}ms...`);
+        logger.warn(`[Gemini] Transient error encountered (Attempt ${i + 1}/${retries}). Retrying in ${delayMs}ms...`);
         await new Promise((resolve) => setTimeout(resolve, delayMs));
         delayMs *= 2; // exponential backoff
       } else {

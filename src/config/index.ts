@@ -43,6 +43,20 @@ export let CONFIG = {
     : process.env.ALLOWED_CHAT_IDS
       ? process.env.ALLOWED_CHAT_IDS.split(",").map((id) => id.trim())
       : [],
+  LOG_LEVEL: (
+    configJson.log_level ||
+    process.env.LOG_LEVEL ||
+    "info"
+  ).toLowerCase() as "debug" | "info" | "warn" | "error",
+  LOG_DIR: configJson.log_dir || process.env.LOG_DIR || "logs",
+  LOG_MAX_SIZE_MB:
+    typeof configJson.log_max_size_mb === "number"
+      ? configJson.log_max_size_mb
+      : (process.env.LOG_MAX_SIZE_MB ? parseFloat(process.env.LOG_MAX_SIZE_MB) : 5),
+  LOG_RETENTION_DAYS:
+    typeof configJson.log_retention_days === "number"
+      ? configJson.log_retention_days
+      : (process.env.LOG_RETENTION_DAYS ? parseInt(process.env.LOG_RETENTION_DAYS, 10) : 14),
   MESSAGES: {
     unauthorized_group_reply:
       configJson.messages?.unauthorized_group_reply ||

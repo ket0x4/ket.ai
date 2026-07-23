@@ -5,6 +5,7 @@ import { Repository } from "../db/repository";
 import { GeminiService } from "../services/gemini/index";
 import { isConversationFollowUp } from "../utils/conversation";
 import { sendLongMessage } from "../utils/message";
+import logger from "../utils/logger";
 
 export function registerImageHandlers(bot: Bot) {
   // Listen to photo messages
@@ -22,7 +23,7 @@ export function registerImageHandlers(bot: Bot) {
 
     const isFollowUp = ctx.from ? isConversationFollowUp(chatIdStr, ctx.from.id, msg.date) : false;
     if (isFollowUp) {
-      console.log(`[Image] Follow-up photo detected for user ${ctx.from?.first_name} in chat ${chatIdStr}`);
+      logger.debug(`[Image] Follow-up photo detected for user ${ctx.from?.first_name} in chat ${chatIdStr}`);
     }
 
     const isDirectInteraction = isMentioned || isReplyToBot || isPrivateChat || containsNickname || isFollowUp;
@@ -40,7 +41,7 @@ export function registerImageHandlers(bot: Bot) {
 
     await withTyping(ctx, async () => {
       try {
-        console.log(`[Image] Downloading photo ${photo.file_id} from Telegram...`);
+        logger.info(`[Image] Downloading photo ${photo.file_id} from Telegram...`);
 
         // Fetch file path details from Telegram
         const fileDetails = await ctx.getFile();
@@ -65,7 +66,7 @@ export function registerImageHandlers(bot: Bot) {
         const activeTopic = await GeminiService.ensureTopicSummary(chatIdStr, chatSettings.current_topic);
         const history = Repository.getRecentMessages(chatIdStr, CONFIG.IMAGE_HISTORY_LIMIT);
 
-        console.log(`[Image] Sending photo to Gemini for analysis...`);
+        logger.info(`[Image] Sending photo to Gemini for analysis...`);
         const reply = await GeminiService.generateImageReply(
           buffer,
           "image/jpeg", // Telegram converts all photo files to JPEG
@@ -79,7 +80,7 @@ export function registerImageHandlers(bot: Bot) {
         });
 
       } catch (error) {
-        console.error("Error processing photo:", error);
+        logger.error("Error processing photo:", error);
         await ctx.reply(CONFIG.MESSAGES.image_processing_failed, {
           reply_to_message_id: msg.message_id,
         });
