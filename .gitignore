@@ -5,3 +5,4 @@ node_modules/
 config.json
 dist/
 system.txt
+.DS_Store
