@@ -46,11 +46,13 @@ export let CONFIG = {
   ENABLE_WEB_SEARCH:
     typeof configJson.enable_web_search === "boolean"
       ? configJson.enable_web_search
-      : (process.env.ENABLE_WEB_SEARCH !== "false"),
+      : process.env.ENABLE_WEB_SEARCH !== "false",
   MAX_AGENT_STEPS:
     typeof configJson.max_agent_steps === "number"
       ? configJson.max_agent_steps
-      : (process.env.MAX_AGENT_STEPS ? parseInt(process.env.MAX_AGENT_STEPS, 10) : 3),
+      : process.env.MAX_AGENT_STEPS
+        ? parseInt(process.env.MAX_AGENT_STEPS, 10)
+        : 3,
   LOG_LEVEL: (
     configJson.log_level ||
     process.env.LOG_LEVEL ||
@@ -60,11 +62,15 @@ export let CONFIG = {
   LOG_MAX_SIZE_MB:
     typeof configJson.log_max_size_mb === "number"
       ? configJson.log_max_size_mb
-      : (process.env.LOG_MAX_SIZE_MB ? parseFloat(process.env.LOG_MAX_SIZE_MB) : 5),
+      : process.env.LOG_MAX_SIZE_MB
+        ? parseFloat(process.env.LOG_MAX_SIZE_MB)
+        : 5,
   LOG_RETENTION_DAYS:
     typeof configJson.log_retention_days === "number"
       ? configJson.log_retention_days
-      : (process.env.LOG_RETENTION_DAYS ? parseInt(process.env.LOG_RETENTION_DAYS, 10) : 14),
+      : process.env.LOG_RETENTION_DAYS
+        ? parseInt(process.env.LOG_RETENTION_DAYS, 10)
+        : 14,
   MESSAGES: {
     unauthorized_group_reply:
       configJson.messages?.unauthorized_group_reply ||
@@ -94,8 +100,7 @@ export let CONFIG = {
       configJson.messages?.not_authorized_command ||
       "Only group admins or my owner can use this command!",
     tool_status_web_search:
-      configJson.messages?.tool_status_web_search ||
-      "bi dk knk bakıyorum 🔍",
+      configJson.messages?.tool_status_web_search || "Spawning subagent...",
   },
 };
 
