@@ -8,6 +8,8 @@
   "db_path": "bot.db",
   "bot_owner_id": 123456789,
   "allowed_chat_ids": [],
+  "enable_web_search": true,
+  "max_agent_steps": 3,
   "log_level": "info",
   "log_dir": "logs",
   "log_max_size_mb": 5,

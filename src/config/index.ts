@@ -43,6 +43,14 @@ export let CONFIG = {
     : process.env.ALLOWED_CHAT_IDS
       ? process.env.ALLOWED_CHAT_IDS.split(",").map((id) => id.trim())
       : [],
+  ENABLE_WEB_SEARCH:
+    typeof configJson.enable_web_search === "boolean"
+      ? configJson.enable_web_search
+      : (process.env.ENABLE_WEB_SEARCH !== "false"),
+  MAX_AGENT_STEPS:
+    typeof configJson.max_agent_steps === "number"
+      ? configJson.max_agent_steps
+      : (process.env.MAX_AGENT_STEPS ? parseInt(process.env.MAX_AGENT_STEPS, 10) : 3),
   LOG_LEVEL: (
     configJson.log_level ||
     process.env.LOG_LEVEL ||
