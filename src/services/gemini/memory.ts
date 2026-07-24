@@ -29,6 +29,10 @@ export async function processNewMemory(chatIdStr: string, memoryText: string) {
   });
   const memText = `[${dateStr}] ${memoryText.trim()}`;
   const emb = await generateEmbedding(memText);
+  if (emb.length === 0) {
+    logger.warn(`[Memory Store] Skipped memory for chat ${chatIdStr} due to embedding failure:`, memText);
+    return;
+  }
 
   const existing = Repository.getMemories(chatIdStr);
   for (const m of existing) {

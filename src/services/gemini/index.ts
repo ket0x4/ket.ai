@@ -189,11 +189,16 @@ export const GeminiService = {
             }
           }
 
-          // Append model turn with function calls
-          contents.push({
-            role: "model",
-            parts: functionCalls.map((fc: any) => ({ functionCall: fc })),
-          });
+          // Append model's exact content turn (preserving thought_signature, thoughts, etc.)
+          const modelContent = response.candidates?.[0]?.content;
+          if (modelContent) {
+            contents.push(modelContent);
+          } else {
+            contents.push({
+              role: "model",
+              parts: functionCalls.map((fc: any) => ({ functionCall: fc })),
+            });
+          }
 
           // Execute requested tools
           const toolResponseParts: any[] = [];
@@ -227,7 +232,8 @@ export const GeminiService = {
       }
 
       try {
-        const parsed = JSON.parse(responseText);
+        const cleanedText = responseText.replace(/^```(?:json)?\n?|\n?```$/g, "").trim();
+        const parsed = JSON.parse(cleanedText);
 
         if (Array.isArray(parsed.new_memory_updates) && chatIdStr) {
           for (const mem of parsed.new_memory_updates) {
@@ -240,11 +246,10 @@ export const GeminiService = {
 
         return parsed.reply || options.fallbackEmpty;
       } catch (parseError) {
-        logger.warn(
-          "[Gemini JSON Parse Warning] Model output was not valid JSON, returning raw text:",
-          responseText,
-        );
-        return responseText || options.fallbackEmpty;
+        if (responseText) {
+          return responseText;
+        }
+        return options.fallbackEmpty;
       }
     } catch (error) {
       logger.error("Error in Gemini _generateResponse:", error);

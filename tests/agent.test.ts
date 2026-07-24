@@ -1,7 +1,8 @@
 import { describe, test, expect, beforeEach } from "bun:test";
-import { ToolRegistry, AgentTool } from "../src/agent/types";
+import { AgentTool } from "../src/agent/types";
 import { ToolRegistry as RegistryClass } from "../src/agent/registry";
-import { webSearchTool, performWebSearch } from "../src/agent/tools/webSearch";
+import { webSearchTool } from "../src/agent/tools/webSearch";
+import { urlSummarizerTool } from "../src/agent/tools/urlSummarizer";
 
 describe("ToolRegistry", () => {
   let registry: RegistryClass;
@@ -75,5 +76,26 @@ describe("WebSearchTool", () => {
     expect(res).toHaveProperty("query");
     expect(res).toHaveProperty("results");
     expect(Array.isArray(res.results)).toBeTrue();
+  });
+});
+
+describe("UrlSummarizerTool", () => {
+  test("should have valid AgentTool metadata", () => {
+    expect(urlSummarizerTool.name).toBe("url_summarizer");
+    expect(urlSummarizerTool.description).toBeDefined();
+    expect(urlSummarizerTool.parameters.properties.url).toBeDefined();
+  });
+
+  test("should handle invalid URL gracefully", async () => {
+    const res = await urlSummarizerTool.execute({ url: "not_a_valid_url" });
+    expect(res.error).toBeDefined();
+  });
+
+  test("should fetch and extract text from a valid webpage URL", async () => {
+    const res = await urlSummarizerTool.execute({ url: "https://example.com" });
+    expect(res).toHaveProperty("url");
+    expect(res).toHaveProperty("content");
+    expect(typeof res.content).toBe("string");
+    expect(res.content.length).toBeGreaterThan(0);
   });
 });

@@ -40,7 +40,6 @@ export function runMigrations() {
     );
   `);
 
-
   // Indexes for faster lookups on message history
   db.run(`
     CREATE INDEX IF NOT EXISTS idx_messages_chat_id_sent_at
@@ -64,8 +63,4 @@ export function runMigrations() {
     CREATE INDEX IF NOT EXISTS idx_memories_chat_id
     ON memories(chat_id);
   `);
-
-  logger.info("Database migrations completed successfully.");
 }
-
-runMigrations();

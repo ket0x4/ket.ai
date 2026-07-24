@@ -42,8 +42,10 @@ export function registerChatHandlers(bot: Bot) {
     if (isDirectInteraction) {
       // Direct interaction: reply immediately
       await withTyping(ctx, async () => {
-        const activeTopic = await GeminiService.ensureTopicSummary(chatIdStr, chatSettings.current_topic);
-        const history = Repository.getRecentMessages(chatIdStr, CONFIG.CHAT_HISTORY_LIMIT);
+        const [activeTopic, history] = await Promise.all([
+          GeminiService.ensureTopicSummary(chatIdStr, chatSettings.current_topic),
+          Promise.resolve(Repository.getRecentMessages(chatIdStr, CONFIG.CHAT_HISTORY_LIMIT)),
+        ]);
         
         let statusMessageId: number | undefined;
 
@@ -72,11 +74,17 @@ export function registerChatHandlers(bot: Bot) {
           }
         );
 
-        // Edit status message into final reply, or send new message if no tool status message was sent
+        // Send final reply referencing the user's message
         await sendLongMessage(ctx, reply, {
           reply_to_message_id: msg.message_id,
-          edit_message_id: statusMessageId,
         });
+
+        // Delete the temporary status message after final answer is sent
+        if (statusMessageId && ctx.chat) {
+          await ctx.api.deleteMessage(ctx.chat.id, statusMessageId).catch((e) => {
+            logger.warn("[Chat] Failed to delete status message:", e);
+          });
+        }
       });
       return;
     }
@@ -98,8 +106,10 @@ export function registerChatHandlers(bot: Bot) {
         Repository.updateChatSettings(chatIdStr, { last_random_reply_at: now });
 
         await withTyping(ctx, async () => {
-          const activeTopic = await GeminiService.ensureTopicSummary(chatIdStr, chatSettings.current_topic);
-          const history = Repository.getRecentMessages(chatIdStr, CONFIG.CHAT_HISTORY_LIMIT);
+          const [activeTopic, history] = await Promise.all([
+            GeminiService.ensureTopicSummary(chatIdStr, chatSettings.current_topic),
+            Promise.resolve(Repository.getRecentMessages(chatIdStr, CONFIG.CHAT_HISTORY_LIMIT)),
+          ]);
           
           let statusMessageId: number | undefined;
 
@@ -126,10 +136,15 @@ export function registerChatHandlers(bot: Bot) {
             }
           );
 
-          // Edit status message into final reply, or send new message if no status message was sent
-          await sendLongMessage(ctx, reply, {
-            edit_message_id: statusMessageId,
-          });
+          // Spontaneous message: sent directly to the chat
+          await sendLongMessage(ctx, reply);
+
+          // Delete the temporary status message after final answer is sent
+          if (statusMessageId && ctx.chat) {
+            await ctx.api.deleteMessage(ctx.chat.id, statusMessageId).catch((e) => {
+              logger.warn("[Spontaneous] Failed to delete status message:", e);
+            });
+          }
         });
       }
     }

@@ -52,7 +52,7 @@ bun run dev
 
 Build with bun:
 ```bash
-bun bun build --compile --minify src/index.ts --outfile ket
+bun build --compile --minify src/index.ts --outfile ket
 ```
 
 ### 3. Running with Docker (Recommended)

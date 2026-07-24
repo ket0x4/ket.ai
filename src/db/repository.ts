@@ -60,6 +60,9 @@ const stmts = {
   getTodayMessageCount: db.prepare(
     `SELECT COUNT(*) as count FROM messages WHERE chat_id = ? AND sent_at >= ?`
   ),
+  updateMessageText: db.prepare(
+    "UPDATE messages SET text = ? WHERE chat_id = ? AND message_id = ?"
+  ),
 };
 
 export const Repository = {
@@ -161,6 +164,15 @@ export const Repository = {
       params.isBotReply ? 1 : 0,
       params.sentAt
     );
+  },
+
+  /**
+   * Updates text of an existing message in SQLite history.
+   * Returns true if a record was updated.
+   */
+  updateMessageText(chatId: string, messageId: number, text: string): boolean {
+    const result = stmts.updateMessageText.run(text, chatId, messageId);
+    return result.changes > 0;
   },
 
   /**

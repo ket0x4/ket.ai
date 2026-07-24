@@ -9,7 +9,6 @@
   },
   "dependencies": {
     "@google/genai": "^2.13.0",
-    "and": "^0.0.3",
     "grammy": "^1.45.1"
   },
   "devDependencies": {

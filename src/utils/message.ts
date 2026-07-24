@@ -1,4 +1,5 @@
 import { Context } from "grammy";
+import type { ParseMode } from "grammy/types";
 import logger from "./logger";
 
 const TELEGRAM_MAX_LENGTH = 4096;
@@ -49,7 +50,7 @@ function splitMessage(text: string): string[] {
 export interface SendOptions {
   reply_to_message_id?: number;
   edit_message_id?: number;
-  parse_mode?: string;
+  parse_mode?: ParseMode;
 }
 
 /**

@@ -18,23 +18,53 @@ bot.api.config.use(async (prev, method, payload, signal) => {
     try {
       const chatId = (payload.chat_id ?? "").toString();
       const text = (payload as any).text;
+
+      // Ignore temporary status notifications so they don't pollute Gemini conversation history
+      const isTransientStatus = typeof text === "string" && (
+        text === CONFIG.MESSAGES.tool_status_web_search ||
+        text.includes("bi dk knk bakıyorum")
+      );
+
+      if (isTransientStatus) {
+        return result;
+      }
+
       const msgId = (payload as any).message_id || (result && typeof result === "object" ? (result as any).message_id : undefined);
 
       if (chatId && msgId) {
-        const sentMsg = typeof result === "object" ? (result as any) : undefined;
-        const from = sentMsg?.from;
+        if (method === "editMessageText") {
+          const updated = Repository.updateMessageText(chatId, msgId, text);
+          if (!updated) {
+            const sentMsg = typeof result === "object" ? (result as any) : undefined;
+            const from = sentMsg?.from;
+            Repository.saveMessage({
+              chatId: chatId,
+              messageId: msgId,
+              userId: from?.id || 0,
+              username: from?.username || undefined,
+              firstName: from?.first_name || "ket",
+              replyToFirstName: sentMsg?.reply_to_message?.from?.first_name || undefined,
+              text: text,
+              isBotReply: true,
+              sentAt: sentMsg?.date || Math.floor(Date.now() / 1000),
+            });
+          }
+        } else {
+          const sentMsg = typeof result === "object" ? (result as any) : undefined;
+          const from = sentMsg?.from;
 
-        Repository.saveMessage({
-          chatId: chatId,
-          messageId: msgId,
-          userId: from?.id || 0,
-          username: from?.username || undefined,
-          firstName: from?.first_name || "ket",
-          replyToFirstName: sentMsg?.reply_to_message?.from?.first_name || undefined,
-          text: text,
-          isBotReply: true,
-          sentAt: sentMsg?.date || Math.floor(Date.now() / 1000),
-        });
+          Repository.saveMessage({
+            chatId: chatId,
+            messageId: msgId,
+            userId: from?.id || 0,
+            username: from?.username || undefined,
+            firstName: from?.first_name || "ket",
+            replyToFirstName: sentMsg?.reply_to_message?.from?.first_name || undefined,
+            text: text,
+            isBotReply: true,
+            sentAt: sentMsg?.date || Math.floor(Date.now() / 1000),
+          });
+        }
       }
     } catch (e) {
       logger.error("[Bot Outgoing Logger] Failed to archive bot reply:", e);

@@ -52,6 +52,14 @@ export function registerImageHandlers(bot: Bot) {
           return;
         }
 
+        const MAX_FILE_SIZE_BYTES = 30 * 1024 * 1024; // 30MB
+        if (fileDetails.file_size && fileDetails.file_size > MAX_FILE_SIZE_BYTES) {
+          await ctx.reply("Fotoğraf boyutu çok büyük (maksimum 30MB gönderilebilir).", {
+            reply_to_message_id: msg.message_id,
+          });
+          return;
+        }
+
         // Download the file contents
         const fileUrl = `https://api.telegram.org/file/bot${CONFIG.TELEGRAM_BOT_TOKEN}/${fileDetails.file_path}`;
         const response = await fetch(fileUrl);
@@ -63,8 +71,10 @@ export function registerImageHandlers(bot: Bot) {
         const buffer = Buffer.from(arrayBuffer);
 
         // Fetch recent history for context
-        const activeTopic = await GeminiService.ensureTopicSummary(chatIdStr, chatSettings.current_topic);
-        const history = Repository.getRecentMessages(chatIdStr, CONFIG.IMAGE_HISTORY_LIMIT);
+        const [activeTopic, history] = await Promise.all([
+          GeminiService.ensureTopicSummary(chatIdStr, chatSettings.current_topic),
+          Promise.resolve(Repository.getRecentMessages(chatIdStr, CONFIG.IMAGE_HISTORY_LIMIT)),
+        ]);
 
         logger.info(`[Image] Sending photo to Gemini for analysis...`);
         const reply = await GeminiService.generateImageReply(
