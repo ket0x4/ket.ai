@@ -93,6 +93,9 @@ export let CONFIG = {
     not_authorized_command:
       configJson.messages?.not_authorized_command ||
       "Only group admins or my owner can use this command!",
+    tool_status_web_search:
+      configJson.messages?.tool_status_web_search ||
+      "bi dk knk bakıyorum 🔍",
   },
 };
 

@@ -12,7 +12,12 @@ import type { MessageRow } from "../../db/repository";
 import logger from "../../utils/logger";
 import { toolRegistry } from "../../agent";
 
-const MAX_AGENT_STEPS = 3;
+export type ToolCallCallback = (
+  toolName: string,
+  args: Record<string, any>,
+  step: number
+) => Promise<void> | void;
+
 const lastSummarizedCount = new Map<string, number>();
 
 export const GeminiService = {
@@ -27,6 +32,7 @@ export const GeminiService = {
       fallbackEmpty: string;
       fallbackError: string;
       mediaFallbackText: string;
+      onToolCall?: ToolCallCallback;
     },
   ): Promise<string> {
     try {
@@ -136,22 +142,27 @@ export const GeminiService = {
       while (step < CONFIG.MAX_AGENT_STEPS) {
         step++;
 
+        const genConfig: any = {
+          systemInstruction: getSystemInstruction(),
+          temperature: options.media ? 0.8 : 0.85,
+          maxOutputTokens: 350,
+          tools: toolsConfig,
+        };
+
+        if (!toolsConfig) {
+          genConfig.responseMimeType = "application/json";
+          genConfig.responseSchema = {
+            type: "OBJECT",
+            properties: responseSchemaProperties,
+            required: ["reply"],
+          };
+        }
+
         const response = await runWithRetry(() =>
           ai.models.generateContent({
             model: CONFIG.GEMINI_MODEL,
             contents: contents,
-            config: {
-              systemInstruction: getSystemInstruction(),
-              temperature: options.media ? 0.8 : 0.85,
-              maxOutputTokens: 350,
-              tools: toolsConfig,
-              responseMimeType: "application/json",
-              responseSchema: {
-                type: "OBJECT",
-                properties: responseSchemaProperties,
-                required: ["reply"],
-              },
-            },
+            config: genConfig,
           }),
         );
 
@@ -166,6 +177,17 @@ export const GeminiService = {
           logger.info(
             `[Agent] Gemini requested ${functionCalls.length} tool call(s) at step ${step}`,
           );
+
+          // Trigger onToolCall callback for UI feedback
+          if (options.onToolCall) {
+            for (const fc of functionCalls) {
+              try {
+                await options.onToolCall(fc.name, fc.args || {}, step);
+              } catch (err) {
+                logger.warn("[Agent] Error executing onToolCall callback:", err);
+              }
+            }
+          }
 
           // Append model turn with function calls
           contents.push({
@@ -260,6 +282,7 @@ export const GeminiService = {
     history: MessageRow[],
     topicSummary: string | null,
     isSpontaneous: boolean = false,
+    onToolCall?: ToolCallCallback,
   ): Promise<string> {
     return this._generateResponse(history, topicSummary, {
       isSpontaneous,
@@ -268,6 +291,7 @@ export const GeminiService = {
       fallbackEmpty: CONFIG.MESSAGES.gemini_empty_reply_fallback,
       fallbackError: CONFIG.MESSAGES.gemini_error_reply_fallback,
       mediaFallbackText: "[Media]",
+      onToolCall,
     });
   },
 
@@ -330,6 +354,7 @@ export const GeminiService = {
     mimeType: string,
     history: MessageRow[],
     topicSummary: string | null,
+    onToolCall?: ToolCallCallback,
   ): Promise<string> {
     return this._generateResponse(history, topicSummary, {
       instruction:
@@ -340,6 +365,7 @@ export const GeminiService = {
       fallbackEmpty: CONFIG.MESSAGES.gemini_empty_image_fallback,
       fallbackError: CONFIG.MESSAGES.gemini_error_image_fallback,
       mediaFallbackText: "[Photo]",
+      onToolCall,
     });
   },
 
@@ -348,6 +374,7 @@ export const GeminiService = {
     mimeType: string,
     history: MessageRow[],
     topicSummary: string | null,
+    onToolCall?: ToolCallCallback,
   ): Promise<string> {
     return this._generateResponse(history, topicSummary, {
       instruction:
@@ -359,6 +386,7 @@ export const GeminiService = {
       fallbackError:
         "I got confused while listening to the voice message, can you try again?",
       mediaFallbackText: "[Voice]",
+      onToolCall,
     });
   },
 };

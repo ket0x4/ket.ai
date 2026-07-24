@@ -44,15 +44,38 @@ export function registerChatHandlers(bot: Bot) {
       await withTyping(ctx, async () => {
         const activeTopic = await GeminiService.ensureTopicSummary(chatIdStr, chatSettings.current_topic);
         const history = Repository.getRecentMessages(chatIdStr, CONFIG.CHAT_HISTORY_LIMIT);
+        
+        let statusMessageId: number | undefined;
+
         const reply = await GeminiService.generateReply(
           history,
           activeTopic,
-          false
+          false,
+          async (toolName) => {
+            if (!statusMessageId) {
+              const statusMsgText = toolName === "web_search"
+                ? CONFIG.MESSAGES.tool_status_web_search
+                : `bi dk knk bakıyorum (${toolName})...`;
+
+              logger.info(`[Chat] Sending tool status notification: "${statusMsgText}"`);
+              const sentMsg = await ctx.reply(statusMsgText, {
+                reply_to_message_id: msg.message_id,
+              }).catch((e) => {
+                logger.warn("[Chat] Failed to send status message:", e);
+                return null;
+              });
+
+              if (sentMsg) {
+                statusMessageId = sentMsg.message_id;
+              }
+            }
+          }
         );
 
-        // Send reply directly referencing the user's message
+        // Edit status message into final reply, or send new message if no tool status message was sent
         await sendLongMessage(ctx, reply, {
           reply_to_message_id: msg.message_id,
+          edit_message_id: statusMessageId,
         });
       });
       return;
@@ -77,14 +100,36 @@ export function registerChatHandlers(bot: Bot) {
         await withTyping(ctx, async () => {
           const activeTopic = await GeminiService.ensureTopicSummary(chatIdStr, chatSettings.current_topic);
           const history = Repository.getRecentMessages(chatIdStr, CONFIG.CHAT_HISTORY_LIMIT);
+          
+          let statusMessageId: number | undefined;
+
           const reply = await GeminiService.generateReply(
             history,
             activeTopic,
-            true
+            true,
+            async (toolName) => {
+              if (!statusMessageId) {
+                const statusMsgText = toolName === "web_search"
+                  ? CONFIG.MESSAGES.tool_status_web_search
+                  : `bi dk knk bakıyorum (${toolName})...`;
+
+                logger.info(`[Spontaneous] Sending tool status notification: "${statusMsgText}"`);
+                const sentMsg = await ctx.reply(statusMsgText).catch((e) => {
+                  logger.warn("[Spontaneous] Failed to send status message:", e);
+                  return null;
+                });
+
+                if (sentMsg) {
+                  statusMessageId = sentMsg.message_id;
+                }
+              }
+            }
           );
 
-          // Spontaneous message: sent directly to the chat without reply tag (like a human chiming in)
-          await sendLongMessage(ctx, reply);
+          // Edit status message into final reply, or send new message if no status message was sent
+          await sendLongMessage(ctx, reply, {
+            edit_message_id: statusMessageId,
+          });
         });
       }
     }

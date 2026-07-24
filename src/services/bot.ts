@@ -10,30 +10,30 @@ import logger from "../utils/logger";
 
 export const bot = new Bot(CONFIG.TELEGRAM_BOT_TOKEN);
 
-// Intercept all outgoing sendMessage API calls to save the bot's own replies to SQLite history.
-// This is critical because Telegram Bot API does not send updates for messages sent by the bot itself.
+// Intercept outgoing sendMessage and editMessageText API calls to save/update the bot's own replies in SQLite history.
 bot.api.config.use(async (prev, method, payload, signal) => {
   const result = await prev(method, payload, signal);
 
-  if (method === "sendMessage" && payload && typeof payload === "object" && "chat_id" in payload && "text" in payload) {
+  if ((method === "sendMessage" || method === "editMessageText") && payload && typeof payload === "object" && "chat_id" in payload && "text" in payload) {
     try {
       const chatId = (payload.chat_id ?? "").toString();
       const text = (payload as any).text;
+      const msgId = (payload as any).message_id || (result && typeof result === "object" ? (result as any).message_id : undefined);
 
-      if (result && typeof result === "object" && "message_id" in result) {
-        const sentMsg = result as any;
-        const from = sentMsg.from;
+      if (chatId && msgId) {
+        const sentMsg = typeof result === "object" ? (result as any) : undefined;
+        const from = sentMsg?.from;
 
         Repository.saveMessage({
           chatId: chatId,
-          messageId: sentMsg.message_id,
+          messageId: msgId,
           userId: from?.id || 0,
           username: from?.username || undefined,
           firstName: from?.first_name || "ket",
-          replyToFirstName: sentMsg.reply_to_message?.from?.first_name || undefined,
+          replyToFirstName: sentMsg?.reply_to_message?.from?.first_name || undefined,
           text: text,
           isBotReply: true,
-          sentAt: sentMsg.date || Math.floor(Date.now() / 1000),
+          sentAt: sentMsg?.date || Math.floor(Date.now() / 1000),
         });
       }
     } catch (e) {

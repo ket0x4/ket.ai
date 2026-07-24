@@ -1,4 +1,5 @@
 import { Context } from "grammy";
+import logger from "./logger";
 
 const TELEGRAM_MAX_LENGTH = 4096;
 
@@ -47,15 +48,14 @@ function splitMessage(text: string): string[] {
 
 export interface SendOptions {
   reply_to_message_id?: number;
+  edit_message_id?: number;
   parse_mode?: string;
 }
 
 /**
- * Sends a (potentially long) message to Telegram, splitting it into multiple
- * messages if it exceeds the 4096-character limit.
- *
- * Only the first chunk is sent as a reply to the original message.
- * Subsequent chunks are sent as plain messages to keep the thread readable.
+ * Sends a (potentially long) message to Telegram.
+ * If edit_message_id is provided, edits that message with the first chunk.
+ * Subsequent chunks (if any) are sent as new messages.
  */
 export async function sendLongMessage(
   ctx: Context,
@@ -66,6 +66,21 @@ export async function sendLongMessage(
 
   for (let i = 0; i < chunks.length; i++) {
     const isFirst = i === 0;
+
+    if (isFirst && options.edit_message_id && ctx.chat) {
+      try {
+        await ctx.api.editMessageText(
+          ctx.chat.id,
+          options.edit_message_id,
+          chunks[i],
+          { parse_mode: options.parse_mode as any }
+        );
+        continue;
+      } catch (e) {
+        logger.warn("[Message] Failed to edit status message, falling back to reply:", e);
+      }
+    }
+
     await ctx.reply(chunks[i], {
       ...options,
       // Only attach reply_to on the first chunk
