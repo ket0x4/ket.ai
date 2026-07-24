@@ -14,10 +14,11 @@ It doesn't just reply to direct messages; it understands the flow of the convers
   - **TTL & Expiration:** Supports `PROFILE` (permanent), `DYNAMIC` (medium-term), and `TEMPORARY` (short-lived) categories with automatic expiration pruning.
   - **Contradiction Auto-Replacement:** Automatically replaces outdated user facts when a new conflicting statement is detected.
 - **Async Background Memory Worker:** Automatically analyzes group conversation history in the background every 15 messages to capture user facts even when the bot hasn't directly responded to the message.
-- **Memory Control Commands & Intent Detection:**
+- **Unified Memory Commands & Intent Triggers:**
+  - `/mem` — Open interactive memory dashboard (with inline buttons for all memories, profile, and help).
+  - `/mem me` — View facts remembered about yourself in the group.
+  - `/mem del <id>` — Delete a specific memory record by ID.
   - `/remember <fact>` — Explicitly store a fact into memory (or reply to any message with `/remember`).
-  - `/memory me` — View all facts remembered about yourself in the current group.
-  - `/memory forget <id>` — Delete a specific memory by its ID.
   - **Natural Intent Triggers:** Automatic priority extraction when users say *"bunu unutma"*, *"aklında tut"*, *"not et"*, or *"hafızana yaz"*.
 - **Image and Audio Recognition:** It can view photos and listen to voice messages shared in the group, and reply with fitting, humorous, "shitposter buddy" style responses.
 - **Spontaneous Mode:** Ket can spontaneously jump into the chat flow with a certain probability (e.g., 5%) to drop a funny or sarcastic comment, making the group chat feel alive.
