@@ -49,7 +49,7 @@ export const GeminiService = {
         ? topicSummary || "General chat"
         : lastMessageText;
       const memories = chatIdStr
-        ? await getRelevantMemories(chatIdStr, queryForMemory)
+        ? await getRelevantMemories(chatIdStr, queryForMemory, topicSummary || undefined)
         : [];
 
       const historyList = buildHistoryList(history);
@@ -81,6 +81,13 @@ export const GeminiService = {
               sender: lastMessageSender,
               text: lastMessageText,
             };
+      }
+
+      // Check for explicit memory intent keywords in user message
+      const hasExplicitMemoryIntent = /\b(?:bunu unutma|aklında tut|not et|hafızana yaz|kaydet|bunu hatırla)\b/i.test(lastMessageText);
+      if (hasExplicitMemoryIntent) {
+        inputPayload.instruction = (inputPayload.instruction ? inputPayload.instruction + " " : "") +
+          "IMPORTANT: The user explicitly requested to remember information from this message. Make sure to extract all personal facts/details into new_memory_updates.";
       }
 
       // Format initial turn content array for multi-turn capability with tools
@@ -124,6 +131,16 @@ export const GeminiService = {
                 description:
                   "The factual detail stated by the user (e.g., likes pizza, is a software engineer). Do not use the word 'User'.",
               },
+              category: {
+                type: "STRING",
+                description:
+                  "Category of fact: 'PROFILE' for permanent personal facts, 'DYNAMIC' for medium-term status, 'TEMPORARY' for short-lived events.",
+              },
+              ttl_days: {
+                type: "INTEGER",
+                description:
+                  "Days after which temporary memory expires (e.g. 1-7 days). Leave null/0 for permanent facts.",
+              },
             },
             required: ["user_name", "fact"],
           },
@@ -147,16 +164,13 @@ export const GeminiService = {
           temperature: options.media ? 0.8 : 0.85,
           maxOutputTokens: 350,
           tools: toolsConfig,
-        };
-
-        if (!toolsConfig) {
-          genConfig.responseMimeType = "application/json";
-          genConfig.responseSchema = {
+          responseMimeType: "application/json",
+          responseSchema: {
             type: "OBJECT",
             properties: responseSchemaProperties,
             required: ["reply"],
-          };
-        }
+          },
+        };
 
         const response = await runWithRetry(() =>
           ai.models.generateContent({
@@ -236,10 +250,20 @@ export const GeminiService = {
         const parsed = JSON.parse(cleanedText);
 
         if (Array.isArray(parsed.new_memory_updates) && chatIdStr) {
+          const senderUserId = lastMsg && !lastMsg.is_bot_reply ? lastMsg.user_id : undefined;
           for (const mem of parsed.new_memory_updates) {
             if (mem.user_name && mem.fact) {
               const combinedFact = `${mem.user_name}: ${mem.fact}`;
-              await processNewMemory(chatIdStr, combinedFact);
+              const cat = (mem.category as "PROFILE" | "DYNAMIC" | "TEMPORARY") || "PROFILE";
+              const ttl = typeof mem.ttl_days === "number" && mem.ttl_days > 0
+                ? mem.ttl_days
+                : (cat === "TEMPORARY" ? 3 : null);
+
+              await processNewMemory(chatIdStr, combinedFact, {
+                userId: senderUserId,
+                category: cat,
+                ttlDays: ttl,
+              });
             }
           }
         }

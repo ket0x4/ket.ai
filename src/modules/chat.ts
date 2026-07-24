@@ -7,6 +7,8 @@ import { isConversationFollowUp } from "../utils/conversation";
 import { sendLongMessage } from "../utils/message";
 import logger from "../utils/logger";
 
+import { checkAndRunBackgroundMemoryExtraction } from "../services/gemini/memoryWorker";
+
 const COOLDOWN_SECONDS = 300; // 5 minutes cooldown between random replies
 
 export function registerChatHandlers(bot: Bot) {
@@ -21,6 +23,9 @@ export function registerChatHandlers(bot: Bot) {
     const msg = ctx.message;
     const from = ctx.from;
     const chatIdStr = chat.id.toString();
+
+    // Trigger background memory worker counter
+    checkAndRunBackgroundMemoryExtraction(chatIdStr).catch(() => {});
 
     // 1. Check if it's a mention, nickname match, reply, or quick follow-up
     const containsNickname = /\bket\b/i.test(text);

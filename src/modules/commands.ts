@@ -3,6 +3,7 @@ import { CONFIG } from "../config/index";
 import { Repository } from "../db/repository";
 import { sendLongMessage } from "../utils/message";
 import logger from "../utils/logger";
+import { processNewMemory } from "../services/gemini/memory";
 
 /**
  * Checks if the user is the bot owner or an administrator of the group.
@@ -285,16 +286,46 @@ export function registerCommands(bot: Bot) {
     await ctx.answerCallbackQuery().catch(() => {});
   });
 
-  // 11. /memory <number> command — view full text of a specific memory by its list index
+  // 11. /memory command — view specific memory, user facts (/memory me), or delete fact (/memory forget <id>)
   bot.command("memory", async (ctx) => {
-    if (!ctx.chat) return;
+    if (!ctx.chat || !ctx.from) return;
     const chatId = ctx.chat.id.toString();
-    const arg = ctx.match?.trim();
+    const arg = ctx.match?.trim() || "";
 
-    if (!arg || isNaN(parseInt(arg, 10))) {
-      await ctx.reply("Usage: `/memory <number>` — e.g. `/memory 3` to see the full text of memory #3.", {
+    if (arg.toLowerCase() === "me") {
+      const userMemories = Repository.getUserMemories(chatId, ctx.from.id);
+      if (userMemories.length === 0) {
+        await ctx.reply(`I don't have any specific profile facts saved for you (${ctx.from.first_name}) yet.`);
+        return;
+      }
+      const list = userMemories
+        .map((m, i) => `${i + 1}. [ID:${m.id}] ${m.text}`)
+        .join("\n");
+      await sendLongMessage(ctx, `👤 **What I remember about you (${ctx.from.first_name}):**\n\n${list}`, {
         parse_mode: "Markdown",
       });
+      return;
+    }
+
+    if (arg.toLowerCase().startsWith("forget ")) {
+      const targetId = parseInt(arg.split(" ")[1], 10);
+      if (isNaN(targetId)) {
+        await ctx.reply("Usage: `/memory forget <id>` — e.g. `/memory forget 42`", { parse_mode: "Markdown" });
+        return;
+      }
+      Repository.deleteMemoriesByIds([targetId], chatId);
+      await ctx.reply(`✅ Memory ID \`${targetId}\` has been deleted.`, { parse_mode: "Markdown" });
+      return;
+    }
+
+    if (!arg || isNaN(parseInt(arg, 10))) {
+      await ctx.reply(
+        "Usage:\n" +
+        "• `/memory me` — View facts saved about you\n" +
+        "• `/memory forget <id>` — Delete a specific memory by ID\n" +
+        "• `/memory <number>` — View full text of memory #number",
+        { parse_mode: "Markdown" }
+      );
       return;
     }
 
@@ -312,7 +343,7 @@ export function registerCommands(bot: Bot) {
     }
 
     const memory = memories[index];
-    const header = `📝 **Memory #${index + 1}** (of ${memories.length}):\n\n`;
+    const header = `📝 **Memory #${index + 1}** (of ${memories.length}) [ID: ${memory.id}]:\n\n`;
     await sendLongMessage(ctx, header + memory.text, { parse_mode: "Markdown" });
   });
 
@@ -341,5 +372,40 @@ export function registerCommands(bot: Bot) {
 
     CONFIG.GEMINI_MODEL = modelName;
     await ctx.reply(`✅ Model changed to \`${modelName}\`! New responses will be generated with this model.`, { parse_mode: "Markdown" });
+  });
+
+  // 13. /remember command — explicitly save a fact to memory
+  bot.command("remember", async (ctx) => {
+    if (!ctx.chat || !ctx.from) return;
+    const chatIdStr = ctx.chat.id.toString();
+
+    let factToSave = ctx.match?.trim();
+    let targetUserId = ctx.from.id;
+    let targetUserName = ctx.from.first_name || "User";
+
+    // If used in reply to a message
+    if (ctx.message?.reply_to_message) {
+      const repliedMsg = ctx.message.reply_to_message;
+      if (repliedMsg.from) {
+        targetUserId = repliedMsg.from.id;
+        targetUserName = repliedMsg.from.first_name || "User";
+      }
+      if (!factToSave && repliedMsg.text) {
+        factToSave = repliedMsg.text;
+      }
+    }
+
+    if (!factToSave) {
+      await ctx.reply("Usage: `/remember <fact>` or reply to a message with `/remember`.", { parse_mode: "Markdown" });
+      return;
+    }
+
+    const formattedFact = `${targetUserName}: ${factToSave}`;
+    await processNewMemory(chatIdStr, formattedFact, {
+      userId: targetUserId,
+      category: "PROFILE",
+    });
+
+    await ctx.reply(`🧠 Got it! Saved memory for **${targetUserName}**: "${factToSave}"`, { parse_mode: "Markdown" });
   });
 }

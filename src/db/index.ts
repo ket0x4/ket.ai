@@ -5,6 +5,9 @@ import logger from "../utils/logger";
 // Initialize the database and ensure schema is ready
 export const db = new Database(CONFIG.DB_PATH, { create: true });
 
+// Run migrations immediately on DB instantiation
+runMigrations();
+
 // Run migrations (create tables)
 export function runMigrations() {
   logger.info("Running database migrations...");
@@ -54,6 +57,9 @@ export function runMigrations() {
       memory_text TEXT NOT NULL,
       embedding TEXT,
       created_at INTEGER NOT NULL,
+      user_id INTEGER DEFAULT NULL,
+      category TEXT DEFAULT 'PROFILE',
+      expires_at INTEGER DEFAULT NULL,
       FOREIGN KEY(chat_id) REFERENCES chats(chat_id)
     );
   `);
@@ -62,5 +68,15 @@ export function runMigrations() {
   db.run(`
     CREATE INDEX IF NOT EXISTS idx_memories_chat_id
     ON memories(chat_id);
+  `);
+
+  db.run(`
+    CREATE INDEX IF NOT EXISTS idx_memories_chat_user
+    ON memories(chat_id, user_id);
+  `);
+
+  db.run(`
+    CREATE INDEX IF NOT EXISTS idx_memories_chat_expires
+    ON memories(chat_id, expires_at);
   `);
 }

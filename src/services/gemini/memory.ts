@@ -20,7 +20,15 @@ export async function generateEmbedding(text: string): Promise<number[]> {
   }
 }
 
-export async function processNewMemory(chatIdStr: string, memoryText: string) {
+export async function processNewMemory(
+  chatIdStr: string,
+  memoryText: string,
+  options?: {
+    userId?: number | null;
+    category?: "PROFILE" | "DYNAMIC" | "TEMPORARY";
+    ttlDays?: number | null;
+  }
+) {
   if (!memoryText || !memoryText.trim() || !chatIdStr) return;
   
   const dateStr = new Date().toLocaleString('tr-TR', { 
@@ -35,15 +43,31 @@ export async function processNewMemory(chatIdStr: string, memoryText: string) {
   }
 
   const existing = Repository.getMemories(chatIdStr);
+  const idsToDelete: number[] = [];
+
   for (const m of existing) {
-    if (m.embedding.length > 0 && cosineSimilarity(emb, m.embedding) > 0.85) {
+    if (m.embedding.length === 0) continue;
+    const sim = cosineSimilarity(emb, m.embedding);
+
+    // Exact duplicate check
+    if (sim > 0.85) {
       logger.debug(`[Memory Store] Skipped duplicate memory for chat ${chatIdStr}:`, memText);
       return;
     }
+
+    // Contradiction / auto-update check for same user
+    if (options?.userId && m.userId === options.userId && sim > 0.65) {
+      logger.info(`[Memory Store] Replacing outdated memory #${m.id} for user ${options.userId}: "${m.text}" -> "${memText}"`);
+      idsToDelete.push(m.id);
+    }
+  }
+
+  if (idsToDelete.length > 0) {
+    Repository.deleteMemoriesByIds(idsToDelete, chatIdStr);
   }
 
   logger.info(`[Memory Store] Adding memory to chat ${chatIdStr}:`, memText);
-  Repository.addMemory(chatIdStr, memText, emb);
+  Repository.addMemory(chatIdStr, memText, emb, options);
 
   const count = (newMemoriesCount.get(chatIdStr) || 0) + 1;
   if (count >= 20) {
@@ -54,20 +78,43 @@ export async function processNewMemory(chatIdStr: string, memoryText: string) {
   }
 }
 
-export async function getRelevantMemories(chatId: string, query: string, topK = 5): Promise<string[]> {
+export async function getRelevantMemories(
+  chatId: string,
+  query: string,
+  activeTopic?: string,
+  topK = 5
+): Promise<string[]> {
+  // Automatically clean up expired memories first
+  Repository.pruneExpiredMemories(chatId);
+
   const allMemories = Repository.getMemories(chatId);
   if (allMemories.length === 0) return [];
 
-  const queryEmbedding = await generateEmbedding(query);
+  // Enrich query with active topic if available for better semantic matching
+  const cleanQuery = query.trim();
+  const enrichedQuery = (activeTopic && activeTopic !== "General chat is going on, no specific topic.")
+    ? `${cleanQuery} | Topic: ${activeTopic}`
+    : cleanQuery;
+
+  const queryEmbedding = await generateEmbedding(enrichedQuery);
   if (queryEmbedding.length === 0) {
-     return allMemories.map(m => m.text).slice(0, topK);
+    logger.warn(`[Memory RAG] Query embedding failed for chat ${chatId}. Skipping RAG retrieval.`);
+    return [];
   }
 
-  // Calculate similarity and sort
-  const scored = allMemories.map(m => ({
-    text: m.text,
-    score: m.embedding.length > 0 ? cosineSimilarity(queryEmbedding, m.embedding) : -1
-  }));
+  const now = Math.floor(Date.now() / 1000);
+
+  // Calculate hybrid similarity score (85% Cosine Similarity + 15% Recency Decay)
+  const scored = allMemories.map((m) => {
+    if (m.embedding.length === 0) return { text: m.text, score: -1 };
+    
+    const cosSim = cosineSimilarity(queryEmbedding, m.embedding);
+    const ageInDays = Math.max(0, (now - m.createdAt) / 86400);
+    const recencyBoost = Math.exp(-0.05 * ageInDays); // Exponential time-decay factor
+    
+    const finalScore = (0.85 * cosSim) + (0.15 * recencyBoost);
+    return { text: m.text, score: finalScore };
+  });
 
   scored.sort((a, b) => b.score - a.score);
   const THRESHOLD = 0.60;
@@ -75,8 +122,9 @@ export async function getRelevantMemories(chatId: string, query: string, topK = 
     .filter(s => s.score >= THRESHOLD)
     .slice(0, topK)
     .map(s => s.text);
+
   if (topMemories.length > 0) {
-    logger.debug(`[Memory RAG] Retrieved ${topMemories.length} memories for query: "${query}"`);
+    logger.debug(`[Memory RAG] Retrieved ${topMemories.length} memories for query: "${enrichedQuery}"`);
     logger.debug(`[Memory RAG] Memories:`, topMemories);
   }
   return topMemories;
@@ -102,8 +150,8 @@ ${memoryListText}`;
       model: CONFIG.GEMINI_MODEL,
       contents: prompt,
       config: {
-        systemInstruction: getSystemInstruction(),
-        temperature: 0.2,
+        systemInstruction: "You are an automated data maintenance service. Analyze stored memories and identify redundant or contradictory memory IDs for deletion. Return strictly JSON.",
+        temperature: 0.1,
         responseMimeType: "application/json",
         responseSchema: {
           type: "ARRAY",
@@ -119,7 +167,7 @@ ${memoryListText}`;
     const idsToDelete: number[] = JSON.parse(responseText);
 
     if (Array.isArray(idsToDelete) && idsToDelete.length > 0) {
-      Repository.deleteMemoriesByIds(idsToDelete);
+      Repository.deleteMemoriesByIds(idsToDelete, chatIdStr);
       logger.info(`[Memory Consolidation] Successfully deleted ${idsToDelete.length} redundant/spam memories for chat ${chatIdStr}.`);
     } else {
       logger.info(`[Memory Consolidation] No redundant memories found for chat ${chatIdStr}.`);

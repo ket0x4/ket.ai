@@ -43,12 +43,19 @@ const stmts = {
   deleteMessages: db.prepare("DELETE FROM messages WHERE chat_id = ?"),
   deleteMemories: db.prepare("DELETE FROM memories WHERE chat_id = ?"),
   resetTopic: db.prepare("UPDATE chats SET current_topic = NULL WHERE chat_id = ?"),
-  insertMemory: db.prepare("INSERT INTO memories (chat_id, memory_text, embedding, created_at) VALUES (?, ?, ?, ?)"),
-  getMemories: db.prepare("SELECT id, memory_text, embedding FROM memories WHERE chat_id = ? ORDER BY created_at ASC"),
+  insertMemory: db.prepare(
+    "INSERT INTO memories (chat_id, memory_text, embedding, created_at, user_id, category, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
+  ),
+  getMemories: db.prepare(
+    "SELECT id, memory_text, embedding, created_at, user_id, category, expires_at FROM memories WHERE chat_id = ? ORDER BY created_at ASC"
+  ),
   deleteMemoryById: db.prepare("DELETE FROM memories WHERE id = ?"),
   getMemoryCount: db.prepare("SELECT COUNT(*) as count FROM memories WHERE chat_id = ?"),
   deleteOldestMemory: db.prepare(
     `DELETE FROM memories WHERE id = (SELECT id FROM memories WHERE chat_id = ? ORDER BY created_at ASC LIMIT 1)`
+  ),
+  pruneExpiredMemories: db.prepare(
+    "DELETE FROM memories WHERE chat_id = ? AND expires_at IS NOT NULL AND expires_at <= ?"
   ),
   pruneOldMessages: db.prepare("DELETE FROM messages WHERE chat_id = ? AND sent_at < ?"),
   getChatStats: db.prepare(
@@ -65,7 +72,31 @@ const stmts = {
   ),
 };
 
+export interface MemoryItem {
+  id: number;
+  text: string;
+  embedding: number[];
+  createdAt: number;
+  userId: number | null;
+  category: "PROFILE" | "DYNAMIC" | "TEMPORARY";
+  expiresAt: number | null;
+}
+
+// In-memory cache for parsed memory embeddings per chat to optimize RAG lookups
+const memoryCache = new Map<string, MemoryItem[]>();
+
 export const Repository = {
+  /**
+   * Clears the in-memory memory cache for a specific chat or all chats.
+   */
+  clearMemoryCache(chatId?: string): void {
+    if (chatId) {
+      memoryCache.delete(chatId);
+    } else {
+      memoryCache.clear();
+    }
+  },
+
   /**
    * Retrieves a chat configuration by its chat ID.
    */
@@ -203,34 +234,99 @@ export const Repository = {
    * Adds a new memory fact for a chat.
    * Enforces a maximum of 2000 memories per chat — oldest is removed when limit is reached.
    */
-  addMemory(chatId: string, memoryText: string, embedding: number[]): void {
+  addMemory(
+    chatId: string,
+    memoryText: string,
+    embedding: number[],
+    options?: {
+      userId?: number | null;
+      category?: "PROFILE" | "DYNAMIC" | "TEMPORARY";
+      ttlDays?: number | null;
+    }
+  ): void {
     const countResult = stmts.getMemoryCount.get(chatId) as { count: number } | null;
     const count = countResult ? countResult.count : 0;
-    if (count >= 2000) {
+    if (count >= 10000) {
       stmts.deleteOldestMemory.run(chatId);
-      logger.info(`[Memory] Max memory limit (2000) reached for chat ${chatId}. Oldest memory removed.`);
+      logger.info(`[Memory] Max memory limit (10000) reached for chat ${chatId}. Oldest memory removed.`);
     }
 
     const now = Math.floor(Date.now() / 1000);
-    stmts.insertMemory.run(chatId, memoryText, JSON.stringify(embedding), now);
+    const userId = options?.userId ?? null;
+    const category = options?.category ?? "PROFILE";
+    const expiresAt = typeof options?.ttlDays === "number" && options.ttlDays !== 0
+      ? now + options.ttlDays * 86400
+      : null;
+
+    stmts.insertMemory.run(
+      chatId,
+      memoryText,
+      JSON.stringify(embedding),
+      now,
+      userId,
+      category,
+      expiresAt
+    );
+    memoryCache.delete(chatId);
   },
 
   /**
-   * Retrieves all memory facts for a chat with their embeddings.
+   * Retrieves all memory facts for a chat with their embeddings (cached in-memory).
    */
-  getMemories(chatId: string): { id: number; text: string; embedding: number[] }[] {
-    const rows = stmts.getMemories.all(chatId) as { id: number; memory_text: string; embedding: string | null }[];
-    return rows.map((row) => ({
+  getMemories(chatId: string): MemoryItem[] {
+    if (memoryCache.has(chatId)) {
+      return memoryCache.get(chatId)!;
+    }
+
+    const rows = stmts.getMemories.all(chatId) as {
+      id: number;
+      memory_text: string;
+      embedding: string | null;
+      created_at: number;
+      user_id: number | null;
+      category: string | null;
+      expires_at: number | null;
+    }[];
+
+    const parsed: MemoryItem[] = rows.map((row) => ({
       id: row.id,
       text: row.memory_text,
-      embedding: row.embedding ? JSON.parse(row.embedding) : []
+      embedding: row.embedding ? JSON.parse(row.embedding) : [],
+      createdAt: row.created_at,
+      userId: row.user_id,
+      category: (row.category as "PROFILE" | "DYNAMIC" | "TEMPORARY") || "PROFILE",
+      expiresAt: row.expires_at,
     }));
+
+    memoryCache.set(chatId, parsed);
+    return parsed;
   },
 
   /**
-   * Deletes specific memories by their IDs.
+   * Prunes expired memories for a chat based on TTL.
    */
-  deleteMemoriesByIds(ids: number[]): void {
+  pruneExpiredMemories(chatId: string): number {
+    const now = Math.floor(Date.now() / 1000);
+    const result = stmts.pruneExpiredMemories.run(chatId, now);
+    if (result.changes > 0) {
+      memoryCache.delete(chatId);
+      logger.info(`[Memory] Pruned ${result.changes} expired memories for chat ${chatId}.`);
+    }
+    return result.changes;
+  },
+
+  /**
+   * Gets memories associated with a specific user in a chat.
+   */
+  getUserMemories(chatId: string, userId: number): MemoryItem[] {
+    const all = this.getMemories(chatId);
+    return all.filter((m) => m.userId === userId);
+  },
+
+  /**
+   * Deletes specific memories by their IDs and invalidates cache.
+   */
+  deleteMemoriesByIds(ids: number[], chatId?: string): void {
     if (ids.length === 0) return;
     const deleteMany = db.transaction((memoryIds: number[]) => {
       for (const id of memoryIds) {
@@ -238,13 +334,19 @@ export const Repository = {
       }
     });
     deleteMany(ids);
+    if (chatId) {
+      memoryCache.delete(chatId);
+    } else {
+      memoryCache.clear();
+    }
   },
 
   /**
-   * Clears all memories for a chat.
+   * Clears all memories for a chat and invalidates cache.
    */
   clearMemories(chatId: string): void {
     stmts.deleteMemories.run(chatId);
+    memoryCache.delete(chatId);
   },
 
   /**
