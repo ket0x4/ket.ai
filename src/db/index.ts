@@ -1,6 +1,14 @@
 import { Database } from "bun:sqlite";
+import { dirname } from "path";
+import { existsSync, mkdirSync } from "fs";
 import { CONFIG } from "../config/index";
 import logger from "../utils/logger";
+
+// Ensure database directory exists
+const dbDir = dirname(CONFIG.DB_PATH);
+if (dbDir && dbDir !== "." && !existsSync(dbDir)) {
+  mkdirSync(dbDir, { recursive: true });
+}
 
 // Initialize the database and ensure schema is ready
 export const db = new Database(CONFIG.DB_PATH, { create: true });

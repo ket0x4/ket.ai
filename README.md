@@ -7,7 +7,18 @@ It doesn't just reply to direct messages; it understands the flow of the convers
 ## Features
 
 - **Advanced LLM Responses:** Utilizing Google Gemini (`gemini-3.1-pro` / `gemini-3.5-flash`), Ket delivers highly intelligent and entertaining chats while maintaining the context of previous messages.
-- **Vector-Based Memory (RAG):** Features a group-specific, long-term memory capacity of up to 2,000 facts using vector embeddings. Whenever you teach it something or it notices important information (e.g., "My favorite car is a Nissan"), it saves it into an SQLite database as a vector using the `gemini-embedding-001` model. When asked about it later, it retrieves the memory instantly via Cosine Similarity!
+- **Advanced Hybrid Vector Memory (RAG):** Features a group-specific memory capacity of up to **10,000 facts** using `gemini-embedding-001` vector embeddings.
+  - **In-Memory Vector Cache:** High-performance caching mechanism eliminates SQLite JSON deserialization overhead during RAG lookups.
+  - **User Indexing (`user_id`):** Facts are indexed per user while remaining shared within the group memory pool.
+  - **Recency Decay Scoring:** Hybrid RAG ranking combines Cosine Similarity with exponential time-decay ($85\% \text{Cosine} + 15\% \text{Recency Boost}$) so fresh facts take priority.
+  - **TTL & Expiration:** Supports `PROFILE` (permanent), `DYNAMIC` (medium-term), and `TEMPORARY` (short-lived) categories with automatic expiration pruning.
+  - **Contradiction Auto-Replacement:** Automatically replaces outdated user facts when a new conflicting statement is detected.
+- **Async Background Memory Worker:** Automatically analyzes group conversation history in the background every 15 messages to capture user facts even when the bot hasn't directly responded to the message.
+- **Memory Control Commands & Intent Detection:**
+  - `/remember <fact>` — Explicitly store a fact into memory (or reply to any message with `/remember`).
+  - `/memory me` — View all facts remembered about yourself in the current group.
+  - `/memory forget <id>` — Delete a specific memory by its ID.
+  - **Natural Intent Triggers:** Automatic priority extraction when users say *"bunu unutma"*, *"aklında tut"*, *"not et"*, or *"hafızana yaz"*.
 - **Image and Audio Recognition:** It can view photos and listen to voice messages shared in the group, and reply with fitting, humorous, "shitposter buddy" style responses.
 - **Spontaneous Mode:** Ket can spontaneously jump into the chat flow with a certain probability (e.g., 5%) to drop a funny or sarcastic comment, making the group chat feel alive.
 
