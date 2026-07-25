@@ -387,7 +387,7 @@ export function registerCommands(bot: Bot) {
       "**How to Add Memories**\n\n" +
       "1. Use command: `/remember <fact>`\n" +
       "2. Or reply to any user message with `/remember` to save it.\n" +
-      "3. Natural phrases like *'bunu unutma'*, *'aklında tut'*, *'not et'* will also be automatically extracted.";
+      "3. Natural phrases like *'remember this'*, *'keep in mind'*, *'note this'* will also be automatically extracted.";
     const keyboard = new InlineKeyboard().text("Back to Dashboard", "mem:dashboard");
     try {
       await ctx.editMessageText(text, {

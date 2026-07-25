@@ -133,7 +133,7 @@ export const webSearchTool: AgentTool<
   { query: string; results: SearchResult[]; count: number }
 > = {
   name: "web_search",
-  description: "Performs an internet web search to retrieve real-time data",
+  description: "ONLY use this to search the internet when the user specifically asks for current information, news, weather, stock prices, or an instant event not in your training data. DO NOT USE it for general chat or when the answer is already in previous conversations.",
   parameters: {
     type: "OBJECT",
     properties: {

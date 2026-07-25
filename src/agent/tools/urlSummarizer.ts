@@ -119,7 +119,7 @@ export async function fetchPageContent(urlInput: string, maxLength = 2500): Prom
 
     // Token optimization: limit content length
     const trimmedContent = content.length > maxLength
-      ? content.slice(0, maxLength) + "\n\n[...Metin devam ediyor, token tasarrufu için kesildi]"
+      ? content.slice(0, maxLength) + "\n\n[...Text continues, truncated for token efficiency]"
       : content;
 
     logger.info(`[UrlSummarizer] Extracted ${trimmedContent.length} chars from ${targetUrl}`);
@@ -143,7 +143,7 @@ export async function fetchPageContent(urlInput: string, maxLength = 2500): Prom
 
 export const urlSummarizerTool: AgentTool<{ url: string }, PageSummaryResult> = {
   name: "url_summarizer",
-  description: "Fetches and extracts clean readable text content from a web page URL (article, news, blog post, documentation) to analyze or summarize it.",
+  description: "ONLY use this when the user explicitly sends a 'URL (link)' for you to analyze or summarize. Do not use this tool if the user did not send a link or if the content of the link is already known.",
   parameters: {
     type: "OBJECT",
     properties: {

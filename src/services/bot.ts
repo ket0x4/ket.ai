@@ -76,7 +76,7 @@ bot.api.config.use(async (prev, method, payload, signal) => {
       // Ignore temporary status notifications so they don't pollute Gemini conversation history
       const isTransientStatus =
         text === CONFIG.MESSAGES.tool_status_web_search ||
-        text.includes("bi dk knk bakıyorum");
+        text.includes("gimme a sec bro, checking");
 
       if (isTransientStatus) {
         return result;
@@ -151,7 +151,7 @@ export async function initBot() {
         // Register the private chat so commands like /settings work
         let dbChat = Repository.getChat(chatIdStr);
         if (!dbChat) {
-          Repository.createChat(chatIdStr, `Özel Sohbet (${ctx.from?.first_name || "Sahip"})`, true);
+          Repository.createChat(chatIdStr, `Private Chat (${ctx.from?.first_name || "Owner"})`, true);
         }
         return await next();
       }
@@ -167,7 +167,7 @@ export async function initBot() {
     // Fetch or create chat settings in SQLite
     let dbChat = Repository.getChat(chatIdStr);
     if (!dbChat) {
-      dbChat = Repository.createChat(chatIdStr, chat.title || "Grup", isEnvAllowed);
+      dbChat = Repository.createChat(chatIdStr, chat.title || "Group", isEnvAllowed);
     }
 
     const isAllowed = isEnvAllowed || dbChat.is_allowed === 1;

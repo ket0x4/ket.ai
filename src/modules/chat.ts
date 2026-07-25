@@ -46,8 +46,8 @@ async function generateAndSendReply(
       if (!statusMessageId) {
         const statusMsgText =
           toolName === "web_search"
-            ? CONFIG.MESSAGES.tool_status_web_search
-            : `bi dk knk bakıyorum (${toolName})...`;
+            ? CONFIG.MESSAGES.tool_status_web_search || `gimme a sec bro, checking (${toolName})...`
+            : `gimme a sec bro, checking (${toolName})...`;
 
         logger.info(
           `${logPrefix} Sending tool status notification: "${statusMsgText}"`
