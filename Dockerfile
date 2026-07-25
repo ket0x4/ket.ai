@@ -18,8 +18,12 @@ FROM gcr.io/distroless/cc-debian12
 
 WORKDIR /app
 
+# Set timezone
+ENV TZ=Europe/Istanbul
+
 # Copy the compiled standalone binary from stage 1
 COPY --from=builder /app/ket /app/ket
 
-# The bot expects config.json and system.txt in /app (mapped via volumes)
+# The bot expects config.json, system.txt, bot.db, and logs directory in /app (mapped via volumes)
 CMD ["/app/ket"]
+

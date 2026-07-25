@@ -1,4 +1,5 @@
 node_modules/
+logs/
 *.exe
 *.db
 .env
@@ -6,3 +7,4 @@ node_modules/
 .gitignore
 .dockerignore
 README.md
+
