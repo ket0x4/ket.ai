@@ -2,8 +2,11 @@ import { readFileSync, existsSync } from "fs";
 import type { MessageRow } from "../../db/repository";
 import logger from "../../utils/logger";
 
-export function getSystemInstruction(): string {
-  const SYSTEM_PROMPT_FILE = "system.txt";
+const SYSTEM_PROMPT_FILE = "system.txt";
+
+let cachedSystemPrompt: string | null = null;
+
+function loadSystemPrompt(): string {
   if (!existsSync(SYSTEM_PROMPT_FILE)) {
     logger.error("FATAL: system.txt not found! Bot cannot function without a system prompt.");
     process.exit(1);
@@ -14,6 +17,22 @@ export function getSystemInstruction(): string {
     logger.error("FATAL: Error reading system.txt:", e);
     process.exit(1);
   }
+}
+
+// Load once at module initialization
+cachedSystemPrompt = loadSystemPrompt();
+
+export function getSystemInstruction(): string {
+  return cachedSystemPrompt!;
+}
+
+/**
+ * Reloads the system prompt from disk. Useful for hot-reloading
+ * the prompt without restarting the bot.
+ */
+export function reloadSystemPrompt(): void {
+  cachedSystemPrompt = loadSystemPrompt();
+  logger.info("[SystemPrompt] Reloaded system.txt from disk.");
 }
 
 export async function runWithRetry<T>(fn: () => Promise<T>, retries = 3, delayMs = 1500): Promise<T> {

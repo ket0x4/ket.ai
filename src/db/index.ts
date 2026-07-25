@@ -12,9 +12,7 @@ if (dbDir && dbDir !== "." && !existsSync(dbDir)) {
 
 // Initialize the database and ensure schema is ready
 export const db = new Database(CONFIG.DB_PATH, { create: true });
-
-// Run migrations immediately on DB instantiation
-runMigrations();
+db.run("PRAGMA journal_mode=WAL");
 
 // Run migrations (create tables)
 export function runMigrations() {

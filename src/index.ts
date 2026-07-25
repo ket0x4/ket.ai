@@ -1,4 +1,4 @@
-import { runMigrations, db } from "./db/index";
+import { db } from "./db/index";
 import { startBot, bot } from "./services/bot";
 import logger from "./utils/logger";
 
@@ -7,8 +7,7 @@ async function main() {
   logger.info("Starting ket.ai 2");
   logger.info("-----------------------------------------");
 
-  // 1. Run migrations to initialize SQLite tables
-  runMigrations();
+  // 1. Database migrations run automatically on import of db module
 
   // 2. Start the bot client (long polling)
   await startBot();
@@ -29,6 +28,8 @@ const shutdown = () => {
   } catch (error) {
     logger.error("Error closing database:", error);
   }
+  // Flush any buffered log lines before exiting
+  logger.shutdown();
   process.exit(0);
 };
 

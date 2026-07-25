@@ -1,7 +1,6 @@
 import { Bot, Context } from "grammy";
 import { CONFIG } from "../config/index";
 import { Repository } from "../db/repository";
-import { GeminiService } from "./gemini/index";
 import { registerCommands } from "../modules/commands";
 import { registerChatHandlers } from "../modules/chat";
 import { registerImageHandlers } from "../modules/image";
@@ -10,60 +9,91 @@ import logger from "../utils/logger";
 
 export const bot = new Bot(CONFIG.TELEGRAM_BOT_TOKEN);
 
+// --- Per-chat processing queue to prevent concurrent Gemini calls ---
+const chatProcessingQueue = new Map<string, Promise<void>>();
+
+/**
+ * Serializes async operations per chat to prevent race conditions
+ * when multiple messages arrive simultaneously for the same chat.
+ * Returns immediately if a previous operation is still running — the
+ * new operation is chained and will execute after the current one completes.
+ */
+export function withChatLock(chatId: string, fn: () => Promise<void>): Promise<void> {
+  const prev = chatProcessingQueue.get(chatId) ?? Promise.resolve();
+  const next = prev.then(fn, fn); // Always chain, even if previous rejected
+  chatProcessingQueue.set(chatId, next);
+
+  // Cleanup: remove from map when the chain settles to prevent memory leak
+  next.finally(() => {
+    if (chatProcessingQueue.get(chatId) === next) {
+      chatProcessingQueue.delete(chatId);
+    }
+  });
+
+  return next;
+}
+
+/**
+ * Extracts message metadata from Telegram API result and saves to DB.
+ */
+function saveOutgoingMessage(
+  chatId: string,
+  messageId: number,
+  text: string,
+  apiResult: unknown
+): void {
+  const sentMsg = (typeof apiResult === "object" && apiResult !== null) ? apiResult as Record<string, unknown> : undefined;
+  const from = sentMsg?.from as Record<string, unknown> | undefined;
+  const replyMsg = sentMsg?.reply_to_message as Record<string, unknown> | undefined;
+  const replyFrom = replyMsg?.from as Record<string, unknown> | undefined;
+
+  Repository.saveMessage({
+    chatId,
+    messageId,
+    userId: (from?.id as number) || 0,
+    username: (from?.username as string) || undefined,
+    firstName: (from?.first_name as string) || "ket",
+    replyToFirstName: (replyFrom?.first_name as string) || undefined,
+    text,
+    isBotReply: true,
+    sentAt: (sentMsg?.date as number) || Math.floor(Date.now() / 1000),
+  });
+}
+
 // Intercept outgoing sendMessage and editMessageText API calls to save/update the bot's own replies in SQLite history.
 bot.api.config.use(async (prev, method, payload, signal) => {
   const result = await prev(method, payload, signal);
 
-  if ((method === "sendMessage" || method === "editMessageText") && payload && typeof payload === "object" && "chat_id" in payload && "text" in payload) {
+  if (
+    (method === "sendMessage" || method === "editMessageText") &&
+    payload && typeof payload === "object" &&
+    "chat_id" in payload && "text" in payload
+  ) {
     try {
-      const chatId = (payload.chat_id ?? "").toString();
-      const text = (payload as any).text;
+      const chatId = String(payload.chat_id ?? "");
+      const text = String((payload as Record<string, unknown>).text ?? "");
 
       // Ignore temporary status notifications so they don't pollute Gemini conversation history
-      const isTransientStatus = typeof text === "string" && (
+      const isTransientStatus =
         text === CONFIG.MESSAGES.tool_status_web_search ||
-        text.includes("bi dk knk bakıyorum")
-      );
+        text.includes("bi dk knk bakıyorum");
 
       if (isTransientStatus) {
         return result;
       }
 
-      const msgId = (payload as any).message_id || (result && typeof result === "object" ? (result as any).message_id : undefined);
+      const payloadRecord = payload as Record<string, unknown>;
+      const resultRecord = (typeof result === "object" && result !== null) ? result as unknown as Record<string, unknown> : undefined;
+      const msgId = (payloadRecord.message_id as number) || (resultRecord?.message_id as number) || undefined;
 
       if (chatId && msgId) {
         if (method === "editMessageText") {
           const updated = Repository.updateMessageText(chatId, msgId, text);
           if (!updated) {
-            const sentMsg = typeof result === "object" ? (result as any) : undefined;
-            const from = sentMsg?.from;
-            Repository.saveMessage({
-              chatId: chatId,
-              messageId: msgId,
-              userId: from?.id || 0,
-              username: from?.username || undefined,
-              firstName: from?.first_name || "ket",
-              replyToFirstName: sentMsg?.reply_to_message?.from?.first_name || undefined,
-              text: text,
-              isBotReply: true,
-              sentAt: sentMsg?.date || Math.floor(Date.now() / 1000),
-            });
+            saveOutgoingMessage(chatId, msgId, text, result);
           }
         } else {
-          const sentMsg = typeof result === "object" ? (result as any) : undefined;
-          const from = sentMsg?.from;
-
-          Repository.saveMessage({
-            chatId: chatId,
-            messageId: msgId,
-            userId: from?.id || 0,
-            username: from?.username || undefined,
-            firstName: from?.first_name || "ket",
-            replyToFirstName: sentMsg?.reply_to_message?.from?.first_name || undefined,
-            text: text,
-            isBotReply: true,
-            sentAt: sentMsg?.date || Math.floor(Date.now() / 1000),
-          });
+          saveOutgoingMessage(chatId, msgId, text, result);
         }
       }
     } catch (e) {
@@ -194,7 +224,8 @@ export async function initBot() {
     if (!from.is_bot) {
       const retentionCount = Repository.getMessageCount(chatIdStr);
       if (retentionCount > 0 && retentionCount % 100 === 0) {
-        (async () => {
+        // Explicitly fire-and-forget with proper error boundary
+        void Promise.resolve().then(() => {
           try {
             const pruned = Repository.pruneOldMessages(chatIdStr, 7);
             if (pruned > 0) {
@@ -203,7 +234,7 @@ export async function initBot() {
           } catch (err) {
             logger.error("[Retention] Error pruning old messages:", err);
           }
-        })();
+        });
       }
     }
 

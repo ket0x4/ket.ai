@@ -6,6 +6,7 @@ import { CONFIG } from "../../config/index";
 import logger from "../../utils/logger";
 
 const newMemoriesCount = new Map<string, number>();
+const MAX_TRACKED_CHATS = 200;
 
 export async function generateEmbedding(text: string): Promise<number[]> {
   try {
@@ -75,6 +76,11 @@ export async function processNewMemory(
     consolidateMemories(chatIdStr).catch(e => logger.error("Memory consolidation error:", e));
   } else {
     newMemoriesCount.set(chatIdStr, count);
+    // Prune map if it grows too large
+    if (newMemoriesCount.size > MAX_TRACKED_CHATS) {
+      const firstKey = newMemoriesCount.keys().next().value;
+      if (firstKey) newMemoriesCount.delete(firstKey);
+    }
   }
 }
 

@@ -1,5 +1,5 @@
 import { Bot, Context } from "grammy";
-import { botUsername, withTyping } from "../services/bot";
+import { botUsername, withTyping, withChatLock } from "../services/bot";
 import { Repository } from "../db/repository";
 import { GeminiService } from "../services/gemini/index";
 import { CONFIG } from "../config";
@@ -10,6 +10,81 @@ import logger from "../utils/logger";
 import { checkAndRunBackgroundMemoryExtraction } from "../services/gemini/memoryWorker";
 
 const COOLDOWN_SECONDS = 300; // 5 minutes cooldown between random replies
+
+/**
+ * Generates a reply from Gemini and sends it to the chat.
+ * Handles tool status messages (sending + cleanup) and long message splitting.
+ *
+ * Extracted to eliminate duplication between direct and spontaneous reply paths.
+ */
+async function generateAndSendReply(
+  ctx: Context,
+  chatIdStr: string,
+  isSpontaneous: boolean,
+  replyToMessageId?: number
+): Promise<void> {
+  const chatSettings = Repository.getChat(chatIdStr);
+  if (!chatSettings) return;
+
+  const activeTopic = await GeminiService.ensureTopicSummary(
+    chatIdStr,
+    chatSettings.current_topic
+  );
+  const history = Repository.getRecentMessages(
+    chatIdStr,
+    CONFIG.CHAT_HISTORY_LIMIT
+  );
+
+  let statusMessageId: number | undefined;
+  const logPrefix = isSpontaneous ? "[Spontaneous]" : "[Chat]";
+
+  const reply = await GeminiService.generateReply(
+    history,
+    activeTopic,
+    isSpontaneous,
+    async (toolName) => {
+      if (!statusMessageId) {
+        const statusMsgText =
+          toolName === "web_search"
+            ? CONFIG.MESSAGES.tool_status_web_search
+            : `bi dk knk bakıyorum (${toolName})...`;
+
+        logger.info(
+          `${logPrefix} Sending tool status notification: "${statusMsgText}"`
+        );
+
+        const sentMsg = await ctx
+          .reply(statusMsgText, {
+            ...(replyToMessageId
+              ? { reply_to_message_id: replyToMessageId }
+              : {}),
+          })
+          .catch((e) => {
+            logger.warn(`${logPrefix} Failed to send status message:`, e);
+            return null;
+          });
+
+        if (sentMsg) {
+          statusMessageId = sentMsg.message_id;
+        }
+      }
+    }
+  );
+
+  // Send final reply
+  await sendLongMessage(ctx, reply, {
+    ...(replyToMessageId ? { reply_to_message_id: replyToMessageId } : {}),
+  });
+
+  // Delete the temporary status message after final answer is sent
+  if (statusMessageId && ctx.chat) {
+    await ctx.api
+      .deleteMessage(ctx.chat.id, statusMessageId)
+      .catch((e) => {
+        logger.warn(`${logPrefix} Failed to delete status message:`, e);
+      });
+  }
+}
 
 export function registerChatHandlers(bot: Bot) {
   // Listen to all text messages (non-commands)
@@ -35,62 +110,29 @@ export function registerChatHandlers(bot: Bot) {
 
     const isFollowUp = isConversationFollowUp(chatIdStr, from.id, msg.date);
     if (isFollowUp) {
-      logger.debug(`[Conversation] Follow-up detected for user ${from.first_name} in chat ${chatIdStr}`);
+      logger.debug(
+        `[Conversation] Follow-up detected for user ${from.first_name} in chat ${chatIdStr}`
+      );
     }
 
-    const isDirectInteraction = isMentioned || isReplyToBot || isPrivateChat || containsNickname || isFollowUp;
+    const isDirectInteraction =
+      isMentioned ||
+      isReplyToBot ||
+      isPrivateChat ||
+      containsNickname ||
+      isFollowUp;
 
     // Get chat configuration
     const chatSettings = Repository.getChat(chatIdStr);
     if (!chatSettings) return;
 
     if (isDirectInteraction) {
-      // Direct interaction: reply immediately
-      await withTyping(ctx, async () => {
-        const [activeTopic, history] = await Promise.all([
-          GeminiService.ensureTopicSummary(chatIdStr, chatSettings.current_topic),
-          Promise.resolve(Repository.getRecentMessages(chatIdStr, CONFIG.CHAT_HISTORY_LIMIT)),
-        ]);
-        
-        let statusMessageId: number | undefined;
-
-        const reply = await GeminiService.generateReply(
-          history,
-          activeTopic,
-          false,
-          async (toolName) => {
-            if (!statusMessageId) {
-              const statusMsgText = toolName === "web_search"
-                ? CONFIG.MESSAGES.tool_status_web_search
-                : `bi dk knk bakıyorum (${toolName})...`;
-
-              logger.info(`[Chat] Sending tool status notification: "${statusMsgText}"`);
-              const sentMsg = await ctx.reply(statusMsgText, {
-                reply_to_message_id: msg.message_id,
-              }).catch((e) => {
-                logger.warn("[Chat] Failed to send status message:", e);
-                return null;
-              });
-
-              if (sentMsg) {
-                statusMessageId = sentMsg.message_id;
-              }
-            }
-          }
-        );
-
-        // Send final reply referencing the user's message
-        await sendLongMessage(ctx, reply, {
-          reply_to_message_id: msg.message_id,
-        });
-
-        // Delete the temporary status message after final answer is sent
-        if (statusMessageId && ctx.chat) {
-          await ctx.api.deleteMessage(ctx.chat.id, statusMessageId).catch((e) => {
-            logger.warn("[Chat] Failed to delete status message:", e);
-          });
-        }
-      });
+      // Direct interaction: reply immediately, serialized per chat
+      await withChatLock(chatIdStr, () =>
+        withTyping(ctx, () =>
+          generateAndSendReply(ctx, chatIdStr, false, msg.message_id)
+        )
+      );
       return;
     }
 
@@ -105,52 +147,20 @@ export function registerChatHandlers(bot: Bot) {
     if (isCooldownOver) {
       const roll = Math.random();
       if (roll < chatSettings.reply_probability) {
-        logger.info(`[Spontaneous] Rolling SUCCESS for chat ${chatIdStr} (Roll: ${roll.toFixed(4)} < ${chatSettings.reply_probability})`);
+        logger.info(
+          `[Spontaneous] Rolling SUCCESS for chat ${chatIdStr} (Roll: ${roll.toFixed(4)} < ${chatSettings.reply_probability})`
+        );
 
         // Update last random reply timestamp before processing to prevent double triggers
-        Repository.updateChatSettings(chatIdStr, { last_random_reply_at: now });
-
-        await withTyping(ctx, async () => {
-          const [activeTopic, history] = await Promise.all([
-            GeminiService.ensureTopicSummary(chatIdStr, chatSettings.current_topic),
-            Promise.resolve(Repository.getRecentMessages(chatIdStr, CONFIG.CHAT_HISTORY_LIMIT)),
-          ]);
-          
-          let statusMessageId: number | undefined;
-
-          const reply = await GeminiService.generateReply(
-            history,
-            activeTopic,
-            true,
-            async (toolName) => {
-              if (!statusMessageId) {
-                const statusMsgText = toolName === "web_search"
-                  ? CONFIG.MESSAGES.tool_status_web_search
-                  : `bi dk knk bakıyorum (${toolName})...`;
-
-                logger.info(`[Spontaneous] Sending tool status notification: "${statusMsgText}"`);
-                const sentMsg = await ctx.reply(statusMsgText).catch((e) => {
-                  logger.warn("[Spontaneous] Failed to send status message:", e);
-                  return null;
-                });
-
-                if (sentMsg) {
-                  statusMessageId = sentMsg.message_id;
-                }
-              }
-            }
-          );
-
-          // Spontaneous message: sent directly to the chat
-          await sendLongMessage(ctx, reply);
-
-          // Delete the temporary status message after final answer is sent
-          if (statusMessageId && ctx.chat) {
-            await ctx.api.deleteMessage(ctx.chat.id, statusMessageId).catch((e) => {
-              logger.warn("[Spontaneous] Failed to delete status message:", e);
-            });
-          }
+        Repository.updateChatSettings(chatIdStr, {
+          last_random_reply_at: now,
         });
+
+        await withChatLock(chatIdStr, () =>
+          withTyping(ctx, () =>
+            generateAndSendReply(ctx, chatIdStr, true)
+          )
+        );
       }
     }
   });

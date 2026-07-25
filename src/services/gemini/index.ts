@@ -19,6 +19,7 @@ export type ToolCallCallback = (
 ) => Promise<void> | void;
 
 const lastSummarizedCount = new Map<string, number>();
+const MAX_TRACKED_CHATS = 200;
 
 export const GeminiService = {
   async _generateResponse(
@@ -36,6 +37,10 @@ export const GeminiService = {
     },
   ): Promise<string> {
     try {
+      if (history.length === 0) {
+        logger.warn("[Gemini] _generateResponse called with empty history. Returning fallback.");
+        return options.fallbackEmpty;
+      }
       const chatIdStr = history[0]?.chat_id.toString() || "";
       const lastMsg = history[history.length - 1];
 
@@ -297,6 +302,11 @@ export const GeminiService = {
       if (summary) {
         Repository.updateChatSettings(chatIdStr, { current_topic: summary });
         lastSummarizedCount.set(chatIdStr, currentCount);
+        // Prune oldest entries if map grows too large
+        if (lastSummarizedCount.size > MAX_TRACKED_CHATS) {
+          const firstKey = lastSummarizedCount.keys().next().value;
+          if (firstKey) lastSummarizedCount.delete(firstKey);
+        }
         logger.info(
           `[Summarizer] New topic summary for ${chatIdStr}: "${summary}"`,
         );

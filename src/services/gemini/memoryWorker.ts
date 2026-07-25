@@ -6,6 +6,7 @@ import { CONFIG } from "../../config/index";
 import logger from "../../utils/logger";
 
 const backgroundCounter = new Map<string, number>();
+const MAX_TRACKED_CHATS = 200;
 
 /**
  * Increments message counter for a chat and triggers background memory extraction every 15 messages.
@@ -14,6 +15,11 @@ export async function checkAndRunBackgroundMemoryExtraction(chatIdStr: string): 
   const count = (backgroundCounter.get(chatIdStr) || 0) + 1;
   if (count < 15) {
     backgroundCounter.set(chatIdStr, count);
+    // Prune map if it grows too large
+    if (backgroundCounter.size > MAX_TRACKED_CHATS) {
+      const firstKey = backgroundCounter.keys().next().value;
+      if (firstKey) backgroundCounter.delete(firstKey);
+    }
     return;
   }
 

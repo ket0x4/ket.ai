@@ -1,5 +1,5 @@
 import { Bot, Context, InlineKeyboard } from "grammy";
-import { CONFIG } from "../config/index";
+import { CONFIG, updateModel } from "../config/index";
 import { Repository } from "../db/repository";
 import { sendLongMessage } from "../utils/message";
 import logger from "../utils/logger";
@@ -440,7 +440,7 @@ export function registerCommands(bot: Bot) {
       return;
     }
 
-    CONFIG.GEMINI_MODEL = modelName;
+    updateModel(modelName);
     await ctx.reply(`[OK] Model changed to \`${modelName}\`! New responses will be generated with this model.`, { parse_mode: "Markdown" });
   });
 

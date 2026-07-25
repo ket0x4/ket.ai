@@ -140,7 +140,7 @@ export const Repository = {
     }
   ): void {
     const updates: string[] = [];
-    const params: any[] = [];
+    const params: (string | number | null)[] = [];
 
     if (settings.title !== undefined) {
       updates.push("title = ?");
@@ -382,4 +382,3 @@ export const Repository = {
     };
   },
 };
-export type Repository = typeof Repository;

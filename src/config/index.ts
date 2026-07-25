@@ -1,6 +1,25 @@
 import { readFileSync, writeFileSync, existsSync } from "fs";
 
-let configJson: any = {};
+interface ConfigJson {
+  telegram_bot_token?: string;
+  gemini_api_key?: string;
+  gemini_model?: string;
+  chat_history_limit?: number;
+  image_history_limit?: number;
+  default_reply_probability?: number;
+  db_path?: string;
+  bot_owner_id?: number;
+  allowed_chat_ids?: (number | string)[];
+  enable_web_search?: boolean;
+  max_agent_steps?: number;
+  log_level?: string;
+  log_dir?: string;
+  log_max_size_mb?: number;
+  log_retention_days?: number;
+  messages?: Partial<Record<string, string>>;
+}
+
+let configJson: ConfigJson = {};
 const CONFIG_FILE_PATH = "config.json";
 
 if (existsSync(CONFIG_FILE_PATH)) {
@@ -39,7 +58,7 @@ export let CONFIG = {
       ? parseInt(process.env.BOT_OWNER_ID, 10)
       : undefined),
   ALLOWED_CHAT_IDS: Array.isArray(configJson.allowed_chat_ids)
-    ? configJson.allowed_chat_ids.map((id: any) => id.toString())
+    ? configJson.allowed_chat_ids.map((id: number | string) => id.toString())
     : process.env.ALLOWED_CHAT_IDS
       ? process.env.ALLOWED_CHAT_IDS.split(",").map((id) => id.trim())
       : [],
@@ -167,8 +186,15 @@ export function removeAllowedChatId(chatId: string): void {
   if (Array.isArray(configJson.allowed_chat_ids)) {
     const asNumber = parseInt(id, 10);
     configJson.allowed_chat_ids = configJson.allowed_chat_ids.filter(
-      (c: any) => c.toString() !== id && c !== asNumber
+      (c: number | string) => c.toString() !== id && c !== asNumber
     );
   }
   saveConfigFile();
+}
+
+/**
+ * Updates the active Gemini model at runtime.
+ */
+export function updateModel(modelName: string): void {
+  CONFIG.GEMINI_MODEL = modelName;
 }
