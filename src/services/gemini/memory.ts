@@ -55,12 +55,6 @@ export async function processNewMemory(
       logger.debug(`[Memory Store] Skipped duplicate memory for chat ${chatIdStr}:`, memText);
       return;
     }
-
-    // Contradiction / auto-update check for same user
-    if (options?.userId && m.userId === options.userId && sim > 0.65) {
-      logger.info(`[Memory Store] Replacing outdated memory #${m.id} for user ${options.userId}: "${m.text}" -> "${memText}"`);
-      idsToDelete.push(m.id);
-    }
   }
 
   if (idsToDelete.length > 0) {
