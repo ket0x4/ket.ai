@@ -8,12 +8,18 @@ import logger from "../../utils/logger";
 const newMemoriesCount = new Map<string, number>();
 const MAX_TRACKED_CHATS = 200;
 
-export async function generateEmbedding(text: string): Promise<number[]> {
+export async function generateEmbedding(
+  text: string,
+  taskType: "RETRIEVAL_DOCUMENT" | "RETRIEVAL_QUERY" | "SEMANTIC_SIMILARITY" = "RETRIEVAL_DOCUMENT"
+): Promise<number[]> {
   try {
     const response = await runWithRetry(() =>
       ai.models.embedContent({
         model: "gemini-embedding-2",
         contents: text,
+        config: {
+          taskType,
+        },
       }),
     );
     return response.embeddings?.[0]?.values || [];
@@ -42,7 +48,7 @@ export async function processNewMemory(
     minute: "2-digit",
   });
   const memText = `[${dateStr}] ${memoryText.trim()}`;
-  const emb = await generateEmbedding(memText);
+  const emb = await generateEmbedding(memText, "RETRIEVAL_DOCUMENT");
   if (emb.length === 0) {
     logger.warn(
       `[Memory Store] Skipped memory for chat ${chatIdStr} due to embedding failure:`,
@@ -111,7 +117,7 @@ export async function getRelevantMemories(
       ? `${cleanQuery} | Topic: ${activeTopic}`
       : cleanQuery;
 
-  const queryEmbedding = await generateEmbedding(enrichedQuery);
+  const queryEmbedding = await generateEmbedding(enrichedQuery, "RETRIEVAL_QUERY");
   if (queryEmbedding.length === 0) {
     logger.warn(
       `[Memory RAG] Query embedding failed for chat ${chatId}. Skipping RAG retrieval.`,
