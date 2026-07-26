@@ -128,6 +128,8 @@ export async function withTyping(ctx: Context, action: () => Promise<void>) {
   }
 }
 
+const leavingChats = new Set<string>();
+
 /**
  * Initializes and configures the bot.
  */
@@ -174,12 +176,17 @@ export async function initBot() {
       // If it's a message, or the bot was just added, leave immediately.
       // But don't spam API with leave requests for every minor update (like typing status).
       if (ctx.message || ctx.myChatMember) {
-        logger.warn(`[Security] Bot active in unauthorized group: ${chat.title} (${chatIdStr}). Leaving...`);
-        try {
-          await ctx.reply(CONFIG.MESSAGES.unauthorized_group_reply).catch(() => {});
-          await ctx.leaveChat();
-        } catch (e) {
-          logger.warn(`[Security] Could not cleanly leave chat ${chatIdStr}.`);
+        if (!leavingChats.has(chatIdStr)) {
+          leavingChats.add(chatIdStr);
+          logger.warn(`[Security] Bot active in unauthorized group: ${chat.title} (${chatIdStr}). Leaving...`);
+          try {
+            await ctx.reply(CONFIG.MESSAGES.unauthorized_group_reply).catch(() => {});
+            await ctx.leaveChat();
+          } catch (e) {
+            logger.warn(`[Security] Could not cleanly leave chat ${chatIdStr}.`);
+          }
+          // Remove from set after a timeout so it can retry if it failed
+          setTimeout(() => leavingChats.delete(chatIdStr), 60000);
         }
       }
       return;
@@ -299,6 +306,7 @@ export async function startBot() {
   await initBot();
   logger.info("Bot long polling starting...");
   bot.start({
+    drop_pending_updates: true,
     onStart(info) {
       logger.info(`Successfully started bot polling for @${info.username}`);
     },
