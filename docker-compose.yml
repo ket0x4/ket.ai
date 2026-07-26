@@ -11,10 +11,8 @@ services:
       # Mount configuration and system prompt files
       - ./config.json:/app/config.json:rw
       - ./system.txt:/app/system.txt:ro
-      # Mount the SQLite database files directly (read-write)
-      - ./bot.db:/app/bot.db:rw
-      - ./bot.db-wal:/app/bot.db-wal:rw
-      - ./bot.db-shm:/app/bot.db-shm:rw
+      # Mount the data directory for SQLite database files
+      - ./data:/app/data:rw
       # Mount logs directory to access app.log and error.log on host machine
       - ./logs:/app/logs:rw
 

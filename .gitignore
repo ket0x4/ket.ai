@@ -7,3 +7,5 @@ dist/
 system.txt
 .DS_Store
 /logs
+*.db-shm
+*.db-wal
