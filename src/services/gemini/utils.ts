@@ -78,7 +78,7 @@ export function buildHistoryList(history: MessageRow[]) {
     const fallback = msg.photo_file_id ? "[Photo]" : "[Media]";
     return {
       sender: senderName,
-      reply_to: msg.reply_to_first_name || undefined,
+      reply_to_message_id: msg.reply_to_message_id || undefined,
       text: msg.is_bot_reply ? (msg.text || fallback) : (cleanUserText(msg.text) || fallback)
     };
   });

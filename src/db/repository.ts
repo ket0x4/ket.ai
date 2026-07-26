@@ -19,7 +19,7 @@ export interface MessageRow {
   user_id: number;
   username: string | null;
   first_name: string | null;
-  reply_to_first_name: string | null;
+  reply_to_message_id: number | null;
   text: string | null;
   photo_file_id: string | null;
   is_bot_reply: number; // 0 or 1
@@ -30,19 +30,37 @@ export interface MessageRow {
 const stmts = {
   getChat: db.prepare("SELECT * FROM chats WHERE chat_id = ?"),
   insertChat: db.prepare(
-    `INSERT INTO chats (chat_id, title, reply_probability, is_allowed, created_at) VALUES (?, ?, ?, ?, ?)`
+    `INSERT INTO chats (chat_id, title, reply_probability, is_allowed, created_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(chat_id) DO NOTHING`
   ),
   setChatAllowed: db.prepare("UPDATE chats SET is_allowed = ? WHERE chat_id = ?"),
-  insertMessage: db.prepare(
-    `INSERT INTO messages (chat_id, message_id, user_id, username, first_name, reply_to_first_name, text, photo_file_id, is_bot_reply, sent_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  
+  insertUser: db.prepare(
+    `INSERT INTO users (user_id, username, first_name, last_updated) VALUES (?, ?, ?, ?)
+     ON CONFLICT(user_id) DO UPDATE SET 
+       username = excluded.username,
+       first_name = excluded.first_name,
+       last_updated = excluded.last_updated`
   ),
+  
+  insertMessage: db.prepare(
+    `INSERT INTO messages (chat_id, message_id, user_id, reply_to_message_id, text, photo_file_id, is_bot_reply, sent_at) 
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(chat_id, message_id) DO UPDATE SET
+       text = excluded.text,
+       photo_file_id = excluded.photo_file_id`
+  ),
+  
   getRecentMessages: db.prepare(
-    `SELECT * FROM (SELECT * FROM messages WHERE chat_id = ? ORDER BY sent_at DESC, id DESC LIMIT ?) ORDER BY sent_at ASC, id ASC`
+    `SELECT m.*, u.username, u.first_name 
+     FROM (SELECT * FROM messages WHERE chat_id = ? ORDER BY sent_at DESC, id DESC LIMIT ?) m
+     LEFT JOIN users u ON m.user_id = u.user_id
+     ORDER BY m.sent_at ASC, m.id ASC`
   ),
   getMessageCount: db.prepare("SELECT COUNT(*) as count FROM messages WHERE chat_id = ?"),
   deleteMessages: db.prepare("DELETE FROM messages WHERE chat_id = ?"),
   deleteMemories: db.prepare("DELETE FROM memories WHERE chat_id = ?"),
   resetTopic: db.prepare("UPDATE chats SET current_topic = NULL WHERE chat_id = ?"),
+  
   insertMemory: db.prepare(
     "INSERT INTO memories (chat_id, memory_text, embedding, created_at, user_id, category, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
   ),
@@ -62,7 +80,13 @@ const stmts = {
     `SELECT COUNT(*) as total_messages, COUNT(DISTINCT user_id) as unique_users FROM messages WHERE chat_id = ?`
   ),
   getTopUsers: db.prepare(
-    `SELECT first_name, COUNT(*) as msg_count FROM messages WHERE chat_id = ? AND is_bot_reply = 0 GROUP BY user_id ORDER BY msg_count DESC LIMIT 5`
+    `SELECT u.first_name, COUNT(m.id) as msg_count 
+     FROM messages m 
+     JOIN users u ON m.user_id = u.user_id 
+     WHERE m.chat_id = ? AND m.is_bot_reply = 0 
+     GROUP BY m.user_id 
+     ORDER BY msg_count DESC 
+     LIMIT 5`
   ),
   getTodayMessageCount: db.prepare(
     `SELECT COUNT(*) as count FROM messages WHERE chat_id = ? AND sent_at >= ?`
@@ -227,24 +251,35 @@ export const Repository = {
     userId: number;
     username?: string;
     firstName?: string;
-    replyToFirstName?: string;
+    replyToMessageId?: number;
     text?: string;
     photoFileId?: string;
     isBotReply?: boolean;
     sentAt: number;
   }): void {
-    stmts.insertMessage.run(
-      params.chatId,
-      params.messageId,
-      params.userId,
-      params.username || null,
-      params.firstName || null,
-      params.replyToFirstName || null,
-      params.text || null,
-      params.photoFileId || null,
-      params.isBotReply ? 1 : 0,
-      params.sentAt
-    );
+    const transaction = db.transaction(() => {
+      // Upsert User
+      stmts.insertUser.run(
+        params.userId,
+        params.username || null,
+        params.firstName || null,
+        params.sentAt
+      );
+
+      // Insert Message
+      stmts.insertMessage.run(
+        params.chatId,
+        params.messageId,
+        params.userId,
+        params.replyToMessageId || null,
+        params.text || null,
+        params.photoFileId || null,
+        params.isBotReply ? 1 : 0,
+        params.sentAt
+      );
+    });
+    
+    transaction();
   },
 
   /**
@@ -275,14 +310,18 @@ export const Repository = {
    * Clears chat history and long-term memories for a group (e.g. on reset).
    */
   clearChatHistory(chatId: string): void {
-    stmts.deleteMessages.run(chatId);
-    stmts.deleteMemories.run(chatId);
-    stmts.resetTopic.run(chatId);
+    const transaction = db.transaction(() => {
+      stmts.deleteMessages.run(chatId);
+      stmts.deleteMemories.run(chatId);
+      stmts.resetTopic.run(chatId);
+    });
+    transaction();
+    this.clearMemoryCache(chatId);
   },
 
   /**
    * Adds a new memory fact for a chat.
-   * Enforces a maximum of 2000 memories per chat — oldest is removed when limit is reached.
+   * Enforces a maximum of 10000 memories per chat — oldest is removed when limit is reached.
    */
   addMemory(
     chatId: string,
@@ -308,10 +347,13 @@ export const Repository = {
       ? now + options.ttlDays * 86400
       : null;
 
+    // Convert number[] to binary BLOB via Float32Array
+    const buffer = Buffer.from(new Float32Array(embedding).buffer);
+
     stmts.insertMemory.run(
       chatId,
       memoryText,
-      JSON.stringify(embedding),
+      buffer, // using BLOB
       now,
       userId,
       category,
@@ -331,22 +373,34 @@ export const Repository = {
     const rows = stmts.getMemories.all(chatId) as {
       id: number;
       memory_text: string;
-      embedding: string | null;
+      embedding: Uint8Array | null;
       created_at: number;
       user_id: number | null;
       category: string | null;
       expires_at: number | null;
     }[];
 
-    const parsed: MemoryItem[] = rows.map((row) => ({
-      id: row.id,
-      text: row.memory_text,
-      embedding: row.embedding ? JSON.parse(row.embedding) : [],
-      createdAt: row.created_at,
-      userId: row.user_id,
-      category: (row.category as "PROFILE" | "DYNAMIC" | "TEMPORARY") || "PROFILE",
-      expiresAt: row.expires_at,
-    }));
+    const parsed: MemoryItem[] = rows.map((row) => {
+      let embeddingArray: number[] = [];
+      if (row.embedding) {
+        // Convert BLOB back to number[]
+        const floatArray = new Float32Array(
+          row.embedding.buffer,
+          row.embedding.byteOffset,
+          row.embedding.byteLength / 4
+        );
+        embeddingArray = Array.from(floatArray);
+      }
+      return {
+        id: row.id,
+        text: row.memory_text,
+        embedding: embeddingArray,
+        createdAt: row.created_at,
+        userId: row.user_id,
+        category: (row.category as "PROFILE" | "DYNAMIC" | "TEMPORARY") || "PROFILE",
+        expiresAt: row.expires_at,
+      };
+    });
 
     memoryCache.set(chatId, parsed);
     return parsed;
