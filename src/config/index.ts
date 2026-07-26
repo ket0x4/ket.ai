@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, existsSync } from "fs";
+import { readFileSync, existsSync } from "fs";
 
 interface ConfigJson {
   telegram_bot_token?: string;
@@ -146,51 +146,6 @@ if (
   console.warn("WARNING: DEFAULT_REPLY_PROBABILITY should be between 0 and 1.");
 }
 
-/**
- * Writes the current configJson state back to config.json.
- * Call this after mutating configJson to persist changes across restarts.
- */
-export function saveConfigFile(): void {
-  try {
-    writeFileSync(CONFIG_FILE_PATH, JSON.stringify(configJson, null, 2), "utf-8");
-  } catch (e) {
-    console.error("[Config] Failed to save config.json:", e);
-  }
-}
-
-/**
- * Adds a chat ID to the allowed list in memory and persists it to config.json.
- */
-export function addAllowedChatId(chatId: string): void {
-  const id = chatId.toString();
-  if (!CONFIG.ALLOWED_CHAT_IDS.includes(id)) {
-    CONFIG.ALLOWED_CHAT_IDS.push(id);
-  }
-  if (!Array.isArray(configJson.allowed_chat_ids)) {
-    configJson.allowed_chat_ids = [];
-  }
-  const asNumber = parseInt(id, 10);
-  const entry = isNaN(asNumber) ? id : asNumber;
-  if (!configJson.allowed_chat_ids.includes(entry) && !configJson.allowed_chat_ids.includes(id)) {
-    configJson.allowed_chat_ids.push(entry);
-  }
-  saveConfigFile();
-}
-
-/**
- * Removes a chat ID from the allowed list in memory and persists the change to config.json.
- */
-export function removeAllowedChatId(chatId: string): void {
-  const id = chatId.toString();
-  CONFIG.ALLOWED_CHAT_IDS = CONFIG.ALLOWED_CHAT_IDS.filter((c) => c !== id);
-  if (Array.isArray(configJson.allowed_chat_ids)) {
-    const asNumber = parseInt(id, 10);
-    configJson.allowed_chat_ids = configJson.allowed_chat_ids.filter(
-      (c: number | string) => c.toString() !== id && c !== asNumber
-    );
-  }
-  saveConfigFile();
-}
 
 /**
  * Updates the active Gemini model at runtime.

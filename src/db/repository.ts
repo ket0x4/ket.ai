@@ -70,6 +70,9 @@ const stmts = {
   updateMessageText: db.prepare(
     "UPDATE messages SET text = ? WHERE chat_id = ? AND message_id = ?"
   ),
+  updateChatIdForChats: db.prepare("UPDATE chats SET chat_id = ? WHERE chat_id = ?"),
+  updateChatIdForMessages: db.prepare("UPDATE messages SET chat_id = ? WHERE chat_id = ?"),
+  updateChatIdForMemories: db.prepare("UPDATE memories SET chat_id = ? WHERE chat_id = ?"),
 };
 
 export interface MemoryItem {
@@ -95,6 +98,53 @@ export const Repository = {
     } else {
       memoryCache.clear();
     }
+  },
+
+  /**
+   * Seeds the database with a list of initially allowed chat IDs from config.
+   */
+  initSeedAllowedChats(chatIds: string[]): void {
+    if (!chatIds || chatIds.length === 0) return;
+    
+    logger.info(`[Repository] Seeding allowed chats from config: ${chatIds.join(", ")}`);
+    const transaction = db.transaction((ids: string[]) => {
+      const now = Math.floor(Date.now() / 1000);
+      const defaultProb = CONFIG.DEFAULT_REPLY_PROBABILITY;
+      
+      for (const id of ids) {
+        const existing = stmts.getChat.get(id) as ChatRow | null;
+        if (!existing) {
+          stmts.insertChat.run(id, "Seeded Group", defaultProb, 1, now);
+        } else if (existing.is_allowed === 0) {
+          stmts.setChatAllowed.run(1, id);
+        }
+      }
+    });
+    transaction(chatIds);
+  },
+
+  /**
+   * Migrates chat ID for a group (useful when a group is upgraded to a supergroup).
+   */
+  migrateChat(oldChatId: string, newChatId: string): void {
+    logger.info(`[Repository] Migrating chat ID ${oldChatId} -> ${newChatId}`);
+    
+    // Check if new chat already exists (edge case)
+    const newChatExists = stmts.getChat.get(newChatId) as ChatRow | null;
+    if (newChatExists) {
+      logger.warn(`[Repository] Target chat ID ${newChatId} already exists. Skipping migration.`);
+      return;
+    }
+
+    const transaction = db.transaction(() => {
+      stmts.updateChatIdForChats.run(newChatId, oldChatId);
+      stmts.updateChatIdForMessages.run(newChatId, oldChatId);
+      stmts.updateChatIdForMemories.run(newChatId, oldChatId);
+    });
+
+    transaction();
+    this.clearMemoryCache(oldChatId);
+    this.clearMemoryCache(newChatId);
   },
 
   /**

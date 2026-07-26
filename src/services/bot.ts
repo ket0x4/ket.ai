@@ -137,7 +137,10 @@ export async function initBot() {
   botUsername = me.username;
   logger.info(`Bot initialized as @${botUsername}`);
 
-  // 1. Middleware: Whitelist Checker
+  // 1. Seed initially allowed chats from config/env
+  Repository.initSeedAllowedChats(CONFIG.ALLOWED_CHAT_IDS);
+
+  // 2. Middleware: Whitelist Checker
   bot.use(async (ctx, next) => {
     const chat = ctx.chat;
     if (!chat) return await next();
@@ -161,25 +164,23 @@ export async function initBot() {
       return;
     }
 
-    // Check if group is allowed in environment variable
-    const isEnvAllowed = CONFIG.ALLOWED_CHAT_IDS.includes(chatIdStr);
-
-    // Fetch or create chat settings in SQLite
+    // Fetch chat settings in SQLite
     let dbChat = Repository.getChat(chatIdStr);
-    if (!dbChat) {
-      dbChat = Repository.createChat(chatIdStr, chat.title || "Group", isEnvAllowed);
-    }
-
-    const isAllowed = isEnvAllowed || dbChat.is_allowed === 1;
+    
+    // Check if group is explicitly allowed in DB
+    const isAllowed = dbChat?.is_allowed === 1;
 
     if (!isAllowed) {
-      logger.warn(`[Security] Bot added/active in unauthorized group: ${chat.title} (${chatIdStr}). Leaving...`);
-      try {
-        // Safe reply (catch error if bot has no write access or was kicked)
-        await ctx.reply(CONFIG.MESSAGES.unauthorized_group_reply).catch(() => {});
-        await ctx.leaveChat();
-      } catch (e) {
-        logger.warn(`[Security] Could not cleanly leave chat ${chatIdStr} (possibly already removed).`);
+      // If it's a message, or the bot was just added, leave immediately.
+      // But don't spam API with leave requests for every minor update (like typing status).
+      if (ctx.message || ctx.myChatMember) {
+        logger.warn(`[Security] Bot active in unauthorized group: ${chat.title} (${chatIdStr}). Leaving...`);
+        try {
+          await ctx.reply(CONFIG.MESSAGES.unauthorized_group_reply).catch(() => {});
+          await ctx.leaveChat();
+        } catch (e) {
+          logger.warn(`[Security] Could not cleanly leave chat ${chatIdStr}.`);
+        }
       }
       return;
     }
@@ -187,7 +188,16 @@ export async function initBot() {
     await next();
   });
 
-  // 2. Middleware: Message Archiver & Background Topic Summarizer
+  // 3. Supergroup Migration Handler
+  bot.on("message:migrate_to_chat_id", async (ctx) => {
+    const oldChatId = ctx.chat.id.toString();
+    const newChatId = ctx.message.migrate_to_chat_id.toString();
+    
+    logger.info(`[Migration] Group upgraded to supergroup. Migrating ${oldChatId} -> ${newChatId}`);
+    Repository.migrateChat(oldChatId, newChatId);
+  });
+
+  // 4. Middleware: Message Archiver & Background Topic Summarizer
   bot.on(["message:text", "message:photo", "message:voice"], async (ctx, next) => {
     const chat = ctx.chat;
     const msg = ctx.message;
@@ -241,7 +251,7 @@ export async function initBot() {
     await next();
   });
 
-  // 3. Permission Checker: Ensure bot can write, otherwise leave immediately
+  // 5. Permission Checker: Ensure bot can write, otherwise leave immediately
   bot.on("my_chat_member", async (ctx) => {
     const chat = ctx.chat;
     if (!chat || chat.type === "private") return;
