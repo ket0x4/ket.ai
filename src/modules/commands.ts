@@ -63,8 +63,7 @@ function getMemDashboardPayload(chatId: string) {
     .text("All Memories", "mem:page:1")
     .text("My Profile", "mem:user_me")
     .row()
-    .text("Add Fact Help", "mem:help_add")
-    .text("Delete Fact Help", "mem:help_del")
+    .text("Help", "mem:help")
     .row()
     .text("Back to Dashboard", "mem:dashboard");
 
@@ -74,7 +73,10 @@ function getMemDashboardPayload(chatId: string) {
 function getMemoriesPagePayload(chatId: string, page: number = 1) {
   const memories = Repository.getMemories(chatId);
   if (memories.length === 0) {
-    const keyboard = new InlineKeyboard().text("Back to Dashboard", "mem:dashboard");
+    const keyboard = new InlineKeyboard().text(
+      "Back to Dashboard",
+      "mem:dashboard",
+    );
     return {
       text: "No saved memories for this group yet.",
       keyboard,
@@ -86,13 +88,17 @@ function getMemoriesPagePayload(chatId: string, page: number = 1) {
   const currentPage = Math.max(1, Math.min(page, totalPages));
 
   const startIndex = (currentPage - 1) * MEMORIES_PER_PAGE;
-  const pageMemories = memories.slice(startIndex, startIndex + MEMORIES_PER_PAGE);
+  const pageMemories = memories.slice(
+    startIndex,
+    startIndex + MEMORIES_PER_PAGE,
+  );
 
   const memoryList = pageMemories
     .map((memory, index) => {
-      const text = memory.text.length > MAX_MEMORY_DISPLAY_LENGTH
-        ? memory.text.slice(0, MAX_MEMORY_DISPLAY_LENGTH) + "..."
-        : memory.text;
+      const text =
+        memory.text.length > MAX_MEMORY_DISPLAY_LENGTH
+          ? memory.text.slice(0, MAX_MEMORY_DISPLAY_LENGTH) + "..."
+          : memory.text;
       return `${startIndex + index + 1}. [ID:${memory.id}] ${text}`;
     })
     .join("\n");
@@ -123,7 +129,7 @@ export function registerCommands(bot: Bot) {
   bot.command("start", async (ctx) => {
     await ctx.reply(
       "Hi! I am an LLM-powered AI bot. I track group history, " +
-      "answer your questions, recognize photos, listen to voice messages, and participate in conversations."
+        "answer your questions, recognize photos, listen to voice messages, and participate in conversations.",
     );
   });
 
@@ -131,17 +137,16 @@ export function registerCommands(bot: Bot) {
   bot.command("help", async (ctx) => {
     await ctx.reply(
       "Available Commands & Capabilities:\n\n" +
-      "**Chat**: I respond if you reply to me directly or mention me in your message.\n" +
-      "**Spontaneous Participation**: I occasionally chime in on the group conversation.\n" +
-      "**Image & Voice Recognition**: I understand photos and listen to voice messages.\n" +
-      "**Management Commands**:\n" +
-      "• `/mem` — Open interactive memory dashboard\n" +
-      "• `/remember <fact>` — Save a new fact to memory\n" +
-      "• `/prob [0-100]` — Set random reply probability (Admin)\n" +
-      "• `/stats` — View group chat statistics\n" +
-      "• `/reset` — Clear chat history and memory (Admin)\n" +
-      "• `/model [model]` — Switch AI model (Owner)",
-      { parse_mode: "Markdown" }
+        "**Chat**: I respond if you reply to me directly or mention me in your message.\n" +
+        "**Spontaneous Participation**: I occasionally chime in on the group conversation.\n" +
+        "**Image & Voice Recognition**: I understand photos and listen to voice messages.\n" +
+        "**Management Commands**:\n" +
+        "• `/mem` — Open interactive memory dashboard\n" +
+        "• `/remember <fact>` — Save a new fact to memory\n" +
+        "• `/prob [0-100]` — Set random reply probability (Admin)\n" +
+        "• `/reset` — Clear chat history and memory (Admin)\n" +
+        "• `/model [model]` — Switch AI model (Owner)",
+      { parse_mode: "Markdown" },
     );
   });
 
@@ -176,7 +181,10 @@ export function registerCommands(bot: Bot) {
       Repository.setChatAllowed(targetChatId, true);
     }
 
-    await ctx.reply(`[OK] Chat permission granted to group ID \`${targetChatId}\`.`, { parse_mode: "Markdown" });
+    await ctx.reply(
+      `[OK] Chat permission granted to group ID \`${targetChatId}\`.`,
+      { parse_mode: "Markdown" },
+    );
   });
 
   // 5. Admin command: /disallow <chatId> (Owner only)
@@ -190,7 +198,10 @@ export function registerCommands(bot: Bot) {
     }
 
     Repository.setChatAllowed(targetChatId, false);
-    await ctx.reply(`[Denied] Chat permission revoked for group ID \`${targetChatId}\`.`, { parse_mode: "Markdown" });
+    await ctx.reply(
+      `[Denied] Chat permission revoked for group ID \`${targetChatId}\`.`,
+      { parse_mode: "Markdown" },
+    );
   });
 
   // 6. /prob command to adjust response probability
@@ -207,43 +218,31 @@ export function registerCommands(bot: Bot) {
 
     if (!matchValue) {
       const chat = Repository.getChat(chatId);
-      const currentProbability = Math.round((chat?.reply_probability ?? 0.05) * 100);
-      await ctx.reply(`Random reply probability is currently ${currentProbability}%. To change it, type: \`/prob 10\` (for 10%).`, { parse_mode: "Markdown" });
+      const currentProbability = Math.round(
+        (chat?.reply_probability ?? 0.05) * 100,
+      );
+      await ctx.reply(
+        `Random reply probability is currently ${currentProbability}%. To change it, type: \`/prob 10\` (for 10%).`,
+        { parse_mode: "Markdown" },
+      );
       return;
     }
 
     const probabilityValue = parseInt(matchValue, 10);
-    if (isNaN(probabilityValue) || probabilityValue < 0 || probabilityValue > 100) {
+    if (
+      isNaN(probabilityValue) ||
+      probabilityValue < 0 ||
+      probabilityValue > 100
+    ) {
       await ctx.reply("You must enter a percentage value between 0 and 100.");
       return;
     }
 
-    Repository.updateChatSettings(chatId, { reply_probability: probabilityValue / 100 });
-    await ctx.reply(`Random reply probability updated to ${probabilityValue}%.`);
-  });
-
-  // 7. /stats command — group chat statistics
-  bot.command("stats", async (ctx) => {
-    if (!ctx.chat) return;
-    const chatId = ctx.chat.id.toString();
-
-    const stats = Repository.getChatStats(chatId);
-    const chatSettings = Repository.getChat(chatId);
-
-    const topUsersText = stats.topUsers.length > 0
-      ? stats.topUsers.map((user, index) => `  ${index + 1}. ${user.first_name || "Anonymous"} - ${user.msg_count} messages`).join("\n")
-      : "  Not enough data yet.";
-
-    const currentTopic = chatSettings?.current_topic || "Not set";
-
+    Repository.updateChatSettings(chatId, {
+      reply_probability: probabilityValue / 100,
+    });
     await ctx.reply(
-      `**Group Statistics**\n\n` +
-      `Total messages: ${stats.totalMessages}\n` +
-      `Unique users: ${stats.uniqueUsers}\n` +
-      `Messages today: ${stats.todayMessages}\n\n` +
-      `**Most Active Members:**\n${topUsersText}\n\n` +
-      `Current topic: "${currentTopic}"`,
-      { parse_mode: "Markdown" }
+      `Random reply probability updated to ${probabilityValue}%.`,
     );
   });
 
@@ -267,15 +266,21 @@ export function registerCommands(bot: Bot) {
     if (lowerArg === "me") {
       const userMemories = Repository.getUserMemories(chatId, ctx.from.id);
       if (userMemories.length === 0) {
-        await ctx.reply(`No specific profile facts saved for you (${ctx.from.first_name}) yet.`);
+        await ctx.reply(
+          `No specific profile facts saved for you (${ctx.from.first_name}) yet.`,
+        );
         return;
       }
       const list = userMemories
         .map((m, i) => `${i + 1}. [ID:${m.id}] ${m.text}`)
         .join("\n");
-      await sendLongMessage(ctx, `**Saved Facts for ${ctx.from.first_name}:**\n\n${list}`, {
-        parse_mode: "Markdown",
-      });
+      await sendLongMessage(
+        ctx,
+        `**Saved Facts for ${ctx.from.first_name}:**\n\n${list}`,
+        {
+          parse_mode: "Markdown",
+        },
+      );
       return;
     }
 
@@ -293,11 +298,15 @@ export function registerCommands(bot: Bot) {
       const parts = lowerArg.split(" ");
       const targetId = parseInt(parts[1], 10);
       if (isNaN(targetId)) {
-        await ctx.reply("Usage: `/mem del <id>` — e.g. `/mem del 42`", { parse_mode: "Markdown" });
+        await ctx.reply("Usage: `/mem del <id>` — e.g. `/mem del 42`", {
+          parse_mode: "Markdown",
+        });
         return;
       }
       Repository.deleteMemoriesByIds([targetId], chatId);
-      await ctx.reply(`[OK] Memory ID \`${targetId}\` has been deleted.`, { parse_mode: "Markdown" });
+      await ctx.reply(`[OK] Memory ID \`${targetId}\` has been deleted.`, {
+        parse_mode: "Markdown",
+      });
       return;
     }
 
@@ -311,23 +320,27 @@ export function registerCommands(bot: Bot) {
       }
 
       if (index < 0 || index >= memories.length) {
-        await ctx.reply(`Invalid number. Total memories: ${memories.length}. Enter 1 to ${memories.length}.`);
+        await ctx.reply(
+          `Invalid number. Total memories: ${memories.length}. Enter 1 to ${memories.length}.`,
+        );
         return;
       }
 
       const memory = memories[index];
       const header = `**Memory #${index + 1}** (of ${memories.length}) [ID:${memory.id}]:\n\n`;
-      await sendLongMessage(ctx, header + memory.text, { parse_mode: "Markdown" });
+      await sendLongMessage(ctx, header + memory.text, {
+        parse_mode: "Markdown",
+      });
       return;
     }
 
     await ctx.reply(
       "Usage:\n" +
-      "• `/mem` — Open memory dashboard\n" +
-      "• `/mem me` — View facts saved about you\n" +
-      "• `/mem del <id>` — Delete memory by ID\n" +
-      "• `/mem <number>` — View full text of memory #number",
-      { parse_mode: "Markdown" }
+        "• `/mem` — Open memory dashboard\n" +
+        "• `/mem me` — View facts saved about you\n" +
+        "• `/mem del <id>` — Delete memory by ID\n" +
+        "• `/mem <number>` — View full text of memory #number",
+      { parse_mode: "Markdown" },
     );
   });
 
@@ -363,16 +376,21 @@ export function registerCommands(bot: Bot) {
     if (!ctx.chat || !ctx.from) return;
     const chatId = ctx.chat.id.toString();
     const userMemories = Repository.getUserMemories(chatId, ctx.from.id);
-    
+
     let text = "";
     if (userMemories.length === 0) {
       text = `No specific profile facts saved for you (${ctx.from.first_name}) yet.`;
     } else {
-      const list = userMemories.map((m, i) => `${i + 1}. [ID:${m.id}] ${m.text}`).join("\n");
+      const list = userMemories
+        .map((m, i) => `${i + 1}. [ID:${m.id}] ${m.text}`)
+        .join("\n");
       text = `**Saved Facts for ${ctx.from.first_name}:**\n\n${list}`;
     }
 
-    const keyboard = new InlineKeyboard().text("Back to Dashboard", "mem:dashboard");
+    const keyboard = new InlineKeyboard().text(
+      "Back to Dashboard",
+      "mem:dashboard",
+    );
     try {
       await ctx.editMessageText(text, {
         parse_mode: "Markdown",
@@ -382,28 +400,20 @@ export function registerCommands(bot: Bot) {
     await ctx.answerCallbackQuery().catch(() => {});
   });
 
-  bot.callbackQuery("mem:help_add", async (ctx) => {
+  bot.callbackQuery("mem:help", async (ctx) => {
     const text =
       "**How to Add Memories**\n\n" +
       "1. Use command: `/remember <fact>`\n" +
       "2. Or reply to any user message with `/remember` to save it.\n" +
       "3. Natural phrases like *'remember this'*, *'keep in mind'*, *'note this'* will also be automatically extracted.";
-    const keyboard = new InlineKeyboard().text("Back to Dashboard", "mem:dashboard");
-    try {
-      await ctx.editMessageText(text, {
-        parse_mode: "Markdown",
-        reply_markup: keyboard,
-      });
-    } catch {}
-    await ctx.answerCallbackQuery().catch(() => {});
-  });
 
-  bot.callbackQuery("mem:help_del", async (ctx) => {
-    const text =
-      "**How to Delete Memories**\n\n" +
+    "**How to Delete Memories**\n\n" +
       "1. Type `/mem del <id>` (e.g., `/mem del 42`).\n" +
       "2. Admins can clear all group memories using `/mem clear`.";
-    const keyboard = new InlineKeyboard().text("Back to Dashboard", "mem:dashboard");
+    const keyboard = new InlineKeyboard().text(
+      "Back to Dashboard",
+      "mem:dashboard",
+    );
     try {
       await ctx.editMessageText(text, {
         parse_mode: "Markdown",
@@ -426,11 +436,12 @@ export function registerCommands(bot: Bot) {
     if (!modelName) {
       await ctx.reply(
         `**Current model**: \`${CONFIG.GEMINI_MODEL}\`\n\n` +
-        `To change:\n` +
-        `\`/model gemini-3.5-flash\`\n` +
-        `\`/model gemini-3.1-pro\`\n` +
-        `\`/model gemini-3.1-flash-lite\``,
-        { parse_mode: "Markdown" }
+          `To change:\n` +
+          `\`/model gemini-3.6-flash\`\n` +
+          `\`/model gemini-3.1-pro\`\n` +
+          `\`/model gemini-3.5-flash-lite\`` +
+          `\`/model gemini-3.1-flash-lite\``,
+        { parse_mode: "Markdown" },
       );
       return;
     }
@@ -441,7 +452,10 @@ export function registerCommands(bot: Bot) {
     }
 
     updateModel(modelName);
-    await ctx.reply(`[OK] Model changed to \`${modelName}\`! New responses will be generated with this model.`, { parse_mode: "Markdown" });
+    await ctx.reply(
+      `[OK] Model changed to \`${modelName}\`! New responses will be generated with this model.`,
+      { parse_mode: "Markdown" },
+    );
   });
 
   // 10. /remember command — explicitly save a fact to memory
@@ -465,7 +479,10 @@ export function registerCommands(bot: Bot) {
     }
 
     if (!factToSave) {
-      await ctx.reply("Usage: `/remember <fact>` or reply to a message with `/remember`.", { parse_mode: "Markdown" });
+      await ctx.reply(
+        "Usage: `/remember <fact>` or reply to a message with `/remember`.",
+        { parse_mode: "Markdown" },
+      );
       return;
     }
 
@@ -475,6 +492,9 @@ export function registerCommands(bot: Bot) {
       category: "PROFILE",
     });
 
-    await ctx.reply(`[OK] Saved memory for ${targetUserName}: "${factToSave}"`, { parse_mode: "Markdown" });
+    await ctx.reply(
+      `[OK] Saved memory for ${targetUserName}: "${factToSave}"`,
+      { parse_mode: "Markdown" },
+    );
   });
 }

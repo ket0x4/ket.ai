@@ -38,11 +38,11 @@ export let CONFIG = {
   GEMINI_MODEL:
     configJson.gemini_model ||
     process.env.GEMINI_MODEL ||
-    "gemini-3.1-flash-lite",
+    "gemini-3.5-flash-lite",
   CHAT_HISTORY_LIMIT:
     typeof configJson.chat_history_limit === "number"
       ? configJson.chat_history_limit
-      : 8,
+      : 10,
   IMAGE_HISTORY_LIMIT:
     typeof configJson.image_history_limit === "number"
       ? configJson.image_history_limit
@@ -145,7 +145,6 @@ if (
 ) {
   console.warn("WARNING: DEFAULT_REPLY_PROBABILITY should be between 0 and 1.");
 }
-
 
 /**
  * Updates the active Gemini model at runtime.

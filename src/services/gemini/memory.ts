@@ -10,10 +10,12 @@ const MAX_TRACKED_CHATS = 200;
 
 export async function generateEmbedding(text: string): Promise<number[]> {
   try {
-    const response = await runWithRetry(() => ai.models.embedContent({
-      model: "gemini-embedding-001",
-      contents: text,
-    }));
+    const response = await runWithRetry(() =>
+      ai.models.embedContent({
+        model: "gemini-embedding-2",
+        contents: text,
+      }),
+    );
     return response.embeddings?.[0]?.values || [];
   } catch (error) {
     logger.error("Error generating embedding:", error);
@@ -28,18 +30,24 @@ export async function processNewMemory(
     userId?: number | null;
     category?: "PROFILE" | "DYNAMIC" | "TEMPORARY";
     ttlDays?: number | null;
-  }
+  },
 ) {
   if (!memoryText || !memoryText.trim() || !chatIdStr) return;
-  
-  const dateStr = new Date().toLocaleString('tr-TR', { 
-    day: '2-digit', month: '2-digit', year: 'numeric', 
-    hour: '2-digit', minute: '2-digit' 
+
+  const dateStr = new Date().toLocaleString("tr-TR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
   });
   const memText = `[${dateStr}] ${memoryText.trim()}`;
   const emb = await generateEmbedding(memText);
   if (emb.length === 0) {
-    logger.warn(`[Memory Store] Skipped memory for chat ${chatIdStr} due to embedding failure:`, memText);
+    logger.warn(
+      `[Memory Store] Skipped memory for chat ${chatIdStr} due to embedding failure:`,
+      memText,
+    );
     return;
   }
 
@@ -52,7 +60,10 @@ export async function processNewMemory(
 
     // Exact duplicate check
     if (sim > 0.85) {
-      logger.debug(`[Memory Store] Skipped duplicate memory for chat ${chatIdStr}:`, memText);
+      logger.debug(
+        `[Memory Store] Skipped duplicate memory for chat ${chatIdStr}:`,
+        memText,
+      );
       return;
     }
   }
@@ -67,7 +78,9 @@ export async function processNewMemory(
   const count = (newMemoriesCount.get(chatIdStr) || 0) + 1;
   if (count >= 20) {
     newMemoriesCount.set(chatIdStr, 0);
-    consolidateMemories(chatIdStr).catch(e => logger.error("Memory consolidation error:", e));
+    consolidateMemories(chatIdStr).catch((e) =>
+      logger.error("Memory consolidation error:", e),
+    );
   } else {
     newMemoriesCount.set(chatIdStr, count);
     // Prune map if it grows too large
@@ -82,7 +95,7 @@ export async function getRelevantMemories(
   chatId: string,
   query: string,
   activeTopic?: string,
-  topK = 5
+  topK = 5,
 ): Promise<string[]> {
   // Automatically clean up expired memories first
   Repository.pruneExpiredMemories(chatId);
@@ -92,13 +105,17 @@ export async function getRelevantMemories(
 
   // Enrich query with active topic if available for better semantic matching
   const cleanQuery = query.trim();
-  const enrichedQuery = (activeTopic && activeTopic !== "General chat is going on, no specific topic.")
-    ? `${cleanQuery} | Topic: ${activeTopic}`
-    : cleanQuery;
+  const enrichedQuery =
+    activeTopic &&
+    activeTopic !== "General chat is going on, no specific topic."
+      ? `${cleanQuery} | Topic: ${activeTopic}`
+      : cleanQuery;
 
   const queryEmbedding = await generateEmbedding(enrichedQuery);
   if (queryEmbedding.length === 0) {
-    logger.warn(`[Memory RAG] Query embedding failed for chat ${chatId}. Skipping RAG retrieval.`);
+    logger.warn(
+      `[Memory RAG] Query embedding failed for chat ${chatId}. Skipping RAG retrieval.`,
+    );
     return [];
   }
 
@@ -107,24 +124,26 @@ export async function getRelevantMemories(
   // Calculate hybrid similarity score (85% Cosine Similarity + 15% Recency Decay)
   const scored = allMemories.map((m) => {
     if (m.embedding.length === 0) return { text: m.text, score: -1 };
-    
+
     const cosSim = cosineSimilarity(queryEmbedding, m.embedding);
     const ageInDays = Math.max(0, (now - m.createdAt) / 86400);
     const recencyBoost = Math.exp(-0.05 * ageInDays); // Exponential time-decay factor
-    
-    const finalScore = (0.85 * cosSim) + (0.15 * recencyBoost);
+
+    const finalScore = 0.85 * cosSim + 0.15 * recencyBoost;
     return { text: m.text, score: finalScore };
   });
 
   scored.sort((a, b) => b.score - a.score);
-  const THRESHOLD = 0.60;
+  const THRESHOLD = 0.6;
   const topMemories = scored
-    .filter(s => s.score >= THRESHOLD)
+    .filter((s) => s.score >= THRESHOLD)
     .slice(0, topK)
-    .map(s => s.text);
+    .map((s) => s.text);
 
   if (topMemories.length > 0) {
-    logger.debug(`[Memory RAG] Retrieved ${topMemories.length} memories for query: "${enrichedQuery}"`);
+    logger.debug(
+      `[Memory RAG] Retrieved ${topMemories.length} memories for query: "${enrichedQuery}"`,
+    );
     logger.debug(`[Memory RAG] Memories:`, topMemories);
   }
   return topMemories;
@@ -134,45 +153,59 @@ export async function consolidateMemories(chatIdStr: string) {
   const allMemories = Repository.getMemories(chatIdStr);
   if (allMemories.length < 10) return;
 
-  const memoryListText = allMemories.map(m => `ID: ${m.id} | ${m.text}`).join("\n");
+  const memoryListText = allMemories
+    .map((m) => `ID: ${m.id} | ${m.text}`)
+    .join("\n");
 
   const prompt = `Review the following memory list.
-Find exact duplicates, resolved contradictions (e.g. if one says user lives in X and a newer one says user lives in Y, the older one is a contradiction), or completely useless/spam facts. 
+Find exact duplicates, resolved contradictions, or completely useless/spam facts.
 Return ONLY a JSON array of the integer IDs of memories that should be permanently DELETED. Return an empty array [] if all memories are important and distinct.
 
 Memories:
 ${memoryListText}`;
 
-  logger.info(`[Memory Consolidation] Triggered for chat ${chatIdStr}. Analyzing ${allMemories.length} memories...`);
+  logger.info(
+    `[Memory Consolidation] Triggered for chat ${chatIdStr}. Analyzing ${allMemories.length} memories...`,
+  );
 
   try {
-    const response = await runWithRetry(() => ai.models.generateContent({
-      model: CONFIG.GEMINI_MODEL,
-      contents: prompt,
-      config: {
-        systemInstruction: "You are an automated data maintenance service. Analyze stored memories and identify redundant or contradictory memory IDs for deletion. Return strictly JSON.",
-        temperature: 0.1,
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: "ARRAY",
-          items: {
-            type: "INTEGER",
+    const response = await runWithRetry(() =>
+      ai.models.generateContent({
+        model: CONFIG.GEMINI_MODEL,
+        contents: prompt,
+        config: {
+          systemInstruction:
+            "You are an automated data maintenance service. Analyze stored memories and identify redundant or contradictory memory IDs for deletion. Return strictly JSON.",
+          temperature: 0.1,
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: "ARRAY",
+            items: {
+              type: "INTEGER",
+            },
+            description: "List of memory IDs to delete",
           },
-          description: "List of memory IDs to delete"
-        }
-      },
-    }));
+        },
+      }),
+    );
 
     const responseText = response.text?.trim() || "[]";
     const idsToDelete: number[] = JSON.parse(responseText);
 
     if (Array.isArray(idsToDelete) && idsToDelete.length > 0) {
       Repository.deleteMemoriesByIds(idsToDelete, chatIdStr);
-      logger.info(`[Memory Consolidation] Successfully deleted ${idsToDelete.length} redundant/spam memories for chat ${chatIdStr}.`);
+      logger.info(
+        `[Memory Consolidation] Successfully deleted ${idsToDelete.length} redundant/spam memories for chat ${chatIdStr}.`,
+      );
     } else {
-      logger.info(`[Memory Consolidation] No redundant memories found for chat ${chatIdStr}.`);
+      logger.info(
+        `[Memory Consolidation] No redundant memories found for chat ${chatIdStr}.`,
+      );
     }
   } catch (error) {
-    logger.error(`[Memory Consolidation] Error during consolidation for chat ${chatIdStr}:`, error);
+    logger.error(
+      `[Memory Consolidation] Error during consolidation for chat ${chatIdStr}:`,
+      error,
+    );
   }
 }

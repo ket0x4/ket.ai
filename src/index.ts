@@ -4,12 +4,10 @@ import logger from "./utils/logger";
 
 async function main() {
   logger.info("-----------------------------------------");
-  logger.info("Starting ket.ai 2");
+  logger.info("Starting ket.ai");
   logger.info("-----------------------------------------");
 
-  // 1. Database migrations run automatically on import of db module
-
-  // 2. Start the bot client (long polling)
+  // Start the bot client (long polling)
   await startBot();
 }
 

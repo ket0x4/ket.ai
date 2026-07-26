@@ -11,28 +11,22 @@ import { checkAndRunBackgroundMemoryExtraction } from "../services/gemini/memory
 
 const COOLDOWN_SECONDS = 300; // 5 minutes cooldown between random replies
 
-/**
- * Generates a reply from Gemini and sends it to the chat.
- * Handles tool status messages (sending + cleanup) and long message splitting.
- *
- * Extracted to eliminate duplication between direct and spontaneous reply paths.
- */
 async function generateAndSendReply(
   ctx: Context,
   chatIdStr: string,
   isSpontaneous: boolean,
-  replyToMessageId?: number
+  replyToMessageId?: number,
 ): Promise<void> {
   const chatSettings = Repository.getChat(chatIdStr);
   if (!chatSettings) return;
 
   const activeTopic = await GeminiService.ensureTopicSummary(
     chatIdStr,
-    chatSettings.current_topic
+    chatSettings.current_topic,
   );
   const history = Repository.getRecentMessages(
     chatIdStr,
-    CONFIG.CHAT_HISTORY_LIMIT
+    CONFIG.CHAT_HISTORY_LIMIT,
   );
 
   let statusMessageId: number | undefined;
@@ -46,11 +40,12 @@ async function generateAndSendReply(
       if (!statusMessageId) {
         const statusMsgText =
           toolName === "web_search"
-            ? CONFIG.MESSAGES.tool_status_web_search || `gimme a sec bro, checking (${toolName})...`
+            ? CONFIG.MESSAGES.tool_status_web_search ||
+              `gimme a sec bro, checking (${toolName})...`
             : `gimme a sec bro, checking (${toolName})...`;
 
         logger.info(
-          `${logPrefix} Sending tool status notification: "${statusMsgText}"`
+          `${logPrefix} Sending tool status notification: "${statusMsgText}"`,
         );
 
         const sentMsg = await ctx
@@ -68,7 +63,7 @@ async function generateAndSendReply(
           statusMessageId = sentMsg.message_id;
         }
       }
-    }
+    },
   );
 
   // Send final reply
@@ -78,11 +73,9 @@ async function generateAndSendReply(
 
   // Delete the temporary status message after final answer is sent
   if (statusMessageId && ctx.chat) {
-    await ctx.api
-      .deleteMessage(ctx.chat.id, statusMessageId)
-      .catch((e) => {
-        logger.warn(`${logPrefix} Failed to delete status message:`, e);
-      });
+    await ctx.api.deleteMessage(ctx.chat.id, statusMessageId).catch((e) => {
+      logger.warn(`${logPrefix} Failed to delete status message:`, e);
+    });
   }
 }
 
@@ -111,7 +104,7 @@ export function registerChatHandlers(bot: Bot) {
     const isFollowUp = isConversationFollowUp(chatIdStr, from.id, msg.date);
     if (isFollowUp) {
       logger.debug(
-        `[Conversation] Follow-up detected for user ${from.first_name} in chat ${chatIdStr}`
+        `[Conversation] Follow-up detected for user ${from.first_name} in chat ${chatIdStr}`,
       );
     }
 
@@ -130,8 +123,8 @@ export function registerChatHandlers(bot: Bot) {
       // Direct interaction: reply immediately, serialized per chat
       await withChatLock(chatIdStr, () =>
         withTyping(ctx, () =>
-          generateAndSendReply(ctx, chatIdStr, false, msg.message_id)
-        )
+          generateAndSendReply(ctx, chatIdStr, false, msg.message_id),
+        ),
       );
       return;
     }
@@ -148,7 +141,7 @@ export function registerChatHandlers(bot: Bot) {
       const roll = Math.random();
       if (roll < chatSettings.reply_probability) {
         logger.info(
-          `[Spontaneous] Rolling SUCCESS for chat ${chatIdStr} (Roll: ${roll.toFixed(4)} < ${chatSettings.reply_probability})`
+          `[Spontaneous] Rolling SUCCESS for chat ${chatIdStr} (Roll: ${roll.toFixed(4)} < ${chatSettings.reply_probability})`,
         );
 
         // Update last random reply timestamp before processing to prevent double triggers
@@ -157,9 +150,7 @@ export function registerChatHandlers(bot: Bot) {
         });
 
         await withChatLock(chatIdStr, () =>
-          withTyping(ctx, () =>
-            generateAndSendReply(ctx, chatIdStr, true)
-          )
+          withTyping(ctx, () => generateAndSendReply(ctx, chatIdStr, true)),
         );
       }
     }
