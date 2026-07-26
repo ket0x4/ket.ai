@@ -100,3 +100,6 @@ export function runMigrations() {
     ON memories(chat_id, expires_at);
   `);
 }
+
+// Execute migrations synchronously before any module prepares statements
+runMigrations();
