@@ -1,5 +1,6 @@
 import { db } from "./db/index";
 import { startBot, bot } from "./services/bot";
+import { startServer, stopServer } from "./server/index";
 import logger from "./utils/logger";
 
 async function main() {
@@ -7,13 +8,21 @@ async function main() {
   logger.info("Starting ket.ai");
   logger.info("-----------------------------------------");
 
+  // Start HTTP Web Server for Telegram Mini App
+  startServer();
+
   // Start the bot client (long polling)
   await startBot();
 }
 
 // Graceful shutdown handling
 const shutdown = () => {
-  logger.info("Received shutdown signal. Stopping bot and closing database...");
+  logger.info("Received shutdown signal. Stopping bot, web server and closing database...");
+  try {
+    stopServer();
+  } catch (error) {
+    logger.error("Error stopping web server:", error);
+  }
   try {
     bot.stop();
     logger.info("Bot polling stopped.");

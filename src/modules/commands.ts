@@ -141,6 +141,7 @@ export function registerCommands(bot: Bot) {
         "**Spontaneous Participation**: I occasionally chime in on the group conversation.\n" +
         "**Image & Voice Recognition**: I understand photos and listen to voice messages.\n" +
         "**Management Commands**:\n" +
+        "• `/app` or `/admin` — Open Web Mini App Dashboard\n" +
         "• `/mem` — Open interactive memory dashboard\n" +
         "• `/remember <fact>` — Save a new fact to memory\n" +
         "• `/prob [0-100]` — Set random reply probability (Admin)\n" +
@@ -148,6 +149,21 @@ export function registerCommands(bot: Bot) {
         "• `/model [model]` — Switch AI model (Owner)",
       { parse_mode: "Markdown" },
     );
+  });
+
+  // 2b. /app and /admin commands for Telegram Mini App
+  bot.command(["app", "admin"], async (ctx) => {
+    if (!(await isAuthorized(ctx))) {
+      await ctx.reply(CONFIG.MESSAGES.not_authorized_command);
+      return;
+    }
+
+    const appUrl = CONFIG.WEB_APP_URL || `http://localhost:${CONFIG.WEB_PORT}`;
+    const keyboard = new InlineKeyboard().webApp("Open Dashboard", appUrl);
+
+    await ctx.reply("Click the button below to open the Admin & Memory Dashboard:", {
+      reply_markup: keyboard,
+    });
   });
 
   // 3. /reset command

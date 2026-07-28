@@ -4,14 +4,24 @@ import { existsSync, mkdirSync } from "fs";
 import { CONFIG } from "../config/index";
 import logger from "../utils/logger";
 
-// Ensure database directory exists
-const dbDir = dirname(CONFIG.DB_PATH);
+// Ensure database directory exists with local fallback if root path is not writable (e.g. /app in Docker vs local macOS)
+let dbPath = CONFIG.DB_PATH;
+const dbDir = dirname(dbPath);
 if (dbDir && dbDir !== "." && !existsSync(dbDir)) {
-  mkdirSync(dbDir, { recursive: true });
+  try {
+    mkdirSync(dbDir, { recursive: true });
+  } catch (err) {
+    logger.warn(`[DB] Could not create database directory at "${dbDir}". Falling back to "./data/bot.db"`);
+    dbPath = "./data/bot.db";
+    const fallbackDir = dirname(dbPath);
+    if (fallbackDir && !existsSync(fallbackDir)) {
+      mkdirSync(fallbackDir, { recursive: true });
+    }
+  }
 }
 
 // Initialize the database and ensure schema is ready
-export const db = new Database(CONFIG.DB_PATH, { create: true });
+export const db = new Database(dbPath, { create: true });
 db.run("PRAGMA journal_mode=WAL");
 db.run("PRAGMA synchronous=NORMAL");
 db.run("PRAGMA temp_store=MEMORY");

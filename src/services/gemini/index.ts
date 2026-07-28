@@ -11,6 +11,7 @@ import { Repository } from "../../db/repository";
 import type { MessageRow } from "../../db/repository";
 import logger from "../../utils/logger";
 import { toolRegistry } from "../../agent";
+import { ToolTraceLogger } from "../../utils/toolTrace";
 
 export type ToolCallCallback = (
   toolName: string,
@@ -225,7 +226,19 @@ export const GeminiService = {
             const name = fc.name;
             const args = fc.args || {};
             logger.info(`[Agent] Executing tool '${name}'...`);
+            const startTime = Date.now();
             const result = await toolRegistry.executeTool(name, args);
+            const durationMs = Date.now() - startTime;
+
+            const snippet = typeof result === "string" ? result.substring(0, 300) : JSON.stringify(result).substring(0, 300);
+            ToolTraceLogger.add({
+              chatId: chatIdStr,
+              toolName: name,
+              args,
+              resultSnippet: snippet,
+              executionTimeMs: durationMs,
+              step,
+            });
 
             toolResponseParts.push({
               functionResponse: {

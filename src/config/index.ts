@@ -16,6 +16,8 @@ interface ConfigJson {
   log_dir?: string;
   log_max_size_mb?: number;
   log_retention_days?: number;
+  web_port?: number;
+  web_app_url?: string;
   messages?: Partial<Record<string, string>>;
 }
 
@@ -90,6 +92,16 @@ export let CONFIG = {
       : process.env.LOG_RETENTION_DAYS
         ? parseInt(process.env.LOG_RETENTION_DAYS, 10)
         : 14,
+  WEB_PORT:
+    typeof configJson.web_port === "number"
+      ? configJson.web_port
+      : process.env.PORT
+        ? parseInt(process.env.PORT, 10)
+        : process.env.WEB_PORT
+          ? parseInt(process.env.WEB_PORT, 10)
+          : 3000,
+  WEB_APP_URL:
+    configJson.web_app_url || process.env.WEB_APP_URL || "",
   MESSAGES: {
     unauthorized_group_reply:
       configJson.messages?.unauthorized_group_reply ||
@@ -151,4 +163,50 @@ if (
  */
 export function updateModel(modelName: string): void {
   CONFIG.GEMINI_MODEL = modelName;
+  configJson.gemini_model = modelName;
+}
+
+/**
+ * Updates bot configuration settings and persists changes to config.json.
+ */
+export function updateBotSettings(settings: {
+  gemini_model?: string;
+  default_reply_probability?: number;
+  chat_history_limit?: number;
+  enable_web_search?: boolean;
+  max_agent_steps?: number;
+  log_level?: "debug" | "info" | "warn" | "error";
+}): void {
+  const { writeFileSync } = require("fs");
+
+  if (settings.gemini_model !== undefined) {
+    CONFIG.GEMINI_MODEL = settings.gemini_model;
+    configJson.gemini_model = settings.gemini_model;
+  }
+  if (settings.default_reply_probability !== undefined) {
+    CONFIG.DEFAULT_REPLY_PROBABILITY = settings.default_reply_probability;
+    configJson.default_reply_probability = settings.default_reply_probability;
+  }
+  if (settings.chat_history_limit !== undefined) {
+    CONFIG.CHAT_HISTORY_LIMIT = settings.chat_history_limit;
+    configJson.chat_history_limit = settings.chat_history_limit;
+  }
+  if (settings.enable_web_search !== undefined) {
+    CONFIG.ENABLE_WEB_SEARCH = settings.enable_web_search;
+    configJson.enable_web_search = settings.enable_web_search;
+  }
+  if (settings.max_agent_steps !== undefined) {
+    CONFIG.MAX_AGENT_STEPS = settings.max_agent_steps;
+    configJson.max_agent_steps = settings.max_agent_steps;
+  }
+  if (settings.log_level !== undefined) {
+    CONFIG.LOG_LEVEL = settings.log_level;
+    configJson.log_level = settings.log_level;
+  }
+
+  try {
+    writeFileSync(CONFIG_FILE_PATH, JSON.stringify(configJson, null, 2), "utf-8");
+  } catch (e) {
+    console.error("[Config] Error writing config.json:", e);
+  }
 }
