@@ -1,15 +1,14 @@
 <!DOCTYPE html>
-<html lang="tr">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>ket.ai - Bot Dashboard</title>
+  <title>ket.ai Console</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <div id="app">
-    <!-- Top Bar Header -->
     <header class="top-bar">
       <div class="brand">
         <svg class="brand-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -28,7 +27,6 @@
       </div>
     </header>
 
-    <!-- Navigation Segment Control -->
     <nav class="nav-tabs">
       <button class="nav-btn active" data-tab="tab-dashboard">
         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -45,7 +43,7 @@
           <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path>
           <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path>
         </svg>
-        <span>Hafıza</span>
+        <span>Memories</span>
       </button>
       <button class="nav-btn" data-tab="tab-chats">
         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -54,21 +52,14 @@
           <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
           <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
         </svg>
-        <span>Gruplar</span>
+        <span>Groups</span>
       </button>
-      <button class="nav-btn" data-tab="tab-logs">
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="4 17 10 11 4 5"></polyline>
-          <line x1="12" y1="19" x2="20" y2="19"></line>
-        </svg>
-        <span>Loglar</span>
-      </button>
-      <button class="nav-btn" data-tab="tab-settings">
+      <button class="nav-btn" data-tab="tab-system">
         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="3"></circle>
           <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
         </svg>
-        <span>Ayarlar</span>
+        <span>Settings & Logs</span>
       </button>
       <button class="nav-btn" data-tab="tab-sandbox">
         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -80,14 +71,12 @@
       </button>
     </nav>
 
-    <!-- Main Content Area -->
     <main class="content">
-      <!-- 1. DASHBOARD TAB -->
       <section id="tab-dashboard" class="tab-pane active">
         <div class="grid-metrics">
           <div class="metric-card">
             <div class="metric-header">
-              <span class="label">Kayıtlı Gruplar</span>
+              <span class="label">Registered Groups</span>
               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
               </svg>
@@ -97,7 +86,7 @@
 
           <div class="metric-card">
             <div class="metric-header">
-              <span class="label">İzinli Gruplar</span>
+              <span class="label">Allowed Groups</span>
               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
                 <polyline points="22 4 12 14.01 9 11.01"></polyline>
@@ -108,7 +97,7 @@
 
           <div class="metric-card">
             <div class="metric-header">
-              <span class="label">Toplam Hafıza</span>
+              <span class="label">Total Memories</span>
               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <ellipse cx="12" cy="5" rx="9" ry="3"></ellipse>
                 <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path>
@@ -120,7 +109,7 @@
 
           <div class="metric-card">
             <div class="metric-header">
-              <span class="label">Kayıtlı Mesajlar</span>
+              <span class="label">Total Messages</span>
               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
               </svg>
@@ -131,26 +120,55 @@
 
         <div class="section-card">
           <div class="card-header">
-            <h3>Sistem Metrikleri</h3>
+            <h3>Memory Distribution & System Metrics</h3>
           </div>
-          <div class="system-stats">
+          
+          <div class="category-breakdown-bar" id="cat-breakdown-bar">
+            <div class="cat-segment seg-profile" id="seg-profile" style="width: 33%;" title="PROFILE"></div>
+            <div class="cat-segment seg-dynamic" id="seg-dynamic" style="width: 33%;" title="DYNAMIC"></div>
+            <div class="cat-segment seg-temporary" id="seg-temporary" style="width: 34%;" title="TEMPORARY"></div>
+          </div>
+          <div class="category-legend">
+            <div class="legend-item"><span class="legend-dot dot-profile"></span> PROFILE (<span id="cat-cnt-profile">0</span>)</div>
+            <div class="legend-item"><span class="legend-dot dot-dynamic"></span> DYNAMIC (<span id="cat-cnt-dynamic">0</span>)</div>
+            <div class="legend-item"><span class="legend-dot dot-temporary"></span> TEMPORARY (<span id="cat-cnt-temporary">0</span>)</div>
+          </div>
+
+          <div class="system-stats" style="margin-top: 16px;">
             <div class="sys-item">
-              <span class="sys-label">Çalışma Süresi</span>
+              <span class="sys-label">Uptime</span>
               <span class="sys-val" id="sys-uptime">0s</span>
             </div>
             <div class="sys-item">
-              <span class="sys-label">RAM Kullanımı</span>
+              <span class="sys-label">RAM Usage</span>
               <span class="sys-val" id="sys-memory">0 MB</span>
             </div>
             <div class="sys-item">
-              <span class="sys-label">AI Modeli</span>
+              <span class="sys-label">Database Size</span>
+              <span class="sys-val" id="sys-dbsize">0 KB</span>
+            </div>
+            <div class="sys-item">
+              <span class="sys-label">Active AI Model</span>
               <span class="sys-val" id="sys-model">Gemini 3.5 Flash Lite</span>
             </div>
+            <div class="sys-item">
+              <span class="sys-label">Web Search</span>
+              <span class="sys-val" id="sys-websearch">Enabled</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="section-card">
+          <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+            <h3>Top Active Groups</h3>
+            <button class="btn btn-secondary btn-quick" data-action="open-chats" style="font-size: 11px; padding: 4px 8px;">View All</button>
+          </div>
+          <div class="top-chats-list" id="top-chats-container">
+            <div class="loading-spinner">Loading groups...</div>
           </div>
         </div>
       </section>
 
-      <!-- 2. MEMORIES TAB -->
       <section id="tab-memories" class="tab-pane">
         <div class="action-bar">
           <div class="search-box">
@@ -158,40 +176,49 @@
               <circle cx="11" cy="11" r="8"></circle>
               <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
             </svg>
-            <input type="text" id="memory-search" placeholder="Hafıza ara...">
+            <input type="text" id="memory-search" placeholder="Search memories...">
           </div>
-          <button class="btn btn-secondary" id="btn-export-memories" title="Hafızayı Dışa Aktar">
-            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-              <polyline points="7 10 12 15 17 10"></polyline>
-              <line x1="12" y1="15" x2="12" y2="3"></line>
-            </svg>
-            <span>Dışa Aktar</span>
-          </button>
-          <button class="btn btn-secondary" id="btn-import-memories" title="Hafıza Yükle">
-            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-              <polyline points="17 8 12 3 7 8"></polyline>
-              <line x1="12" y1="3" x2="12" y2="15"></line>
-            </svg>
-            <span>İçe Aktar</span>
-          </button>
-          <input type="file" id="file-import-memories" accept=".json" style="display: none;">
-          <button class="btn btn-primary" id="btn-add-memory">
-            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="12" y1="5" x2="12" y2="19"></line>
-              <line x1="5" y1="12" x2="19" y2="12"></line>
-            </svg>
-            <span>Yeni Kayıt</span>
-          </button>
+          <div class="btn-group">
+            <button class="btn btn-secondary btn-icon" id="btn-export-memories" title="Export Memories (JSON)">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+              </svg>
+              <span class="btn-label">Export</span>
+            </button>
+            <button class="btn btn-secondary btn-icon" id="btn-import-memories" title="Import Memories (JSON)">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="17 8 12 3 7 8"></polyline>
+                <line x1="12" y1="3" x2="12" y2="15"></line>
+              </svg>
+              <span class="btn-label">Import</span>
+            </button>
+            <input type="file" id="file-import-memories" accept=".json" style="display: none;">
+            <button class="btn btn-secondary btn-icon" id="btn-prune-memories" title="Prune Expired Memories">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="3 6 5 6 21 6"></polyline>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+              </svg>
+              <span class="btn-label">Prune</span>
+            </button>
+            <button class="btn btn-primary" id="btn-add-memory">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+              <span>New</span>
+            </button>
+          </div>
         </div>
 
         <div class="filters-row">
           <select id="memory-chat-filter" class="select-input">
-            <option value="">Tüm Gruplar</option>
+            <option value="">All Groups</option>
           </select>
           <select id="memory-category-filter" class="select-input">
-            <option value="">Tüm Kategoriler</option>
+            <option value="">All Categories</option>
             <option value="PROFILE">PROFILE</option>
             <option value="DYNAMIC">DYNAMIC</option>
             <option value="TEMPORARY">TEMPORARY</option>
@@ -199,188 +226,228 @@
         </div>
 
         <div class="memory-list" id="memory-list-container">
-          <div class="loading-spinner">Yükleniyor...</div>
+          <div class="loading-spinner">Loading memories...</div>
         </div>
       </section>
 
-      <!-- 3. CHATS / ADMIN TAB -->
       <section id="tab-chats" class="tab-pane">
         <div class="section-card">
           <div class="card-header">
-            <h3>Grup Yönetimi</h3>
+            <h3>Group Management</h3>
           </div>
           <div class="chat-list" id="chat-list-container">
-            <div class="loading-spinner">Yükleniyor...</div>
+            <div class="loading-spinner">Loading groups...</div>
           </div>
         </div>
       </section>
 
-      <!-- 4. LOGS TAB -->
-      <section id="tab-logs" class="tab-pane">
-        <div class="action-bar">
-          <div class="search-box">
-            <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="11" cy="11" r="8"></circle>
-              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-            </svg>
-            <input type="text" id="log-search" placeholder="Loglarda ara...">
-          </div>
-          <button class="btn btn-secondary" id="btn-refresh-logs">
-            <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="23 4 23 10 17 10"></polyline>
-              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
-            </svg>
-            <span>Yenile</span>
-          </button>
-        </div>
-
-        <div class="log-controls">
-          <div class="pill-group" id="log-level-pills">
-            <button class="pill active" data-level="ALL">HEPSİ</button>
-            <button class="pill" data-level="INFO">INFO</button>
-            <button class="pill" data-level="WARN">WARN</button>
-            <button class="pill" data-level="ERROR">ERROR</button>
-          </div>
-          <div class="log-type-select">
-            <select id="log-file-select" class="select-input">
-              <option value="app">app.log</option>
-              <option value="error">error.log</option>
-            </select>
-          </div>
-        </div>
-
-        <div class="log-console" id="log-console">
-          <div class="loading-spinner">Loglar getiriliyor...</div>
-        </div>
-
-        <div class="section-card" style="margin-top: 16px;">
-          <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
-            <h3>Araç ve Web Arama İzleyici (Tool Traces)</h3>
-            <button class="btn btn-secondary" id="btn-refresh-traces" style="padding: 4px 8px; font-size: 11px;">Yenile</button>
-          </div>
-          <div class="log-console" id="trace-console" style="max-height: 240px;">
-            <div class="loading-spinner">Henüz kayıtlı araç çağrısı yok.</div>
-          </div>
-        </div>
-      </section>
-
-      <!-- 5. SETTINGS TAB -->
-      <section id="tab-settings" class="tab-pane">
+      <section id="tab-system" class="tab-pane">
         <div class="section-card">
-          <div class="card-header">
-            <h3>Genel Bot Ayarları</h3>
+          <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+            <h3>Bot Settings & Configuration</h3>
+            <button class="btn btn-secondary" id="btn-clear-cache" style="font-size: 11px; padding: 4px 8px;" title="Flush memory embedding cache">Clear Cache</button>
           </div>
           <div class="settings-form">
+            <div class="setting-group-title">AI & Intelligence</div>
+            
             <div class="form-group">
-              <label for="setting-model">Aktif AI Modeli</label>
+              <label for="setting-model">Active AI Model</label>
               <select id="setting-model" class="select-input">
-                <option value="gemini-3.5-flash-lite">gemini-3.5-flash-lite (Hızlı & Standart)</option>
-                <option value="gemini-3.5-flash">gemini-3.5-flash (Dengeli)</option>
-                <option value="gemini-3.5-pro">gemini-3.5-pro (Gelişmiş Mantık)</option>
-                <option value="gemini-3.1-flash-lite">gemini-3.1-flash-lite (Alternatif)</option>
+                <option value="gemini-3.5-flash-lite">gemini-3.5-flash-lite (Fast & Standard)</option>
+                <option value="gemini-3.5-flash">gemini-3.5-flash (Balanced)</option>
+                <option value="gemini-3.5-pro">gemini-3.5-pro (Advanced Reasoning)</option>
+                <option value="gemini-3.1-flash-lite">gemini-3.1-flash-lite (Alternative)</option>
               </select>
+              <span class="field-help">Determines the primary LLM model used for multi-step reasoning and replies.</span>
             </div>
 
             <div class="form-group">
-              <label for="setting-reply-prob">Varsayılan Yanıt Olasılığı (%)</label>
-              <div class="prob-slider-container" style="justify-content: flex-start;">
-                <input type="range" id="setting-reply-prob" min="0" max="100" value="5" style="width: 100%;">
-                <span id="setting-reply-prob-val" style="font-family: var(--font-mono); min-width: 45px;">5%</span>
-              </div>
-            </div>
-
-            <div class="form-group">
-              <label for="setting-history-limit">Sohbet Geçmişi Limiti (Mesaj Sayısı)</label>
-              <input type="number" id="setting-history-limit" class="select-input" min="5" max="100" value="10">
-            </div>
-
-            <div class="form-group">
-              <label for="setting-agent-steps">Maksimum Ajan Adımı (Reasoning Steps)</label>
+              <label for="setting-agent-steps">Max Agent Steps (Reasoning Steps)</label>
               <input type="number" id="setting-agent-steps" class="select-input" min="1" max="10" value="3">
+              <span class="field-help">Maximum function calling iterations per user interaction loop.</span>
             </div>
 
-            <div class="form-group">
-              <label for="setting-log-level">Sistem Log Seviyesi</label>
-              <select id="setting-log-level" class="select-input">
-                <option value="debug">debug (Detaylı)</option>
-                <option value="info">info (Standart)</option>
-                <option value="warn">warn (Uyarı & Hatalar)</option>
-                <option value="error">error (Sadece Hatalar)</option>
-              </select>
-            </div>
-
-            <div class="form-group" style="flex-direction: row; align-items: center; justify-content: space-between; margin-top: 6px;">
-              <label for="setting-web-search" style="margin: 0;">Gemini Web Arama Desteği</label>
+            <div class="form-group" style="flex-direction: row; align-items: center; justify-content: space-between; margin-top: 4px; margin-bottom: 12px;">
+              <div>
+                <label for="setting-web-search" style="margin: 0;">Gemini Web Search Grounding</label>
+                <span class="field-help" style="display: block; margin-top: 2px;">Allows Gemini to fetch real-time search results via Google Search tool.</span>
+              </div>
               <label class="switch">
                 <input type="checkbox" id="setting-web-search" checked>
                 <span class="slider"></span>
               </label>
             </div>
 
-            <div style="margin-top: 18px; display: flex; justify-content: flex-end;">
-              <button class="btn btn-primary" id="btn-save-settings">Ayarları Kaydet</button>
+            <div class="setting-group-title" style="margin-top: 16px;">Behavior & Limits</div>
+
+            <div class="form-group">
+              <label for="setting-reply-prob">Default Reply Probability (%)</label>
+              <div class="prob-slider-container" style="justify-content: flex-start;">
+                <input type="range" id="setting-reply-prob" min="0" max="100" value="5" style="width: 100%;">
+                <span id="setting-reply-prob-val" style="font-family: var(--font-mono); min-width: 45px;">5%</span>
+              </div>
+              <span class="field-help">Likelihood of responding to unmentioned messages in group chats.</span>
             </div>
+
+            <div class="form-group">
+              <label for="setting-history-limit">Chat History Context Limit (Messages)</label>
+              <input type="number" id="setting-history-limit" class="select-input" min="5" max="100" value="10">
+              <span class="field-help">Number of past message turns sent as context to Gemini.</span>
+            </div>
+
+            <div class="setting-group-title" style="margin-top: 16px;">System & Logging</div>
+
+            <div class="form-group">
+              <label for="setting-log-level">System Log Level</label>
+              <select id="setting-log-level" class="select-input">
+                <option value="debug">debug (Detailed)</option>
+                <option value="info">info (Standard)</option>
+                <option value="warn">warn (Warnings & Errors)</option>
+                <option value="error">error (Errors Only)</option>
+              </select>
+              <span class="field-help">Filters terminal log verbosity and log file output level.</span>
+            </div>
+
+            <div style="margin-top: 20px; display: flex; justify-content: flex-end;">
+              <button class="btn btn-primary" id="btn-save-settings">Save Settings</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="section-card">
+          <div class="card-header">
+            <h3>System Logs</h3>
+          </div>
+          <div class="action-bar">
+            <div class="search-box">
+              <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="11" cy="11" r="8"></circle>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+              </svg>
+              <input type="text" id="log-search" placeholder="Search in logs...">
+            </div>
+            <button class="btn btn-secondary" id="btn-refresh-logs">
+              <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="23 4 23 10 17 10"></polyline>
+                <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+              </svg>
+              <span>Refresh</span>
+            </button>
+          </div>
+
+          <div class="log-controls">
+            <div class="pill-group" id="log-level-pills">
+              <button class="pill active" data-level="ALL">ALL</button>
+              <button class="pill" data-level="INFO">INFO</button>
+              <button class="pill" data-level="WARN">WARN</button>
+              <button class="pill" data-level="ERROR">ERROR</button>
+            </div>
+            <div class="log-type-select">
+              <select id="log-file-select" class="select-input">
+                <option value="app">app.log</option>
+                <option value="error">error.log</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="log-console" id="log-console">
+            <div class="loading-spinner">Loading logs...</div>
+          </div>
+        </div>
+
+        <div class="section-card">
+          <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+            <h3>Tool & Web Search Traces</h3>
+            <button class="btn btn-secondary" id="btn-refresh-traces" style="padding: 4px 8px; font-size: 11px;">Refresh</button>
+          </div>
+          <div class="log-console" id="trace-console" style="max-height: 240px;">
+            <div class="loading-spinner">No tool calls recorded yet.</div>
           </div>
         </div>
       </section>
 
-      <!-- 6. SANDBOX TAB -->
       <section id="tab-sandbox" class="tab-pane">
         <div class="section-card">
           <div class="card-header">
-            <h3>AI Test Alanı (Sandbox)</h3>
+            <h3>AI Sandbox</h3>
           </div>
           <div class="sandbox-form">
             <div class="form-group">
-              <label for="sandbox-prompt">İstem / Soru</label>
-              <textarea id="sandbox-prompt" rows="3" placeholder="Gemini modeline test sorusu veya komut yazın..."></textarea>
+              <label for="sandbox-prompt">Prompt / Input</label>
+              <textarea id="sandbox-prompt" rows="3" placeholder="Enter a test prompt or query for Gemini..."></textarea>
             </div>
             <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
-              <span id="sandbox-status" style="font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">Hazır</span>
-              <button class="btn btn-primary" id="btn-run-sandbox">Gönder & Test Et</button>
+              <span id="sandbox-status" style="font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">Ready</span>
+              <button class="btn btn-primary" id="btn-run-sandbox">Run Test</button>
             </div>
           </div>
 
           <div style="margin-top: 16px;">
-            <label style="font-size: 12px; color: var(--text-muted); display: block; margin-bottom: 6px;">Model Yanıtı</label>
+            <label style="font-size: 12px; color: var(--text-muted); display: block; margin-bottom: 6px;">Model Output</label>
             <div class="log-console" id="sandbox-output" style="max-height: 320px; font-family: var(--font-sans); font-size: 13px; color: var(--text-main);">
-              <span style="color: var(--text-muted);">Yanıt burada görüntülenecek...</span>
+              <span style="color: var(--text-muted);">Response will be displayed here...</span>
             </div>
           </div>
         </div>
       </section>
     </main>
 
-    <!-- Add Memory Modal -->
     <div class="modal-overlay" id="modal-add-memory">
       <div class="modal-card">
         <div class="modal-header">
-          <h4>Yeni Hafıza Kaydı Ekle</h4>
+          <h4>Add New Memory</h4>
           <button class="modal-close" id="modal-close-btn">&times;</button>
         </div>
         <div class="modal-body">
           <div class="form-group">
-            <label for="modal-chat-id">Grup Seçin</label>
+            <label for="modal-chat-id">Select Group</label>
             <select id="modal-chat-id" class="select-input">
-              <!-- Options populated dynamically -->
             </select>
           </div>
           <div class="form-group">
-            <label for="modal-category">Kategori</label>
+            <label for="modal-category">Category</label>
             <select id="modal-category" class="select-input">
-              <option value="PROFILE">PROFILE (Kalıcı Profil Bilgisi)</option>
-              <option value="DYNAMIC">DYNAMIC (Dinamik Bilgi)</option>
-              <option value="TEMPORARY">TEMPORARY (Geçici Bilgi)</option>
+              <option value="PROFILE">PROFILE (Permanent Profile Fact)</option>
+              <option value="DYNAMIC">DYNAMIC (Dynamic Status/Fact)</option>
+              <option value="TEMPORARY">TEMPORARY (Short-lived Event)</option>
             </select>
           </div>
           <div class="form-group">
-            <label for="modal-memory-text">Hafıza Metni</label>
-            <textarea id="modal-memory-text" rows="4" placeholder="Hafızaya alınacak detaylı bilgi..."></textarea>
+            <label for="modal-memory-text">Memory Text</label>
+            <textarea id="modal-memory-text" rows="4" placeholder="Detailed factual information to store..."></textarea>
           </div>
         </div>
         <div class="modal-footer">
-          <button class="btn btn-secondary" id="modal-cancel-btn">İptal</button>
-          <button class="btn btn-primary" id="modal-save-btn">Kaydet</button>
+          <button class="btn btn-secondary" id="modal-cancel-btn">Cancel</button>
+          <button class="btn btn-primary" id="modal-save-btn">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-overlay" id="modal-edit-memory">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h4>Edit Memory Record</h4>
+          <button class="modal-close" id="modal-edit-close-btn">&times;</button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" id="modal-edit-id">
+          <div class="form-group">
+            <label for="modal-edit-category">Category</label>
+            <select id="modal-edit-category" class="select-input">
+              <option value="PROFILE">PROFILE (Permanent Profile Fact)</option>
+              <option value="DYNAMIC">DYNAMIC (Dynamic Status/Fact)</option>
+              <option value="TEMPORARY">TEMPORARY (Short-lived Event)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="modal-edit-memory-text">Memory Text</label>
+            <textarea id="modal-edit-memory-text" rows="4"></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" id="modal-edit-cancel-btn">Cancel</button>
+          <button class="btn btn-primary" id="modal-edit-save-btn">Update</button>
         </div>
       </div>
     </div>

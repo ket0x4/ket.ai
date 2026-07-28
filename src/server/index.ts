@@ -4,7 +4,7 @@ import crypto from "crypto";
 import { CONFIG, updateBotSettings } from "../config/index";
 import { db } from "../db/index";
 import { Repository } from "../db/repository";
-import { processNewMemory } from "../services/gemini/memory";
+import { processNewMemory, generateEmbedding } from "../services/gemini/memory";
 import { ai } from "../services/gemini/client";
 import { getSystemInstruction } from "../services/gemini/utils";
 import { ToolTraceLogger } from "../utils/toolTrace";
@@ -172,6 +172,28 @@ export function startServer(): ReturnType<typeof Bun.serve> {
             const messagesRow = db.prepare("SELECT COUNT(*) as count FROM messages").get() as { count: number };
             const memoriesRow = db.prepare("SELECT COUNT(*) as count FROM memories").get() as { count: number };
 
+            const catRows = db.prepare("SELECT category, COUNT(*) as count FROM memories GROUP BY category").all() as { category: string; count: number }[];
+            const categoryStats: Record<string, number> = { PROFILE: 0, DYNAMIC: 0, TEMPORARY: 0 };
+            for (const r of catRows) {
+              const k = r.category || "PROFILE";
+              categoryStats[k] = (categoryStats[k] || 0) + r.count;
+            }
+
+            let dbSizeBytes = 0;
+            try {
+              if (fs.existsSync(CONFIG.DB_PATH)) {
+                dbSizeBytes = fs.statSync(CONFIG.DB_PATH).size;
+              }
+            } catch (e) {}
+
+            const topChats = db.prepare(`
+              SELECT c.chat_id, c.title, c.is_allowed, COUNT(m.id) as message_count 
+              FROM chats c 
+              LEFT JOIN messages m ON c.chat_id = m.chat_id 
+              GROUP BY c.chat_id 
+              ORDER BY message_count DESC LIMIT 3
+            `).all();
+
             const memUsage = process.memoryUsage();
 
             return jsonResponse({
@@ -179,8 +201,13 @@ export function startServer(): ReturnType<typeof Bun.serve> {
               allowedChats: allowedRow?.count || 0,
               totalMessages: messagesRow?.count || 0,
               totalMemories: memoriesRow?.count || 0,
+              categoryStats,
+              dbSizeBytes,
+              topChats,
               uptimeSeconds: Math.floor(process.uptime()),
               memoryUsageMb: Math.round((memUsage.heapUsed / 1024 / 1024) * 100) / 100,
+              model: CONFIG.GEMINI_MODEL,
+              webSearch: CONFIG.ENABLE_WEB_SEARCH,
             });
           } catch (e) {
             logger.error("[Server Stats] Error fetching stats:", e);
@@ -233,6 +260,17 @@ export function startServer(): ReturnType<typeof Bun.serve> {
               logger.error("[Server Settings PATCH] Error updating settings:", e);
               return errorResponse("Failed to update settings", 500);
             }
+          }
+        }
+
+        // Clear memory cache: POST /api/settings/cache-clear
+        if (pathname === "/api/settings/cache-clear" && req.method === "POST") {
+          try {
+            Repository.clearMemoryCache();
+            return jsonResponse({ success: true, message: "Memory cache cleared successfully" });
+          } catch (e) {
+            logger.error("[Server Settings] Error clearing cache:", e);
+            return errorResponse("Failed to clear memory cache", 500);
           }
         }
 
@@ -319,6 +357,48 @@ export function startServer(): ReturnType<typeof Bun.serve> {
           } catch (e) {
             logger.error("[Server Memory DELETE] Error deleting memory:", e);
             return errorResponse("Failed to delete memory", 500);
+          }
+        }
+
+        // Update memory by ID: PATCH /api/memories/:id
+        if (pathname.startsWith("/api/memories/") && req.method === "PATCH") {
+          const idStr = pathname.replace("/api/memories/", "");
+          const id = parseInt(idStr, 10);
+          if (isNaN(id)) return errorResponse("Invalid memory ID");
+
+          try {
+            const body = (await req.json()) as { memoryText?: string; category?: string };
+            if (!body.memoryText) return errorResponse("memoryText is required");
+
+            const emb = await generateEmbedding(body.memoryText, "RETRIEVAL_DOCUMENT");
+            Repository.updateMemory(id, body.memoryText, body.category, emb);
+
+            return jsonResponse({ success: true, message: `Memory ${id} updated` });
+          } catch (e) {
+            logger.error("[Server Memory PATCH] Error updating memory:", e);
+            return errorResponse("Failed to update memory", 500);
+          }
+        }
+
+        // Prune expired memories: POST /api/memories/prune
+        if (pathname === "/api/memories/prune" && req.method === "POST") {
+          try {
+            const body = (await req.json().catch(() => ({}))) as { chatId?: string };
+            const now = Math.floor(Date.now() / 1000);
+
+            let changes = 0;
+            if (body.chatId) {
+              changes = Repository.pruneExpiredMemories(body.chatId);
+            } else {
+              const result = db.prepare("DELETE FROM memories WHERE expires_at IS NOT NULL AND expires_at <= ?").run(now);
+              changes = result.changes;
+              Repository.clearMemoryCache();
+            }
+
+            return jsonResponse({ success: true, prunedCount: changes });
+          } catch (e) {
+            logger.error("[Server Prune] Error pruning expired memories:", e);
+            return errorResponse("Failed to prune memories", 500);
           }
         }
 

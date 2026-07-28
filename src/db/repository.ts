@@ -446,6 +446,32 @@ export const Repository = {
   },
 
   /**
+   * Updates an existing memory's text and category.
+   */
+  updateMemory(id: number, text: string, category?: string, embedding?: number[], chatId?: string): void {
+    if (embedding && embedding.length > 0) {
+      const buffer = Buffer.from(new Float32Array(embedding).buffer);
+      db.run("UPDATE memories SET memory_text = ?, category = ?, embedding = ? WHERE id = ?", [
+        text,
+        category || "PROFILE",
+        buffer,
+        id,
+      ]);
+    } else {
+      db.run("UPDATE memories SET memory_text = ?, category = ? WHERE id = ?", [
+        text,
+        category || "PROFILE",
+        id,
+      ]);
+    }
+    if (chatId) {
+      memoryCache.delete(chatId);
+    } else {
+      memoryCache.clear();
+    }
+  },
+
+  /**
    * Clears all memories for a chat and invalidates cache.
    */
   clearMemories(chatId: string): void {
