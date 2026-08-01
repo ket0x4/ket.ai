@@ -18,7 +18,10 @@ const chatProcessingQueue = new Map<string, Promise<void>>();
  * Returns immediately if a previous operation is still running — the
  * new operation is chained and will execute after the current one completes.
  */
-export function withChatLock(chatId: string, fn: () => Promise<void>): Promise<void> {
+export function withChatLock(
+  chatId: string,
+  fn: () => Promise<void>,
+): Promise<void> {
   const prev = chatProcessingQueue.get(chatId) ?? Promise.resolve();
   const next = prev.then(fn, fn); // Always chain, even if previous rejected
   chatProcessingQueue.set(chatId, next);
@@ -40,11 +43,16 @@ function saveOutgoingMessage(
   chatId: string,
   messageId: number,
   text: string,
-  apiResult: unknown
+  apiResult: unknown,
 ): void {
-  const sentMsg = (typeof apiResult === "object" && apiResult !== null) ? apiResult as Record<string, unknown> : undefined;
+  const sentMsg =
+    typeof apiResult === "object" && apiResult !== null
+      ? (apiResult as Record<string, unknown>)
+      : undefined;
   const from = sentMsg?.from as Record<string, unknown> | undefined;
-  const replyMsg = sentMsg?.reply_to_message as Record<string, unknown> | undefined;
+  const replyMsg = sentMsg?.reply_to_message as
+    | Record<string, unknown>
+    | undefined;
   const replyFrom = replyMsg?.from as Record<string, unknown> | undefined;
 
   Repository.saveMessage({
@@ -66,8 +74,10 @@ bot.api.config.use(async (prev, method, payload, signal) => {
 
   if (
     (method === "sendMessage" || method === "editMessageText") &&
-    payload && typeof payload === "object" &&
-    "chat_id" in payload && "text" in payload
+    payload &&
+    typeof payload === "object" &&
+    "chat_id" in payload &&
+    "text" in payload
   ) {
     try {
       const chatId = String(payload.chat_id ?? "");
@@ -83,8 +93,14 @@ bot.api.config.use(async (prev, method, payload, signal) => {
       }
 
       const payloadRecord = payload as Record<string, unknown>;
-      const resultRecord = (typeof result === "object" && result !== null) ? result as unknown as Record<string, unknown> : undefined;
-      const msgId = (payloadRecord.message_id as number) || (resultRecord?.message_id as number) || undefined;
+      const resultRecord =
+        typeof result === "object" && result !== null
+          ? (result as unknown as Record<string, unknown>)
+          : undefined;
+      const msgId =
+        (payloadRecord.message_id as number) ||
+        (resultRecord?.message_id as number) ||
+        undefined;
 
       if (chatId && msgId) {
         if (method === "editMessageText") {
@@ -151,12 +167,17 @@ export async function initBot() {
 
     // Check if it's a private chat
     if (chat.type === "private") {
-      const isOwner = CONFIG.BOT_OWNER_ID && ctx.from?.id === CONFIG.BOT_OWNER_ID;
+      const isOwner =
+        CONFIG.BOT_OWNER_ID && ctx.from?.id === CONFIG.BOT_OWNER_ID;
       if (isOwner) {
         // Register the private chat so commands like /settings work
         let dbChat = Repository.getChat(chatIdStr);
         if (!dbChat) {
-          Repository.createChat(chatIdStr, `Private Chat (${ctx.from?.first_name || "Owner"})`, true);
+          Repository.createChat(
+            chatIdStr,
+            `Private Chat (${ctx.from?.first_name || "Owner"})`,
+            true,
+          );
         }
         return await next();
       }
@@ -168,7 +189,7 @@ export async function initBot() {
 
     // Fetch chat settings in SQLite
     let dbChat = Repository.getChat(chatIdStr);
-    
+
     // Check if group is explicitly allowed in DB
     const isAllowed = dbChat?.is_allowed === 1;
 
@@ -178,12 +199,18 @@ export async function initBot() {
       if (ctx.message || ctx.myChatMember) {
         if (!leavingChats.has(chatIdStr)) {
           leavingChats.add(chatIdStr);
-          logger.warn(`[Security] Bot active in unauthorized group: ${chat.title} (${chatIdStr}). Leaving...`);
+          logger.warn(
+            `[Security] Bot active in unauthorized group: ${chat.title} (${chatIdStr}). Leaving...`,
+          );
           try {
-            await ctx.reply(CONFIG.MESSAGES.unauthorized_group_reply).catch(() => {});
+            await ctx
+              .reply(CONFIG.MESSAGES.unauthorized_group_reply)
+              .catch(() => {});
             await ctx.leaveChat();
           } catch (e) {
-            logger.warn(`[Security] Could not cleanly leave chat ${chatIdStr}.`);
+            logger.warn(
+              `[Security] Could not cleanly leave chat ${chatIdStr}.`,
+            );
           }
           // Remove from set after a timeout so it can retry if it failed
           setTimeout(() => leavingChats.delete(chatIdStr), 60000);
@@ -199,64 +226,71 @@ export async function initBot() {
   bot.on("message:migrate_to_chat_id", async (ctx) => {
     const oldChatId = ctx.chat.id.toString();
     const newChatId = ctx.message.migrate_to_chat_id.toString();
-    
-    logger.info(`[Migration] Group upgraded to supergroup. Migrating ${oldChatId} -> ${newChatId}`);
+
+    logger.info(
+      `[Migration] Group upgraded to supergroup. Migrating ${oldChatId} -> ${newChatId}`,
+    );
     Repository.migrateChat(oldChatId, newChatId);
   });
 
   // 4. Middleware: Message Archiver & Background Topic Summarizer
-  bot.on(["message:text", "message:photo", "message:voice"], async (ctx, next) => {
-    const chat = ctx.chat;
-    const msg = ctx.message;
-    const from = ctx.from;
+  bot.on(
+    ["message:text", "message:photo", "message:voice"],
+    async (ctx, next) => {
+      const chat = ctx.chat;
+      const msg = ctx.message;
+      const from = ctx.from;
 
-    if (!chat || !msg || !from) return await next();
+      if (!chat || !msg || !from) return await next();
 
-    const chatIdStr = chat.id.toString();
-    let textContent = msg.text || msg.caption || null;
-    let photoFileId: string | null = null;
+      const chatIdStr = chat.id.toString();
+      let textContent = msg.text || msg.caption || null;
+      let photoFileId: string | null = null;
 
-    if (msg.photo) {
-      const largestPhoto = msg.photo[msg.photo.length - 1];
-      photoFileId = largestPhoto.file_id;
-    }
-
-    const isSelf = from.is_bot && from.username === botUsername;
-
-    // Save history
-    Repository.saveMessage({
-      chatId: chatIdStr,
-      messageId: msg.message_id,
-      userId: from.id,
-      username: from.username || undefined,
-      firstName: from.first_name,
-      replyToMessageId: msg.reply_to_message?.message_id || undefined,
-      text: textContent || undefined,
-      photoFileId: photoFileId || undefined,
-      isBotReply: isSelf,
-      sentAt: msg.date,
-    });
-
-    // Run message retention cleanup every 100 user messages
-    if (!from.is_bot) {
-      const retentionCount = Repository.getMessageCount(chatIdStr);
-      if (retentionCount > 0 && retentionCount % 100 === 0) {
-        // Explicitly fire-and-forget with proper error boundary
-        void Promise.resolve().then(() => {
-          try {
-            const pruned = Repository.pruneOldMessages(chatIdStr, 7);
-            if (pruned > 0) {
-              logger.info(`[Retention] Pruned ${pruned} old messages from chat ${chatIdStr}`);
-            }
-          } catch (err) {
-            logger.error("[Retention] Error pruning old messages:", err);
-          }
-        });
+      if (msg.photo) {
+        const largestPhoto = msg.photo[msg.photo.length - 1];
+        photoFileId = largestPhoto.file_id;
       }
-    }
 
-    await next();
-  });
+      const isSelf = from.is_bot && from.username === botUsername;
+
+      // Save history
+      Repository.saveMessage({
+        chatId: chatIdStr,
+        messageId: msg.message_id,
+        userId: from.id,
+        username: from.username || undefined,
+        firstName: from.first_name,
+        replyToMessageId: msg.reply_to_message?.message_id || undefined,
+        text: textContent || undefined,
+        photoFileId: photoFileId || undefined,
+        isBotReply: isSelf,
+        sentAt: msg.date,
+      });
+
+      // Run message retention cleanup every 100 user messages
+      if (!from.is_bot) {
+        const retentionCount = Repository.getMessageCount(chatIdStr);
+        if (retentionCount > 0 && retentionCount % 100 === 0) {
+          // Explicitly fire-and-forget with proper error boundary
+          void Promise.resolve().then(() => {
+            try {
+              const pruned = Repository.pruneOldMessages(chatIdStr, 7);
+              if (pruned > 0) {
+                logger.info(
+                  `[Retention] Pruned ${pruned} old messages from chat ${chatIdStr}`,
+                );
+              }
+            } catch (err) {
+              logger.error("[Retention] Error pruning old messages:", err);
+            }
+          });
+        }
+      }
+
+      await next();
+    },
+  );
 
   // 5. Permission Checker: Ensure bot can write, otherwise leave immediately
   bot.on("my_chat_member", async (ctx) => {
@@ -271,7 +305,10 @@ export async function initBot() {
 
       let canWrite = true;
 
-      if (botMember.status === "administrator" || botMember.status === "creator") {
+      if (
+        botMember.status === "administrator" ||
+        botMember.status === "creator"
+      ) {
         canWrite = true;
       } else if (botMember.status === "restricted") {
         canWrite = botMember.can_send_messages === true;
@@ -283,11 +320,16 @@ export async function initBot() {
       }
 
       if (!canWrite) {
-        logger.warn(`[Security] Bot lacks write permissions in ${chat.title || "Group"} (${chat.id}). Leaving...`);
+        logger.warn(
+          `[Security] Bot lacks write permissions in ${chat.title || "Group"} (${chat.id}). Leaving...`,
+        );
         await ctx.leaveChat().catch(() => {});
       }
     } catch (e) {
-      logger.error("[Security] Error checking permissions on my_chat_member:", e);
+      logger.error(
+        "[Security] Error checking permissions on my_chat_member:",
+        e,
+      );
     }
   });
 

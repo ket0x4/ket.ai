@@ -123,7 +123,9 @@ export async function performWebSearch(
 
     // DEBUGGING: If still 0 results, log what DuckDuckGo actually gave us
     if (results.length === 0) {
-      logger.warn(`[WebSearch] 0 results found! HTTP Status: ${response.status}`);
+      logger.warn(
+        `[WebSearch] 0 results found! HTTP Status: ${response.status}`,
+      );
       logger.warn(`[WebSearch] HTML snippet: ${html.substring(0, 300)}`);
     }
 
@@ -136,10 +138,16 @@ export async function performWebSearch(
 
 export const webSearchTool: AgentTool<
   { query: string },
-  { query: string; results: SearchResult[]; count: number; system_note?: string }
+  {
+    query: string;
+    results: SearchResult[];
+    count: number;
+    system_note?: string;
+  }
 > = {
   name: "web_search",
-  description: "ONLY use this to search the internet when the user specifically asks for current information, news, weather, stock prices, or an instant event not in your training data. DO NOT USE it for general chat or when the answer is already in previous conversations.",
+  description:
+    "ONLY use this to search the internet when the user specifically asks for current information, news, weather, stock prices, or an instant event not in your training data. DO NOT USE it for general chat or when the answer is already in previous conversations.",
   parameters: {
     type: "OBJECT",
     properties: {
@@ -153,7 +161,12 @@ export const webSearchTool: AgentTool<
   execute: async (args: { query: string }) => {
     const query = args.query?.trim() || "";
     if (!query) {
-      return { query, results: [], count: 0, system_note: "Empty query provided." };
+      return {
+        query,
+        results: [],
+        count: 0,
+        system_note: "Empty query provided.",
+      };
     }
 
     logger.info(`[WebSearchTool] Running web search for query: "${query}"`);
@@ -167,8 +180,9 @@ export const webSearchTool: AgentTool<
       results,
       count: results.length,
       ...(results.length === 0 && {
-        system_note: "Search engine returned 0 results (likely blocked by anti-bot protection). Tell the user politely that you couldn't access the internet right now."
-      })
+        system_note:
+          "Search engine returned 0 results (likely blocked by anti-bot protection). Tell the user politely that you couldn't access the internet right now.",
+      }),
     };
   },
 };

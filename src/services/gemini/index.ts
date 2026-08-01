@@ -16,7 +16,7 @@ import { ToolTraceLogger } from "../../utils/toolTrace";
 export type ToolCallCallback = (
   toolName: string,
   args: Record<string, any>,
-  step: number
+  step: number,
 ) => Promise<void> | void;
 
 const lastSummarizedCount = new Map<string, number>();
@@ -39,7 +39,9 @@ export const GeminiService = {
   ): Promise<string> {
     try {
       if (history.length === 0) {
-        logger.warn("[Gemini] _generateResponse called with empty history. Returning fallback.");
+        logger.warn(
+          "[Gemini] _generateResponse called with empty history. Returning fallback.",
+        );
         return options.fallbackEmpty;
       }
       const chatIdStr = history[0]?.chat_id.toString() || "";
@@ -55,7 +57,11 @@ export const GeminiService = {
         ? topicSummary || "General chat"
         : lastMessageText;
       const memories = chatIdStr
-        ? await getRelevantMemories(chatIdStr, queryForMemory, topicSummary || undefined)
+        ? await getRelevantMemories(
+            chatIdStr,
+            queryForMemory,
+            topicSummary || undefined,
+          )
         : [];
 
       const historyList = buildHistoryList(history);
@@ -90,9 +96,13 @@ export const GeminiService = {
       }
 
       // Check for explicit memory intent keywords in user message
-      const hasExplicitMemoryIntent = /\b(?:bunu unutma|aklında tut|not et|hafızana yaz|kaydet|bunu hatırla)\b/i.test(lastMessageText);
+      const hasExplicitMemoryIntent =
+        /\b(?:bunu unutma|aklında tut|not et|hafızana yaz|kaydet|bunu hatırla)\b/i.test(
+          lastMessageText,
+        );
       if (hasExplicitMemoryIntent) {
-        inputPayload.instruction = (inputPayload.instruction ? inputPayload.instruction + " " : "") +
+        inputPayload.instruction =
+          (inputPayload.instruction ? inputPayload.instruction + " " : "") +
           "IMPORTANT: The user explicitly requested to remember information from this message. Make sure to extract all personal facts/details into new_memory_updates.";
       }
 
@@ -204,7 +214,10 @@ export const GeminiService = {
               try {
                 await options.onToolCall(fc.name, fc.args || {}, step);
               } catch (err) {
-                logger.warn("[Agent] Error executing onToolCall callback:", err);
+                logger.warn(
+                  "[Agent] Error executing onToolCall callback:",
+                  err,
+                );
               }
             }
           }
@@ -230,7 +243,10 @@ export const GeminiService = {
             const result = await toolRegistry.executeTool(name, args);
             const durationMs = Date.now() - startTime;
 
-            const snippet = typeof result === "string" ? result.substring(0, 300) : JSON.stringify(result).substring(0, 300);
+            const snippet =
+              typeof result === "string"
+                ? result.substring(0, 300)
+                : JSON.stringify(result).substring(0, 300);
             ToolTraceLogger.add({
               chatId: chatIdStr,
               toolName: name,
@@ -264,18 +280,26 @@ export const GeminiService = {
       }
 
       try {
-        const cleanedText = responseText.replace(/^```(?:json)?\n?|\n?```$/g, "").trim();
+        const cleanedText = responseText
+          .replace(/^```(?:json)?\n?|\n?```$/g, "")
+          .trim();
         const parsed = JSON.parse(cleanedText);
 
         if (Array.isArray(parsed.new_memory_updates) && chatIdStr) {
-          const senderUserId = lastMsg && !lastMsg.is_bot_reply ? lastMsg.user_id : undefined;
+          const senderUserId =
+            lastMsg && !lastMsg.is_bot_reply ? lastMsg.user_id : undefined;
           for (const mem of parsed.new_memory_updates) {
             if (mem.user_name && mem.fact) {
               const combinedFact = `${mem.user_name}: ${mem.fact}`;
-              const cat = (mem.category as "PROFILE" | "DYNAMIC" | "TEMPORARY") || "PROFILE";
-              const ttl = typeof mem.ttl_days === "number" && mem.ttl_days > 0
-                ? mem.ttl_days
-                : (cat === "TEMPORARY" ? 3 : null);
+              const cat =
+                (mem.category as "PROFILE" | "DYNAMIC" | "TEMPORARY") ||
+                "PROFILE";
+              const ttl =
+                typeof mem.ttl_days === "number" && mem.ttl_days > 0
+                  ? mem.ttl_days
+                  : cat === "TEMPORARY"
+                    ? 3
+                    : null;
 
               await processNewMemory(chatIdStr, combinedFact, {
                 userId: senderUserId,

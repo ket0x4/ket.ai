@@ -11,7 +11,9 @@ if (dbDir && dbDir !== "." && !existsSync(dbDir)) {
   try {
     mkdirSync(dbDir, { recursive: true });
   } catch (err) {
-    logger.warn(`[DB] Could not create database directory at "${dbDir}". Falling back to "./data/bot.db"`);
+    logger.warn(
+      `[DB] Could not create database directory at "${dbDir}". Falling back to "./data/bot.db"`,
+    );
     dbPath = "./data/bot.db";
     const fallbackDir = dirname(dbPath);
     if (fallbackDir && !existsSync(fallbackDir)) {

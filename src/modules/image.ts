@@ -5,7 +5,10 @@ import { Repository } from "../db/repository";
 import { GeminiService } from "../services/gemini/index";
 import { isConversationFollowUp } from "../utils/conversation";
 import { sendLongMessage } from "../utils/message";
-import { downloadTelegramFile, isDownloadError } from "../utils/mediaDownloader";
+import {
+  downloadTelegramFile,
+  isDownloadError,
+} from "../utils/mediaDownloader";
 import logger from "../utils/logger";
 
 export function registerImageHandlers(bot: Bot) {
@@ -27,12 +30,16 @@ export function registerImageHandlers(bot: Bot) {
       : false;
     if (isFollowUp) {
       logger.debug(
-        `[Image] Follow-up photo detected for user ${ctx.from?.first_name} in chat ${chatIdStr}`
+        `[Image] Follow-up photo detected for user ${ctx.from?.first_name} in chat ${chatIdStr}`,
       );
     }
 
     const isDirectInteraction =
-      isMentioned || isReplyToBot || isPrivateChat || containsNickname || isFollowUp;
+      isMentioned ||
+      isReplyToBot ||
+      isPrivateChat ||
+      containsNickname ||
+      isFollowUp;
 
     if (!isDirectInteraction) {
       // Not directed to the bot, we just log it (already logged by middleware) and do nothing
@@ -58,11 +65,11 @@ export function registerImageHandlers(bot: Bot) {
           // Fetch recent history for context
           const activeTopic = await GeminiService.ensureTopicSummary(
             chatIdStr,
-            chatSettings.current_topic
+            chatSettings.current_topic,
           );
           const history = Repository.getRecentMessages(
             chatIdStr,
-            CONFIG.IMAGE_HISTORY_LIMIT
+            CONFIG.IMAGE_HISTORY_LIMIT,
           );
 
           logger.info(`[Image] Sending photo to Gemini for analysis...`);
@@ -70,7 +77,7 @@ export function registerImageHandlers(bot: Bot) {
             downloadResult.buffer,
             "image/jpeg", // Telegram converts all photo files to JPEG
             history,
-            activeTopic
+            activeTopic,
           );
 
           // Reply to the photo message
@@ -83,7 +90,7 @@ export function registerImageHandlers(bot: Bot) {
             reply_to_message_id: msg.message_id,
           });
         }
-      })
+      }),
     );
   });
 }

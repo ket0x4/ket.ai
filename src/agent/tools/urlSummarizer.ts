@@ -67,16 +67,25 @@ function extractCleanText(html: string): { title: string; content: string } {
  * Fetches content from a web URL and extracts clean readable text.
  * Token-optimized: limits total content length to max ~2500 characters.
  */
-export async function fetchPageContent(urlInput: string, maxLength = 2500): Promise<PageSummaryResult> {
+export async function fetchPageContent(
+  urlInput: string,
+  maxLength = 2500,
+): Promise<PageSummaryResult> {
   let validUrl: URL;
   try {
-    const formattedUrl = urlInput.startsWith("http://") || urlInput.startsWith("https://")
-      ? urlInput
-      : `https://${urlInput}`;
+    const formattedUrl =
+      urlInput.startsWith("http://") || urlInput.startsWith("https://")
+        ? urlInput
+        : `https://${urlInput}`;
     validUrl = new URL(formattedUrl);
   } catch (err) {
     logger.warn(`[UrlSummarizer] Invalid URL provided: "${urlInput}"`);
-    return { url: urlInput, content: "", length: 0, error: "Invalid URL provided." };
+    return {
+      url: urlInput,
+      content: "",
+      length: 0,
+      error: "Invalid URL provided.",
+    };
   }
 
   const targetUrl = validUrl.toString();
@@ -87,14 +96,18 @@ export async function fetchPageContent(urlInput: string, maxLength = 2500): Prom
     const response = await fetch(targetUrl, {
       method: "GET",
       headers: {
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "User-Agent":
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        Accept:
+          "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
       },
     });
 
     if (!response.ok) {
-      logger.warn(`[UrlSummarizer] HTTP status ${response.status} when fetching ${targetUrl}`);
+      logger.warn(
+        `[UrlSummarizer] HTTP status ${response.status} when fetching ${targetUrl}`,
+      );
       return {
         url: targetUrl,
         content: "",
@@ -104,7 +117,11 @@ export async function fetchPageContent(urlInput: string, maxLength = 2500): Prom
     }
 
     const contentType = response.headers.get("content-type") || "";
-    if (!contentType.includes("text") && !contentType.includes("json") && !contentType.includes("xml")) {
+    if (
+      !contentType.includes("text") &&
+      !contentType.includes("json") &&
+      !contentType.includes("xml")
+    ) {
       logger.warn(`[UrlSummarizer] Unsupported content type: ${contentType}`);
       return {
         url: targetUrl,
@@ -118,11 +135,15 @@ export async function fetchPageContent(urlInput: string, maxLength = 2500): Prom
     const { title, content } = extractCleanText(rawHtml);
 
     // Token optimization: limit content length
-    const trimmedContent = content.length > maxLength
-      ? content.slice(0, maxLength) + "\n\n[...Text continues, truncated for token efficiency]"
-      : content;
+    const trimmedContent =
+      content.length > maxLength
+        ? content.slice(0, maxLength) +
+          "\n\n[...Text continues, truncated for token efficiency]"
+        : content;
 
-    logger.info(`[UrlSummarizer] Extracted ${trimmedContent.length} chars from ${targetUrl}`);
+    logger.info(
+      `[UrlSummarizer] Extracted ${trimmedContent.length} chars from ${targetUrl}`,
+    );
 
     return {
       url: targetUrl,
@@ -131,7 +152,10 @@ export async function fetchPageContent(urlInput: string, maxLength = 2500): Prom
       length: trimmedContent.length,
     };
   } catch (error: any) {
-    logger.error(`[UrlSummarizer] Failed to fetch page content for ${targetUrl}:`, error);
+    logger.error(
+      `[UrlSummarizer] Failed to fetch page content for ${targetUrl}:`,
+      error,
+    );
     return {
       url: targetUrl,
       content: "",
@@ -141,25 +165,28 @@ export async function fetchPageContent(urlInput: string, maxLength = 2500): Prom
   }
 }
 
-export const urlSummarizerTool: AgentTool<{ url: string }, PageSummaryResult> = {
-  name: "url_summarizer",
-  description: "ONLY use this when the user explicitly sends a 'URL (link)' for you to analyze or summarize. Do not use this tool if the user did not send a link or if the content of the link is already known.",
-  parameters: {
-    type: "OBJECT",
-    properties: {
-      url: {
-        type: "STRING",
-        description: "The web page URL to fetch and summarize (e.g. 'https://example.com/article').",
+export const urlSummarizerTool: AgentTool<{ url: string }, PageSummaryResult> =
+  {
+    name: "url_summarizer",
+    description:
+      "ONLY use this when the user explicitly sends a 'URL (link)' for you to analyze or summarize. Do not use this tool if the user did not send a link or if the content of the link is already known.",
+    parameters: {
+      type: "OBJECT",
+      properties: {
+        url: {
+          type: "STRING",
+          description:
+            "The web page URL to fetch and summarize (e.g. 'https://example.com/article').",
+        },
       },
+      required: ["url"],
     },
-    required: ["url"],
-  },
-  execute: async (args: { url: string }) => {
-    const url = args.url?.trim() || "";
-    if (!url) {
-      return { url: "", content: "", length: 0, error: "No URL provided." };
-    }
+    execute: async (args: { url: string }) => {
+      const url = args.url?.trim() || "";
+      if (!url) {
+        return { url: "", content: "", length: 0, error: "No URL provided." };
+      }
 
-    return await fetchPageContent(url);
-  },
-};
+      return await fetchPageContent(url);
+    },
+  };

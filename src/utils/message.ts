@@ -61,7 +61,7 @@ export interface SendOptions {
 export async function sendLongMessage(
   ctx: Context,
   text: string,
-  options: SendOptions = {}
+  options: SendOptions = {},
 ): Promise<void> {
   const chunks = splitMessage(text);
 
@@ -74,11 +74,14 @@ export async function sendLongMessage(
           ctx.chat.id,
           options.edit_message_id,
           chunks[i],
-          { parse_mode: options.parse_mode as any }
+          { parse_mode: options.parse_mode as any },
         );
         continue;
       } catch (e) {
-        logger.warn("[Message] Failed to edit status message, falling back to reply:", e);
+        logger.warn(
+          "[Message] Failed to edit status message, falling back to reply:",
+          e,
+        );
       }
     }
 

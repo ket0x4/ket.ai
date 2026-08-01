@@ -31,7 +31,9 @@ export const ToolTraceLogger = {
       traceBuffer.shift();
     }
 
-    logger.debug(`[ToolTrace] Logged tool call: ${entry.toolName} (Step ${entry.step})`);
+    logger.debug(
+      `[ToolTrace] Logged tool call: ${entry.toolName} (Step ${entry.step})`,
+    );
   },
 
   getAll(): ToolTraceEntry[] {

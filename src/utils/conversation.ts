@@ -8,7 +8,7 @@ import { Repository } from "../db/repository";
 export function isConversationFollowUp(
   chatId: string,
   userId: number,
-  messageDate: number
+  messageDate: number,
 ): boolean {
   const recent = Repository.getRecentMessages(chatId, 3);
   if (recent.length < 3) return false;

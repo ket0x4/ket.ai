@@ -3,7 +3,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: ketai
+    container_name: ket-ai
     restart: unless-stopped
     environment:
       - TZ=Europe/Istanbul
@@ -15,4 +15,3 @@ services:
       - ./data:/app/data:rw
       # Mount logs directory to access app.log and error.log on host machine
       - ./logs:/app/logs:rw
-

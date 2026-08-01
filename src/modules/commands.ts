@@ -161,9 +161,12 @@ export function registerCommands(bot: Bot) {
     const appUrl = CONFIG.WEB_APP_URL || `http://localhost:${CONFIG.WEB_PORT}`;
     const keyboard = new InlineKeyboard().webApp("Open Dashboard", appUrl);
 
-    await ctx.reply("Click the button below to open the Admin & Memory Dashboard:", {
-      reply_markup: keyboard,
-    });
+    await ctx.reply(
+      "Click the button below to open the Admin & Memory Dashboard:",
+      {
+        reply_markup: keyboard,
+      },
+    );
   });
 
   // 3. /reset command
@@ -455,18 +458,18 @@ export function registerCommands(bot: Bot) {
           `To change:\n` +
           `\`/model gemini-3.6-flash\`\n` +
           `\`/model gemini-3.1-pro\`\n` +
-          `\`/model gemini-3.5-flash-lite\`` +
+          `\`/model gemini-3.5-flash-lite\`\n` +
           `\`/model gemini-3.1-flash-lite\``,
         { parse_mode: "Markdown" },
       );
       return;
     }
-
+    /*
     if (!modelName.startsWith("gemini-")) {
       await ctx.reply("Model name must start with 'gemini-'.");
       return;
     }
-
+    */
     updateModel(modelName);
     await ctx.reply(
       `[OK] Model changed to \`${modelName}\`! New responses will be generated with this model.`,

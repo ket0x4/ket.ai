@@ -10,7 +10,9 @@ export class ToolRegistry {
    */
   public register(tool: AgentTool): void {
     if (!tool.name || typeof tool.execute !== "function") {
-      throw new Error(`[ToolRegistry] Invalid tool definition for '${tool.name || "unnamed"}'`);
+      throw new Error(
+        `[ToolRegistry] Invalid tool definition for '${tool.name || "unnamed"}'`,
+      );
     }
     this.tools.set(tool.name, tool);
     logger.info(`[ToolRegistry] Registered tool: ${tool.name}`);
@@ -59,7 +61,10 @@ export class ToolRegistry {
   /**
    * Executes a registered tool by name with provided arguments.
    */
-  public async executeTool(name: string, args: Record<string, any>): Promise<any> {
+  public async executeTool(
+    name: string,
+    args: Record<string, any>,
+  ): Promise<any> {
     const tool = this.tools.get(name);
     if (!tool) {
       logger.error(`[ToolRegistry] Tool '${name}' requested but not found`);
@@ -67,9 +72,15 @@ export class ToolRegistry {
     }
 
     try {
-      logger.info(`[ToolRegistry] Executing tool '${name}' with args:`, JSON.stringify(args));
+      logger.info(
+        `[ToolRegistry] Executing tool '${name}' with args:`,
+        JSON.stringify(args),
+      );
       const result = await tool.execute(args);
-      logger.debug(`[ToolRegistry] Tool '${name}' execution result:`, JSON.stringify(result));
+      logger.debug(
+        `[ToolRegistry] Tool '${name}' execution result:`,
+        JSON.stringify(result),
+      );
       return result;
     } catch (error: any) {
       logger.error(`[ToolRegistry] Error executing tool '${name}':`, error);

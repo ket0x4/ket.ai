@@ -11,7 +11,9 @@ const MAX_TRACKED_CHATS = 200;
 /**
  * Increments message counter for a chat and triggers background memory extraction every 15 messages.
  */
-export async function checkAndRunBackgroundMemoryExtraction(chatIdStr: string): Promise<void> {
+export async function checkAndRunBackgroundMemoryExtraction(
+  chatIdStr: string,
+): Promise<void> {
   const count = (backgroundCounter.get(chatIdStr) || 0) + 1;
   if (count < 15) {
     backgroundCounter.set(chatIdStr, count);
@@ -26,23 +28,30 @@ export async function checkAndRunBackgroundMemoryExtraction(chatIdStr: string): 
   // Reset counter and run background extraction asynchronously
   backgroundCounter.set(chatIdStr, 0);
   runBackgroundMemoryExtraction(chatIdStr).catch((err) => {
-    logger.error(`[MemoryWorker] Background extraction error for chat ${chatIdStr}:`, err);
+    logger.error(
+      `[MemoryWorker] Background extraction error for chat ${chatIdStr}:`,
+      err,
+    );
   });
 }
 
 /**
  * Analyzes recent group chat messages to extract user facts even if bot didn't respond.
  */
-export async function runBackgroundMemoryExtraction(chatIdStr: string): Promise<void> {
+export async function runBackgroundMemoryExtraction(
+  chatIdStr: string,
+): Promise<void> {
   const recentMessages = Repository.getRecentMessages(chatIdStr, 20);
   if (recentMessages.length < 3) return;
 
-  const formattedHistory = recentMessages.map((msg) => {
-    const sender = msg.is_bot_reply
-      ? "Bot (ket.ai)"
-      : `User_${msg.user_id} (${msg.first_name || "Unnamed"})`;
-    return `${sender}: ${msg.text || "[Media]"}`;
-  }).join("\n");
+  const formattedHistory = recentMessages
+    .map((msg) => {
+      const sender = msg.is_bot_reply
+        ? "Bot (ket.ai)"
+        : `User_${msg.user_id} (${msg.first_name || "Unnamed"})`;
+      return `${sender}: ${msg.text || "[Media]"}`;
+    })
+    .join("\n");
 
   const prompt = `Analyze the following group chat conversation log.
 Identify any stated personal facts, user preferences, locations, plans, or events about users in the chat.
@@ -53,7 +62,9 @@ Return ONLY a JSON array of extracted facts.
 Chat Log:
 ${formattedHistory}`;
 
-  logger.info(`[MemoryWorker] Running background memory extraction for chat ${chatIdStr}...`);
+  logger.info(
+    `[MemoryWorker] Running background memory extraction for chat ${chatIdStr}...`,
+  );
 
   try {
     const response = await runWithRetry(() =>
@@ -72,7 +83,8 @@ ${formattedHistory}`;
               properties: {
                 user_id: {
                   type: "INTEGER",
-                  description: "The integer user_id extracted from User_ID field if available.",
+                  description:
+                    "The integer user_id extracted from User_ID field if available.",
                 },
                 user_name: {
                   type: "STRING",
@@ -80,22 +92,25 @@ ${formattedHistory}`;
                 },
                 fact: {
                   type: "STRING",
-                  description: "Factual statement (e.g. 'likes coffee', 'moved to Ankara'). Do not use word 'User'.",
+                  description:
+                    "Factual statement (e.g. 'likes coffee', 'moved to Ankara'). Do not use word 'User'.",
                 },
                 category: {
                   type: "STRING",
-                  description: "'PROFILE' for permanent facts, 'DYNAMIC' for medium-term, 'TEMPORARY' for upcoming events.",
+                  description:
+                    "'PROFILE' for permanent facts, 'DYNAMIC' for medium-term, 'TEMPORARY' for upcoming events.",
                 },
                 ttl_days: {
                   type: "INTEGER",
-                  description: "Expiry in days for temporary facts, or null/0 for permanent facts.",
+                  description:
+                    "Expiry in days for temporary facts, or null/0 for permanent facts.",
                 },
               },
               required: ["user_name", "fact"],
             },
           },
         },
-      })
+      }),
     );
 
     const responseText = response.text?.trim() || "[]";
@@ -106,8 +121,12 @@ ${formattedHistory}`;
       for (const item of extractedList) {
         if (item.user_name && item.fact) {
           const combinedFact = `${item.user_name}: ${item.fact}`;
-          const cat = (item.category as "PROFILE" | "DYNAMIC" | "TEMPORARY") || "PROFILE";
-          const ttl = typeof item.ttl_days === "number" && item.ttl_days > 0 ? item.ttl_days : null;
+          const cat =
+            (item.category as "PROFILE" | "DYNAMIC" | "TEMPORARY") || "PROFILE";
+          const ttl =
+            typeof item.ttl_days === "number" && item.ttl_days > 0
+              ? item.ttl_days
+              : null;
 
           await processNewMemory(chatIdStr, combinedFact, {
             userId: typeof item.user_id === "number" ? item.user_id : null,
@@ -118,10 +137,15 @@ ${formattedHistory}`;
         }
       }
       if (savedCount > 0) {
-        logger.info(`[MemoryWorker] Background extraction saved ${savedCount} memories for chat ${chatIdStr}.`);
+        logger.info(
+          `[MemoryWorker] Background extraction saved ${savedCount} memories for chat ${chatIdStr}.`,
+        );
       }
     }
   } catch (error) {
-    logger.error(`[MemoryWorker] Failed background extraction for chat ${chatIdStr}:`, error);
+    logger.error(
+      `[MemoryWorker] Failed background extraction for chat ${chatIdStr}:`,
+      error,
+    );
   }
 }

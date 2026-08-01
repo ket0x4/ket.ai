@@ -17,7 +17,9 @@ async function main() {
 
 // Graceful shutdown handling
 const shutdown = () => {
-  logger.info("Received shutdown signal. Stopping bot, web server and closing database...");
+  logger.info(
+    "Received shutdown signal. Stopping bot, web server and closing database...",
+  );
   try {
     stopServer();
   } catch (error) {

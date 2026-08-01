@@ -41,8 +41,8 @@ async function generateAndSendReply(
         const statusMsgText =
           toolName === "web_search"
             ? CONFIG.MESSAGES.tool_status_web_search ||
-              `gimme a sec bro, checking (${toolName})...`
-            : `gimme a sec bro, checking (${toolName})...`;
+              `Spawning Subagent for (${toolName})...`
+            : `Spawning Subagent for (${toolName})...`;
 
         logger.info(
           `${logPrefix} Sending tool status notification: "${statusMsgText}"`,

@@ -10,7 +10,10 @@ const MAX_TRACKED_CHATS = 200;
 
 export async function generateEmbedding(
   text: string,
-  taskType: "RETRIEVAL_DOCUMENT" | "RETRIEVAL_QUERY" | "SEMANTIC_SIMILARITY" = "RETRIEVAL_DOCUMENT"
+  taskType:
+    | "RETRIEVAL_DOCUMENT"
+    | "RETRIEVAL_QUERY"
+    | "SEMANTIC_SIMILARITY" = "RETRIEVAL_DOCUMENT",
 ): Promise<number[]> {
   try {
     const response = await runWithRetry(() =>
@@ -117,7 +120,10 @@ export async function getRelevantMemories(
       ? `${cleanQuery} | Topic: ${activeTopic}`
       : cleanQuery;
 
-  const queryEmbedding = await generateEmbedding(enrichedQuery, "RETRIEVAL_QUERY");
+  const queryEmbedding = await generateEmbedding(
+    enrichedQuery,
+    "RETRIEVAL_QUERY",
+  );
   if (queryEmbedding.length === 0) {
     logger.warn(
       `[Memory RAG] Query embedding failed for chat ${chatId}. Skipping RAG retrieval.`,

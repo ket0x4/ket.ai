@@ -5,7 +5,10 @@ import { Repository } from "../db/repository";
 import { GeminiService } from "../services/gemini/index";
 import { isConversationFollowUp } from "../utils/conversation";
 import { sendLongMessage } from "../utils/message";
-import { downloadTelegramFile, isDownloadError } from "../utils/mediaDownloader";
+import {
+  downloadTelegramFile,
+  isDownloadError,
+} from "../utils/mediaDownloader";
 import logger from "../utils/logger";
 
 /**
@@ -38,7 +41,7 @@ export function registerVoiceHandlers(bot: Bot) {
       : false;
     if (isFollowUp) {
       logger.debug(
-        `[Voice] Follow-up voice detected for user ${ctx.from?.first_name} in chat ${chatIdStr}`
+        `[Voice] Follow-up voice detected for user ${ctx.from?.first_name} in chat ${chatIdStr}`,
       );
     }
 
@@ -71,19 +74,21 @@ export function registerVoiceHandlers(bot: Bot) {
           // Fetch recent history for context
           const activeTopic = await GeminiService.ensureTopicSummary(
             chatIdStr,
-            chatSettings.current_topic
+            chatSettings.current_topic,
           );
           const history = Repository.getRecentMessages(
             chatIdStr,
-            CONFIG.IMAGE_HISTORY_LIMIT
+            CONFIG.IMAGE_HISTORY_LIMIT,
           );
 
-          logger.info(`[Voice] Sending voice message to Gemini for analysis...`);
+          logger.info(
+            `[Voice] Sending voice message to Gemini for analysis...`,
+          );
           const reply = await GeminiService.generateVoiceReply(
             downloadResult.buffer,
             mimeType,
             history,
-            activeTopic
+            activeTopic,
           );
 
           // Reply to the voice message
@@ -96,10 +101,10 @@ export function registerVoiceHandlers(bot: Bot) {
             "Failed to process your voice message. Please try again later.",
             {
               reply_to_message_id: msg.message_id,
-            }
+            },
           );
         }
-      })
+      }),
     );
   });
 }

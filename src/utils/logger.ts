@@ -15,8 +15,8 @@ const LOG_LEVEL_SEVERITY: Record<LogLevel, number> = {
 
 const COLOR_CODES: Record<LogLevel, string> = {
   debug: "\x1b[36m", // Cyan
-  info: "\x1b[32m",  // Green
-  warn: "\x1b[33m",  // Yellow
+  info: "\x1b[32m", // Green
+  warn: "\x1b[33m", // Yellow
   error: "\x1b[31m", // Red
 };
 const RESET_COLOR = "\x1b[0m";
@@ -116,9 +116,7 @@ class Logger {
 
       if (stats.size >= this.maxSizeBytes) {
         const fileBase = path.basename(filePath, ".log");
-        const timestamp = new Date()
-          .toISOString()
-          .replace(/[:.]/g, "-");
+        const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
         const archiveName = `${fileBase}-${timestamp}.log`;
         const tempArchivePath = path.join(this.archiveDir, archiveName);
         const compressedPath = `${tempArchivePath}.gz`;
@@ -130,17 +128,26 @@ class Logger {
         // Compress asynchronously to avoid blocking the event loop
         fs.readFile(tempArchivePath, (readErr, content) => {
           if (readErr) {
-            console.error(`[Logger] Failed to read log for compression: ${tempArchivePath}`, readErr);
+            console.error(
+              `[Logger] Failed to read log for compression: ${tempArchivePath}`,
+              readErr,
+            );
             return;
           }
           zlib.gzip(content, (gzErr, compressed) => {
             if (gzErr) {
-              console.error(`[Logger] Failed to compress log: ${tempArchivePath}`, gzErr);
+              console.error(
+                `[Logger] Failed to compress log: ${tempArchivePath}`,
+                gzErr,
+              );
               return;
             }
             fs.writeFile(compressedPath, compressed, (writeErr) => {
               if (writeErr) {
-                console.error(`[Logger] Failed to write compressed log: ${compressedPath}`, writeErr);
+                console.error(
+                  `[Logger] Failed to write compressed log: ${compressedPath}`,
+                  writeErr,
+                );
                 return;
               }
               fs.unlink(tempArchivePath, () => {});

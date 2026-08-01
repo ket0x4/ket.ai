@@ -22,12 +22,14 @@ export type DownloadResult = DownloadedMedia | DownloadError;
  */
 export async function downloadTelegramFile(
   ctx: Context,
-  mediaType: string = "file"
+  mediaType: string = "file",
 ): Promise<DownloadResult> {
   const fileDetails = await ctx.getFile();
 
   if (!fileDetails.file_path) {
-    return { error: `Could not retrieve ${mediaType} file path from Telegram.` };
+    return {
+      error: `Could not retrieve ${mediaType} file path from Telegram.`,
+    };
   }
 
   if (fileDetails.file_size && fileDetails.file_size > MAX_FILE_SIZE_BYTES) {
@@ -38,13 +40,17 @@ export async function downloadTelegramFile(
   const response = await fetch(fileUrl);
 
   if (!response.ok) {
-    throw new Error(`Telegram file download failed with status ${response.status}`);
+    throw new Error(
+      `Telegram file download failed with status ${response.status}`,
+    );
   }
 
   const arrayBuffer = await response.arrayBuffer();
   const buffer = Buffer.from(arrayBuffer);
 
-  logger.info(`[MediaDownloader] Downloaded ${mediaType} (${buffer.length} bytes) from ${fileDetails.file_path}`);
+  logger.info(
+    `[MediaDownloader] Downloaded ${mediaType} (${buffer.length} bytes) from ${fileDetails.file_path}`,
+  );
 
   return {
     buffer,
@@ -56,6 +62,8 @@ export async function downloadTelegramFile(
 /**
  * Type guard to check if a download result is an error.
  */
-export function isDownloadError(result: DownloadResult): result is DownloadError {
+export function isDownloadError(
+  result: DownloadResult,
+): result is DownloadError {
   return "error" in result;
 }

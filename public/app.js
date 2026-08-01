@@ -26,12 +26,31 @@ const apiFetch = async (endpoint, options = {}) => {
   }
 };
 
+function escapeHtml(str) {
+  if (!str) return "";
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function debounce(fn, delay) {
+  let timer = null;
+  return (...args) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn(...args), delay);
+  };
+}
+
 const initAuth = async () => {
   try {
     const { user, isOwner } = (await apiFetch("/api/me")) ?? {};
     if (user) {
       const userNameEl = document.getElementById("user-name");
-      if (userNameEl) userNameEl.textContent = user.first_name ?? user.username ?? "Admin";
+      if (userNameEl)
+        userNameEl.textContent = user.first_name ?? user.username ?? "Admin";
 
       const roleEl = document.getElementById("user-role");
       if (roleEl) roleEl.textContent = isOwner ? "Owner" : "Group Admin";
@@ -67,12 +86,20 @@ navBtns.forEach((btn) => {
 const loadDashboardStats = async () => {
   try {
     const stats = (await apiFetch("/api/stats")) ?? {};
-    document.getElementById("stat-total-chats").textContent = stats.totalChats ?? 0;
-    document.getElementById("stat-allowed-chats").textContent = stats.allowedChats ?? 0;
-    document.getElementById("stat-total-memories").textContent = stats.totalMemories ?? 0;
-    document.getElementById("stat-total-messages").textContent = stats.totalMessages ?? 0;
+    document.getElementById("stat-total-chats").textContent =
+      stats.totalChats ?? 0;
+    document.getElementById("stat-allowed-chats").textContent =
+      stats.allowedChats ?? 0;
+    document.getElementById("stat-total-memories").textContent =
+      stats.totalMemories ?? 0;
+    document.getElementById("stat-total-messages").textContent =
+      stats.totalMessages ?? 0;
 
-    const cats = stats.categoryStats ?? { PROFILE: 0, DYNAMIC: 0, TEMPORARY: 0 };
+    const cats = stats.categoryStats ?? {
+      PROFILE: 0,
+      DYNAMIC: 0,
+      TEMPORARY: 0,
+    };
     const totalMems = stats.totalMemories || 1;
     const pProf = Math.round(((cats.PROFILE ?? 0) / totalMems) * 100);
     const pDyn = Math.round(((cats.DYNAMIC ?? 0) / totalMems) * 100);
@@ -110,14 +137,18 @@ const loadDashboardStats = async () => {
 
     const bytes = stats.dbSizeBytes ?? 0;
     const kb = Math.round(bytes / 1024);
-    if (sysDbSize) sysDbSize.textContent = kb > 1024 ? `${(kb / 1024).toFixed(1)} MB` : `${kb} KB`;
+    if (sysDbSize)
+      sysDbSize.textContent =
+        kb > 1024 ? `${(kb / 1024).toFixed(1)} MB` : `${kb} KB`;
     if (sysModel) sysModel.textContent = stats.model ?? "Gemini 3.5 Flash Lite";
-    if (sysWebSearch) sysWebSearch.textContent = stats.webSearch ? "Enabled" : "Disabled";
+    if (sysWebSearch)
+      sysWebSearch.textContent = stats.webSearch ? "Enabled" : "Disabled";
 
     const topContainer = document.getElementById("top-chats-container");
     if (topContainer) {
       if (!stats.topChats?.length) {
-        topContainer.innerHTML = '<div style="color: var(--text-muted); font-size: 12px;">No active groups found yet.</div>';
+        topContainer.innerHTML =
+          '<div style="color: var(--text-muted); font-size: 12px;">No active groups found yet.</div>';
       } else {
         topContainer.innerHTML = stats.topChats
           .map(
@@ -129,7 +160,7 @@ const loadDashboardStats = async () => {
               <span class="tag" style="font-size: 10px;">${is_allowed ? "Allowed" : "Blocked"}</span>
             </div>
           </div>
-        `
+        `,
           )
           .join("");
       }
@@ -164,7 +195,9 @@ const memoryCategoryFilter = document.getElementById("memory-category-filter");
 const memoryContainer = document.getElementById("memory-list-container");
 
 const loadMemories = async () => {
-  if (memoryContainer) memoryContainer.innerHTML = '<div class="loading-spinner">Loading memories...</div>';
+  if (memoryContainer)
+    memoryContainer.innerHTML =
+      '<div class="loading-spinner">Loading memories...</div>';
 
   const chatId = memoryChatFilter?.value ?? "";
   const category = memoryCategoryFilter?.value ?? "";
@@ -178,21 +211,26 @@ const loadMemories = async () => {
     const memories = await apiFetch(query);
     renderMemories(memories);
   } catch (e) {
-    if (memoryContainer) memoryContainer.innerHTML = '<div class="loading-spinner">Failed to load memories.</div>';
+    if (memoryContainer)
+      memoryContainer.innerHTML =
+        '<div class="loading-spinner">Failed to load memories.</div>';
   }
 };
 
 const renderMemories = (memories) => {
   if (!memoryContainer) return;
   if (!memories?.length) {
-    memoryContainer.innerHTML = '<div class="loading-spinner">No memories found.</div>';
+    memoryContainer.innerHTML =
+      '<div class="loading-spinner">No memories found.</div>';
     return;
   }
 
   memoryContainer.innerHTML = memories
     .map(({ id, created_at, expires_at, category, chat_id, memory_text }) => {
       const dateStr = new Date(created_at * 1000).toLocaleString("en-US");
-      const expiryStr = expires_at ? ` • Expires: ${new Date(expires_at * 1000).toLocaleDateString("en-US")}` : "";
+      const expiryStr = expires_at
+        ? ` • Expires: ${new Date(expires_at * 1000).toLocaleDateString("en-US")}`
+        : "";
 
       return `
         <div class="memory-item" data-id="${id}">
@@ -347,29 +385,42 @@ modalEditSaveBtn?.addEventListener("click", async () => {
 const chatContainer = document.getElementById("chat-list-container");
 
 const loadChats = async () => {
-  if (chatContainer) chatContainer.innerHTML = '<div class="loading-spinner">Loading groups...</div>';
+  if (chatContainer)
+    chatContainer.innerHTML =
+      '<div class="loading-spinner">Loading groups...</div>';
   try {
     chatsData = (await apiFetch("/api/chats")) ?? [];
     renderChats(chatsData);
     populateChatSelects(chatsData);
   } catch (e) {
-    if (chatContainer) chatContainer.innerHTML = '<div class="loading-spinner">Failed to load groups.</div>';
+    if (chatContainer)
+      chatContainer.innerHTML =
+        '<div class="loading-spinner">Failed to load groups.</div>';
   }
 };
 
 const renderChats = (chats) => {
   if (!chatContainer) return;
   if (!chats?.length) {
-    chatContainer.innerHTML = '<div class="loading-spinner">No registered groups found.</div>';
+    chatContainer.innerHTML =
+      '<div class="loading-spinner">No registered groups found.</div>';
     return;
   }
 
   chatContainer.innerHTML = chats
-    .map(({ title, chat_id, reply_probability, memoryCount, stats, is_allowed }) => {
-      const displayTitle = title ?? `Group ${chat_id}`;
-      const prob = Math.round((reply_probability ?? 0.05) * 100);
+    .map(
+      ({
+        title,
+        chat_id,
+        reply_probability,
+        memoryCount,
+        stats,
+        is_allowed,
+      }) => {
+        const displayTitle = title ?? `Group ${chat_id}`;
+        const prob = Math.round((reply_probability ?? 0.05) * 100);
 
-      return `
+        return `
         <div class="chat-item">
           <div class="chat-header-row">
             <div>
@@ -392,7 +443,8 @@ const renderChats = (chats) => {
           </div>
         </div>
       `;
-    })
+      },
+    )
     .join("");
 
   document.querySelectorAll(".toggle-chat-allowed").forEach((chk) => {
@@ -476,7 +528,8 @@ levelPills.forEach((pill) => {
 });
 
 const loadLogs = async () => {
-  if (logConsole) logConsole.innerHTML = '<div class="loading-spinner">Loading logs...</div>';
+  if (logConsole)
+    logConsole.innerHTML = '<div class="loading-spinner">Loading logs...</div>';
 
   const type = logFileSelect?.value ?? "app";
   const search = logSearchInput?.value.trim() ?? "";
@@ -486,14 +539,17 @@ const loadLogs = async () => {
     const data = await apiFetch(query);
     renderLogs(data.logs ?? []);
   } catch (e) {
-    if (logConsole) logConsole.innerHTML = '<div class="loading-spinner">Failed to read logs.</div>';
+    if (logConsole)
+      logConsole.innerHTML =
+        '<div class="loading-spinner">Failed to read logs.</div>';
   }
 };
 
 const renderLogs = (logs) => {
   if (!logConsole) return;
   if (!logs?.length) {
-    logConsole.innerHTML = '<div class="loading-spinner">No matching log entries.</div>';
+    logConsole.innerHTML =
+      '<div class="loading-spinner">No matching log entries.</div>';
     return;
   }
 
@@ -521,25 +577,30 @@ const settingWebSearch = document.getElementById("setting-web-search");
 const btnSaveSettings = document.getElementById("btn-save-settings");
 
 settingReplyProb?.addEventListener("input", (e) => {
-  if (settingReplyProbVal) settingReplyProbVal.textContent = `${e.target.value}%`;
+  if (settingReplyProbVal)
+    settingReplyProbVal.textContent = `${e.target.value}%`;
 });
 
 const loadSettings = async () => {
   try {
     const s = (await apiFetch("/api/settings")) ?? {};
-    if (settingModel) settingModel.value = s.gemini_model ?? "gemini-3.5-flash-lite";
+    if (settingModel)
+      settingModel.value = s.gemini_model ?? "gemini-3.5-flash-lite";
     if (settingReplyProb) {
       const pct = Math.round((s.default_reply_probability ?? 0.05) * 100);
       settingReplyProb.value = pct;
       if (settingReplyProbVal) settingReplyProbVal.textContent = `${pct}%`;
     }
-    if (settingHistoryLimit) settingHistoryLimit.value = s.chat_history_limit ?? 10;
+    if (settingHistoryLimit)
+      settingHistoryLimit.value = s.chat_history_limit ?? 10;
     if (settingAgentSteps) settingAgentSteps.value = s.max_agent_steps ?? 3;
     if (settingLogLevel) settingLogLevel.value = s.log_level ?? "info";
-    if (settingWebSearch) settingWebSearch.checked = Boolean(s.enable_web_search);
+    if (settingWebSearch)
+      settingWebSearch.checked = Boolean(s.enable_web_search);
 
     const sysModelEl = document.getElementById("sys-model");
-    if (sysModelEl) sysModelEl.textContent = s.gemini_model ?? "gemini-3.5-flash-lite";
+    if (sysModelEl)
+      sysModelEl.textContent = s.gemini_model ?? "gemini-3.5-flash-lite";
   } catch (e) {
     console.error("Failed to load settings:", e);
   }
@@ -595,7 +656,9 @@ const fileImportMemories = document.getElementById("file-import-memories");
 btnExportMemories?.addEventListener("click", async () => {
   try {
     const data = await apiFetch("/api/memories/export");
-    const blob = new Blob([JSON.stringify(data.memories, null, 2)], { type: "application/json" });
+    const blob = new Blob([JSON.stringify(data.memories, null, 2)], {
+      type: "application/json",
+    });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -647,21 +710,24 @@ const loadToolTraces = async () => {
     const res = await apiFetch("/api/tool-traces");
     renderToolTraces(res.traces ?? []);
   } catch (e) {
-    traceConsole.innerHTML = '<div class="loading-spinner">Failed to load traces.</div>';
+    traceConsole.innerHTML =
+      '<div class="loading-spinner">Failed to load traces.</div>';
   }
 };
 
 const renderToolTraces = (traces) => {
   if (!traceConsole) return;
   if (!traces?.length) {
-    traceConsole.innerHTML = '<div class="loading-spinner">No tool calls recorded yet.</div>';
+    traceConsole.innerHTML =
+      '<div class="loading-spinner">No tool calls recorded yet.</div>';
     return;
   }
 
   traceConsole.innerHTML = traces
-    .map(({ executionTimeMs, timestamp, step, toolName, args, resultSnippet }) => {
-      const duration = executionTimeMs ? ` (${executionTimeMs}ms)` : "";
-      return `
+    .map(
+      ({ executionTimeMs, timestamp, step, toolName, args, resultSnippet }) => {
+        const duration = executionTimeMs ? ` (${executionTimeMs}ms)` : "";
+        return `
         <div class="log-line INFO">
           <span class="ts">${timestamp}</span> <span class="lvl">[STEP ${step}]</span> <strong>${escapeHtml(toolName)}</strong>${duration}
           <div style="color: var(--text-muted); font-size: 10px; margin-top: 2px;">
@@ -670,7 +736,8 @@ const renderToolTraces = (traces) => {
           ${resultSnippet ? `<div style="color: var(--text-secondary); font-size: 11px; margin-top: 2px;">Result: ${escapeHtml(resultSnippet)}</div>` : ""}
         </div>
       `;
-    })
+      },
+    )
     .join("");
 };
 
@@ -691,14 +758,17 @@ btnRunSandbox?.addEventListener("click", async () => {
   try {
     btnRunSandbox.disabled = true;
     if (sandboxStatus) sandboxStatus.textContent = "Generating response...";
-    if (sandboxOutput) sandboxOutput.innerHTML = '<span style="color: var(--text-muted);">Processing...</span>';
+    if (sandboxOutput)
+      sandboxOutput.innerHTML =
+        '<span style="color: var(--text-muted);">Processing...</span>';
 
     const res = await apiFetch("/api/sandbox", {
       method: "POST",
       body: JSON.stringify({ prompt }),
     });
 
-    if (sandboxStatus) sandboxStatus.textContent = `Completed (${res.executionTimeMs}ms • ${res.model})`;
+    if (sandboxStatus)
+      sandboxStatus.textContent = `Completed (${res.executionTimeMs}ms • ${res.model})`;
     if (sandboxOutput) sandboxOutput.textContent = res.reply;
   } catch (e) {
     if (sandboxStatus) sandboxStatus.textContent = "Error occurred";
@@ -707,24 +777,6 @@ btnRunSandbox?.addEventListener("click", async () => {
     btnRunSandbox.disabled = false;
   }
 });
-
-const escapeHtml = (str) => {
-  if (!str) return "";
-  return str
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
-};
-
-const debounce = (fn, delay) => {
-  let timer = null;
-  return (...args) => {
-    clearTimeout(timer);
-    timer = setTimeout(() => fn(...args), delay);
-  };
-};
 
 initAuth();
 loadDashboardStats();

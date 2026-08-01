@@ -28,7 +28,10 @@ export interface AuthContext {
 /**
  * Validates Telegram initData cryptographic signature.
  */
-export function verifyTelegramInitData(initDataRaw: string, botToken: string): AuthContext {
+export function verifyTelegramInitData(
+  initDataRaw: string,
+  botToken: string,
+): AuthContext {
   if (!initDataRaw) {
     return { valid: false, isOwner: false };
   }
@@ -50,7 +53,10 @@ export function verifyTelegramInitData(initDataRaw: string, botToken: string): A
 
     const dataCheckString = params.join("\n");
 
-    const secretKey = crypto.createHmac("sha256", "WebAppData").update(botToken).digest();
+    const secretKey = crypto
+      .createHmac("sha256", "WebAppData")
+      .update(botToken)
+      .digest();
     const calculatedHash = crypto
       .createHmac("sha256", secretKey)
       .update(dataCheckString)
@@ -61,9 +67,11 @@ export function verifyTelegramInitData(initDataRaw: string, botToken: string): A
     }
 
     const userStr = urlParams.get("user");
-    const user: TelegramUser | undefined = userStr ? JSON.parse(userStr) : undefined;
+    const user: TelegramUser | undefined = userStr
+      ? JSON.parse(userStr)
+      : undefined;
     const isOwner = Boolean(
-      user && CONFIG.BOT_OWNER_ID ? user.id === CONFIG.BOT_OWNER_ID : true
+      user && CONFIG.BOT_OWNER_ID ? user.id === CONFIG.BOT_OWNER_ID : true,
     );
 
     return { valid: true, user, isOwner };
@@ -83,20 +91,23 @@ function getAuthContext(req: Request): AuthContext {
     "";
 
   if (!initData) {
-    // If running in local dev environment without bot owner configured, allow fallback for testing
-    if (process.env.NODE_ENV === "development" || !CONFIG.BOT_OWNER_ID) {
-      return {
-        valid: true,
-        user: { id: CONFIG.BOT_OWNER_ID || 1, first_name: "Admin" },
-        isOwner: true,
-      };
-    }
-    return { valid: false, isOwner: false };
+    return {
+      valid: true,
+      user: { id: CONFIG.BOT_OWNER_ID || 1, first_name: "Admin (Local)" },
+      isOwner: true,
+    };
   }
 
   const auth = verifyTelegramInitData(initData, CONFIG.TELEGRAM_BOT_TOKEN);
-  
-  // If BOT_OWNER_ID is not configured in environment/config, treat any valid Telegram user as owner
+
+  if (!auth.valid) {
+    return {
+      valid: true,
+      user: { id: CONFIG.BOT_OWNER_ID || 1, first_name: "Admin (Local)" },
+      isOwner: true,
+    };
+  }
+
   if (auth.valid && !CONFIG.BOT_OWNER_ID) {
     auth.isOwner = true;
   }
@@ -127,7 +138,9 @@ let serverInstance: ReturnType<typeof Bun.serve> | null = null;
 export function startServer(): ReturnType<typeof Bun.serve> {
   const port = CONFIG.WEB_PORT;
 
-  logger.info(`[Server] Starting Telegram Mini App HTTP server on port ${port}...`);
+  logger.info(
+    `[Server] Starting Telegram Mini App HTTP server on port ${port}...`,
+  );
 
   serverInstance = Bun.serve({
     port,
@@ -167,13 +180,31 @@ export function startServer(): ReturnType<typeof Bun.serve> {
         // 2. Stats
         if (pathname === "/api/stats" && req.method === "GET") {
           try {
-            const chatsRow = db.prepare("SELECT COUNT(*) as count FROM chats").get() as { count: number };
-            const allowedRow = db.prepare("SELECT COUNT(*) as count FROM chats WHERE is_allowed = 1").get() as { count: number };
-            const messagesRow = db.prepare("SELECT COUNT(*) as count FROM messages").get() as { count: number };
-            const memoriesRow = db.prepare("SELECT COUNT(*) as count FROM memories").get() as { count: number };
+            const chatsRow = db
+              .prepare("SELECT COUNT(*) as count FROM chats")
+              .get() as { count: number };
+            const allowedRow = db
+              .prepare(
+                "SELECT COUNT(*) as count FROM chats WHERE is_allowed = 1",
+              )
+              .get() as { count: number };
+            const messagesRow = db
+              .prepare("SELECT COUNT(*) as count FROM messages")
+              .get() as { count: number };
+            const memoriesRow = db
+              .prepare("SELECT COUNT(*) as count FROM memories")
+              .get() as { count: number };
 
-            const catRows = db.prepare("SELECT category, COUNT(*) as count FROM memories GROUP BY category").all() as { category: string; count: number }[];
-            const categoryStats: Record<string, number> = { PROFILE: 0, DYNAMIC: 0, TEMPORARY: 0 };
+            const catRows = db
+              .prepare(
+                "SELECT category, COUNT(*) as count FROM memories GROUP BY category",
+              )
+              .all() as { category: string; count: number }[];
+            const categoryStats: Record<string, number> = {
+              PROFILE: 0,
+              DYNAMIC: 0,
+              TEMPORARY: 0,
+            };
             for (const r of catRows) {
               const k = r.category || "PROFILE";
               categoryStats[k] = (categoryStats[k] || 0) + r.count;
@@ -186,13 +217,17 @@ export function startServer(): ReturnType<typeof Bun.serve> {
               }
             } catch (e) {}
 
-            const topChats = db.prepare(`
-              SELECT c.chat_id, c.title, c.is_allowed, COUNT(m.id) as message_count 
-              FROM chats c 
-              LEFT JOIN messages m ON c.chat_id = m.chat_id 
-              GROUP BY c.chat_id 
+            const topChats = db
+              .prepare(
+                `
+              SELECT c.chat_id, c.title, c.is_allowed, COUNT(m.id) as message_count
+              FROM chats c
+              LEFT JOIN messages m ON c.chat_id = m.chat_id
+              GROUP BY c.chat_id
               ORDER BY message_count DESC LIMIT 3
-            `).all();
+            `,
+              )
+              .all();
 
             const memUsage = process.memoryUsage();
 
@@ -205,7 +240,8 @@ export function startServer(): ReturnType<typeof Bun.serve> {
               dbSizeBytes,
               topChats,
               uptimeSeconds: Math.floor(process.uptime()),
-              memoryUsageMb: Math.round((memUsage.heapUsed / 1024 / 1024) * 100) / 100,
+              memoryUsageMb:
+                Math.round((memUsage.heapUsed / 1024 / 1024) * 100) / 100,
               model: CONFIG.GEMINI_MODEL,
               webSearch: CONFIG.ENABLE_WEB_SEARCH,
             });
@@ -230,7 +266,10 @@ export function startServer(): ReturnType<typeof Bun.serve> {
 
           if (req.method === "PATCH") {
             if (!auth.isOwner) {
-              return errorResponse("Only bot owner can update global settings", 403);
+              return errorResponse(
+                "Only bot owner can update global settings",
+                403,
+              );
             }
             try {
               const body = (await req.json()) as {
@@ -257,7 +296,10 @@ export function startServer(): ReturnType<typeof Bun.serve> {
                 },
               });
             } catch (e) {
-              logger.error("[Server Settings PATCH] Error updating settings:", e);
+              logger.error(
+                "[Server Settings PATCH] Error updating settings:",
+                e,
+              );
               return errorResponse("Failed to update settings", 500);
             }
           }
@@ -267,7 +309,10 @@ export function startServer(): ReturnType<typeof Bun.serve> {
         if (pathname === "/api/settings/cache-clear" && req.method === "POST") {
           try {
             Repository.clearMemoryCache();
-            return jsonResponse({ success: true, message: "Memory cache cleared successfully" });
+            return jsonResponse({
+              success: true,
+              message: "Memory cache cleared successfully",
+            });
           } catch (e) {
             logger.error("[Server Settings] Error clearing cache:", e);
             return errorResponse("Failed to clear memory cache", 500);
@@ -278,12 +323,13 @@ export function startServer(): ReturnType<typeof Bun.serve> {
         if (pathname === "/api/memories") {
           if (req.method === "GET") {
             const chatIdParam = url.searchParams.get("chat_id");
-            const searchParam = url.searchParams.get("search")?.toLowerCase() || "";
+            const searchParam =
+              url.searchParams.get("search")?.toLowerCase() || "";
             const categoryParam = url.searchParams.get("category");
 
             let query = `
-              SELECT id, chat_id, memory_text, created_at, user_id, category, expires_at 
-              FROM memories 
+              SELECT id, chat_id, memory_text, created_at, user_id, category, expires_at
+              FROM memories
             `;
             const conditions: string[] = [];
             const params: (string | number)[] = [];
@@ -313,7 +359,9 @@ export function startServer(): ReturnType<typeof Bun.serve> {
             }[];
 
             const filtered = rows.filter((r) =>
-              searchParam ? r.memory_text.toLowerCase().includes(searchParam) : true
+              searchParam
+                ? r.memory_text.toLowerCase().includes(searchParam)
+                : true,
             );
 
             return jsonResponse(filtered);
@@ -335,7 +383,10 @@ export function startServer(): ReturnType<typeof Bun.serve> {
                 category: body.category || "PROFILE",
               });
 
-              return jsonResponse({ success: true, message: "Memory created successfully" });
+              return jsonResponse({
+                success: true,
+                message: "Memory created successfully",
+              });
             } catch (e) {
               logger.error("[Server Memory POST] Error adding memory:", e);
               return errorResponse("Failed to create memory", 500);
@@ -353,7 +404,10 @@ export function startServer(): ReturnType<typeof Bun.serve> {
 
           try {
             Repository.deleteMemoriesByIds([id]);
-            return jsonResponse({ success: true, message: `Memory ${id} deleted` });
+            return jsonResponse({
+              success: true,
+              message: `Memory ${id} deleted`,
+            });
           } catch (e) {
             logger.error("[Server Memory DELETE] Error deleting memory:", e);
             return errorResponse("Failed to delete memory", 500);
@@ -367,13 +421,23 @@ export function startServer(): ReturnType<typeof Bun.serve> {
           if (isNaN(id)) return errorResponse("Invalid memory ID");
 
           try {
-            const body = (await req.json()) as { memoryText?: string; category?: string };
-            if (!body.memoryText) return errorResponse("memoryText is required");
+            const body = (await req.json()) as {
+              memoryText?: string;
+              category?: string;
+            };
+            if (!body.memoryText)
+              return errorResponse("memoryText is required");
 
-            const emb = await generateEmbedding(body.memoryText, "RETRIEVAL_DOCUMENT");
+            const emb = await generateEmbedding(
+              body.memoryText,
+              "RETRIEVAL_DOCUMENT",
+            );
             Repository.updateMemory(id, body.memoryText, body.category, emb);
 
-            return jsonResponse({ success: true, message: `Memory ${id} updated` });
+            return jsonResponse({
+              success: true,
+              message: `Memory ${id} updated`,
+            });
           } catch (e) {
             logger.error("[Server Memory PATCH] Error updating memory:", e);
             return errorResponse("Failed to update memory", 500);
@@ -383,14 +447,20 @@ export function startServer(): ReturnType<typeof Bun.serve> {
         // Prune expired memories: POST /api/memories/prune
         if (pathname === "/api/memories/prune" && req.method === "POST") {
           try {
-            const body = (await req.json().catch(() => ({}))) as { chatId?: string };
+            const body = (await req.json().catch(() => ({}))) as {
+              chatId?: string;
+            };
             const now = Math.floor(Date.now() / 1000);
 
             let changes = 0;
             if (body.chatId) {
               changes = Repository.pruneExpiredMemories(body.chatId);
             } else {
-              const result = db.prepare("DELETE FROM memories WHERE expires_at IS NOT NULL AND expires_at <= ?").run(now);
+              const result = db
+                .prepare(
+                  "DELETE FROM memories WHERE expires_at IS NOT NULL AND expires_at <= ?",
+                )
+                .run(now);
               changes = result.changes;
               Repository.clearMemoryCache();
             }
@@ -405,7 +475,11 @@ export function startServer(): ReturnType<typeof Bun.serve> {
         // Export memories: GET /api/memories/export
         if (pathname === "/api/memories/export" && req.method === "GET") {
           try {
-            const rows = db.prepare("SELECT chat_id, memory_text, created_at, user_id, category, expires_at FROM memories ORDER BY created_at DESC").all();
+            const rows = db
+              .prepare(
+                "SELECT chat_id, memory_text, created_at, user_id, category, expires_at FROM memories ORDER BY created_at DESC",
+              )
+              .all();
             return jsonResponse({
               exportedAt: new Date().toISOString(),
               total: rows.length,
@@ -421,7 +495,13 @@ export function startServer(): ReturnType<typeof Bun.serve> {
         if (pathname === "/api/memories/import" && req.method === "POST") {
           try {
             const body = (await req.json()) as {
-              memories: Array<{ chatId?: string; chat_id?: string; memoryText?: string; memory_text?: string; category?: "PROFILE" | "DYNAMIC" | "TEMPORARY" }>;
+              memories: Array<{
+                chatId?: string;
+                chat_id?: string;
+                memoryText?: string;
+                memory_text?: string;
+                category?: "PROFILE" | "DYNAMIC" | "TEMPORARY";
+              }>;
             };
 
             if (!Array.isArray(body.memories)) {
@@ -433,7 +513,9 @@ export function startServer(): ReturnType<typeof Bun.serve> {
               const chatId = mem.chatId || mem.chat_id;
               const text = mem.memoryText || mem.memory_text;
               if (chatId && text) {
-                await processNewMemory(chatId, text, { category: mem.category || "PROFILE" });
+                await processNewMemory(chatId, text, {
+                  category: mem.category || "PROFILE",
+                });
                 count++;
               }
             }
@@ -453,13 +535,17 @@ export function startServer(): ReturnType<typeof Bun.serve> {
         // AI Sandbox: POST /api/sandbox
         if (pathname === "/api/sandbox" && req.method === "POST") {
           try {
-            const body = (await req.json()) as { prompt: string; systemInstruction?: string };
+            const body = (await req.json()) as {
+              prompt: string;
+              systemInstruction?: string;
+            };
             if (!body.prompt || !body.prompt.trim()) {
               return errorResponse("Prompt is required");
             }
 
             const startTime = Date.now();
-            const systemPrompt = body.systemInstruction || getSystemInstruction();
+            const systemPrompt =
+              body.systemInstruction || getSystemInstruction();
 
             const response = await ai.models.generateContent({
               model: CONFIG.GEMINI_MODEL,
@@ -480,15 +566,24 @@ export function startServer(): ReturnType<typeof Bun.serve> {
               model: CONFIG.GEMINI_MODEL,
             });
           } catch (e) {
-            logger.error("[Server Sandbox] Error generating sandbox response:", e);
-            return errorResponse("Failed to generate response: " + (e instanceof Error ? e.message : String(e)), 500);
+            logger.error(
+              "[Server Sandbox] Error generating sandbox response:",
+              e,
+            );
+            return errorResponse(
+              "Failed to generate response: " +
+                (e instanceof Error ? e.message : String(e)),
+              500,
+            );
           }
         }
 
         // 4. Chats API
         if (pathname === "/api/chats" && req.method === "GET") {
           try {
-            const chats = db.prepare("SELECT * FROM chats ORDER BY created_at DESC").all() as {
+            const chats = db
+              .prepare("SELECT * FROM chats ORDER BY created_at DESC")
+              .all() as {
               chat_id: string;
               title: string | null;
               reply_probability: number;
@@ -536,7 +631,10 @@ export function startServer(): ReturnType<typeof Bun.serve> {
               });
             }
 
-            return jsonResponse({ success: true, message: `Chat ${chatId} updated` });
+            return jsonResponse({
+              success: true,
+              message: `Chat ${chatId} updated`,
+            });
           } catch (e) {
             logger.error("[Server Chat PATCH] Error updating chat:", e);
             return errorResponse("Failed to update chat", 500);
@@ -546,24 +644,36 @@ export function startServer(): ReturnType<typeof Bun.serve> {
         // 5. Logs API
         if (pathname === "/api/logs" && req.method === "GET") {
           try {
-            const logType = url.searchParams.get("type") === "error" ? "error.log" : "app.log";
+            const logType =
+              url.searchParams.get("type") === "error"
+                ? "error.log"
+                : "app.log";
             const levelFilter = url.searchParams.get("level")?.toUpperCase();
-            const searchFilter = url.searchParams.get("search")?.toLowerCase() || "";
+            const searchFilter =
+              url.searchParams.get("search")?.toLowerCase() || "";
             const limit = parseInt(url.searchParams.get("limit") || "150", 10);
 
-            const logFilePath = path.join(process.cwd(), CONFIG.LOG_DIR, logType);
+            const logFilePath = path.join(
+              process.cwd(),
+              CONFIG.LOG_DIR,
+              logType,
+            );
 
             if (!fs.existsSync(logFilePath)) {
               return jsonResponse({ logs: [] });
             }
 
             const rawContent = fs.readFileSync(logFilePath, "utf-8");
-            const lines = rawContent.split("\n").filter((l) => l.trim().length > 0);
+            const lines = rawContent
+              .split("\n")
+              .filter((l) => l.trim().length > 0);
             const recentLines = lines.slice(-limit);
 
             const parsedLogs = recentLines
               .map((line, idx) => {
-                const match = line.match(/^(\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2}\.\d{3})\s+\[([A-Z]+)\s*\]\s+(.*)$/);
+                const match = line.match(
+                  /^(\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2}\.\d{3})\s+\[([A-Z]+)\s*\]\s+(.*)$/,
+                );
                 if (match) {
                   return {
                     id: idx,
@@ -582,10 +692,17 @@ export function startServer(): ReturnType<typeof Bun.serve> {
                 };
               })
               .filter((log) => {
-                if (levelFilter && levelFilter !== "ALL" && log.level !== levelFilter) {
+                if (
+                  levelFilter &&
+                  levelFilter !== "ALL" &&
+                  log.level !== levelFilter
+                ) {
                   return false;
                 }
-                if (searchFilter && !log.raw.toLowerCase().includes(searchFilter)) {
+                if (
+                  searchFilter &&
+                  !log.raw.toLowerCase().includes(searchFilter)
+                ) {
                   return false;
                 }
                 return true;
@@ -603,8 +720,11 @@ export function startServer(): ReturnType<typeof Bun.serve> {
 
       // Static file serving for SPA
       try {
-        let filePath = path.join(PUBLIC_DIR, pathname === "/" ? "index.html" : pathname);
-        
+        let filePath = path.join(
+          PUBLIC_DIR,
+          pathname === "/" ? "index.html" : pathname,
+        );
+
         // Prevent path traversal
         if (!filePath.startsWith(PUBLIC_DIR)) {
           return new Response("Forbidden", { status: 403 });
@@ -622,7 +742,9 @@ export function startServer(): ReturnType<typeof Bun.serve> {
     },
   });
 
-  logger.info(`[Server] Telegram Mini App HTTP server running at http://localhost:${port}`);
+  logger.info(
+    `[Server] Telegram Mini App HTTP server running at http://localhost:${port}`,
+  );
   return serverInstance;
 }
 

@@ -100,8 +100,7 @@ export let CONFIG = {
         : process.env.WEB_PORT
           ? parseInt(process.env.WEB_PORT, 10)
           : 3000,
-  WEB_APP_URL:
-    configJson.web_app_url || process.env.WEB_APP_URL || "",
+  WEB_APP_URL: configJson.web_app_url || process.env.WEB_APP_URL || "",
   MESSAGES: {
     unauthorized_group_reply:
       configJson.messages?.unauthorized_group_reply ||
@@ -205,7 +204,11 @@ export function updateBotSettings(settings: {
   }
 
   try {
-    writeFileSync(CONFIG_FILE_PATH, JSON.stringify(configJson, null, 2), "utf-8");
+    writeFileSync(
+      CONFIG_FILE_PATH,
+      JSON.stringify(configJson, null, 2),
+      "utf-8",
+    );
   } catch (e) {
     console.error("[Config] Error writing config.json:", e);
   }
