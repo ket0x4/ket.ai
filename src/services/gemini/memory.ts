@@ -32,6 +32,34 @@ export async function generateEmbedding(
 	}
 }
 
+function isDuplicateMemory(
+	emb: number[],
+	existing: Array<{ embedding: number[] }>,
+): boolean {
+	for (const m of existing) {
+		if (m.embedding.length === 0) continue;
+		const sim = cosineSimilarity(emb, m.embedding);
+		if (sim > 0.85) return true;
+	}
+	return false;
+}
+
+function handleMemoryConsolidationCounter(chatIdStr: string): void {
+	const count = (newMemoriesCount.get(chatIdStr) || 0) + 1;
+	if (count >= 20) {
+		newMemoriesCount.set(chatIdStr, 0);
+		consolidateMemories(chatIdStr).catch((e) =>
+			logger.error("Memory consolidation error:", e),
+		);
+		return;
+	}
+	newMemoriesCount.set(chatIdStr, count);
+	if (newMemoriesCount.size > MAX_TRACKED_CHATS) {
+		const firstKey = newMemoriesCount.keys().next().value;
+		if (firstKey) newMemoriesCount.delete(firstKey);
+	}
+}
+
 export async function processNewMemory(
 	chatIdStr: string,
 	memoryText: string,
@@ -61,43 +89,17 @@ export async function processNewMemory(
 	}
 
 	const existing = Repository.getMemories(chatIdStr);
-	const idsToDelete: number[] = [];
-
-	for (const m of existing) {
-		if (m.embedding.length === 0) continue;
-		const sim = cosineSimilarity(emb, m.embedding);
-
-		// Exact duplicate check
-		if (sim > 0.85) {
-			logger.debug(
-				`[Memory Store] Skipped duplicate memory for chat ${chatIdStr}:`,
-				memText,
-			);
-			return;
-		}
-	}
-
-	if (idsToDelete.length > 0) {
-		Repository.deleteMemoriesByIds(idsToDelete, chatIdStr);
+	if (isDuplicateMemory(emb, existing)) {
+		logger.debug(
+			`[Memory Store] Skipped duplicate memory for chat ${chatIdStr}:`,
+			memText,
+		);
+		return;
 	}
 
 	logger.info(`[Memory Store] Adding memory to chat ${chatIdStr}:`, memText);
 	Repository.addMemory(chatIdStr, memText, emb, options);
-
-	const count = (newMemoriesCount.get(chatIdStr) || 0) + 1;
-	if (count >= 20) {
-		newMemoriesCount.set(chatIdStr, 0);
-		consolidateMemories(chatIdStr).catch((e) =>
-			logger.error("Memory consolidation error:", e),
-		);
-	} else {
-		newMemoriesCount.set(chatIdStr, count);
-		// Prune map if it grows too large
-		if (newMemoriesCount.size > MAX_TRACKED_CHATS) {
-			const firstKey = newMemoriesCount.keys().next().value;
-			if (firstKey) newMemoriesCount.delete(firstKey);
-		}
-	}
+	handleMemoryConsolidationCounter(chatIdStr);
 }
 
 export async function getRelevantMemories(

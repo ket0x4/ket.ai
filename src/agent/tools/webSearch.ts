@@ -24,6 +24,70 @@ function cleanHtmlText(text: string): string {
 		.trim();
 }
 
+function extractRedirectUrl(rawUrl: string): string {
+	const uddgMatch = rawUrl.match(/uddg=([^&]+)/);
+	if (!uddgMatch?.[1]) return rawUrl;
+	try {
+		return decodeURIComponent(uddgMatch[1]);
+	} catch {
+		return rawUrl;
+	}
+}
+
+function parseBlockResults(html: string, maxResults: number): SearchResult[] {
+	const results: SearchResult[] = [];
+	const resultBlockRegex =
+		/<a[^>]*class="result__a"[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?(?:<a[^>]*class="result__snippet"[^>]*>([\s\S]*?)<\/a>|<td[^>]*class="result-snippet"[^>]*>([\s\S]*?)<\/td>)/g;
+
+	let match = resultBlockRegex.exec(html);
+	while (match !== null && results.length < maxResults) {
+		const rawUrl = match[1] || "";
+		const title = cleanHtmlText(match[2] || "");
+		const snippet = cleanHtmlText(match[3] || match[4] || "");
+		const url = extractRedirectUrl(rawUrl);
+
+		if (title && snippet) {
+			results.push({
+				title,
+				snippet: snippet.length > 150 ? `${snippet.slice(0, 147)}...` : snippet,
+				url: url.startsWith("http") ? url : undefined,
+			});
+		}
+		match = resultBlockRegex.exec(html);
+	}
+	return results;
+}
+
+function parseFallbackResults(
+	html: string,
+	maxResults: number,
+): SearchResult[] {
+	const results: SearchResult[] = [];
+	const titleMatches = [
+		...html.matchAll(/<a[^>]*class="result__a"[^>]*>([\s\S]*?)<\/a>/g),
+	];
+	const snippetMatches = [
+		...html.matchAll(/<a[^>]*class="result__snippet"[^>]*>([\s\S]*?)<\/a>/g),
+	];
+
+	const limit = Math.min(
+		titleMatches.length,
+		snippetMatches.length,
+		maxResults,
+	);
+	for (let i = 0; i < limit; i++) {
+		const title = cleanHtmlText(titleMatches[i][1]);
+		const snippet = cleanHtmlText(snippetMatches[i][1]);
+		if (title && snippet) {
+			results.push({
+				title,
+				snippet: snippet.length > 150 ? `${snippet.slice(0, 147)}...` : snippet,
+			});
+		}
+	}
+	return results;
+}
+
 /**
  * Perform a web search using DuckDuckGo HTML.
  * Token-optimized: returns top results with trimmed snippets.
@@ -52,74 +116,12 @@ async function performWebSearch(
 		}
 
 		const html = await response.text();
-		const results: SearchResult[] = [];
+		let results = parseBlockResults(html, maxResults);
 
-		// Match DDG HTML result blocks
-		// Pattern matches result titles and snippets
-		const resultBlockRegex =
-			/<a[^>]*class="result__a"[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?(?:<a[^>]*class="result__snippet"[^>]*>([\s\S]*?)<\/a>|<td[^>]*class="result-snippet"[^>]*>([\s\S]*?)<\/td>)/g;
-
-		let match = resultBlockRegex.exec(html);
-		while (match !== null && results.length < maxResults) {
-			const rawUrl = match[1] || "";
-			const rawTitle = match[2] || "";
-			const rawSnippet = match[3] || match[4] || "";
-
-			const title = cleanHtmlText(rawTitle);
-			const snippet = cleanHtmlText(rawSnippet);
-
-			// Clean DDG redirect URL if present
-			let url = rawUrl;
-			const uddgMatch = rawUrl.match(/uddg=([^&]+)/);
-			if (uddgMatch?.[1]) {
-				try {
-					url = decodeURIComponent(uddgMatch[1]);
-				} catch {
-					url = rawUrl;
-				}
-			}
-
-			if (title && snippet) {
-				results.push({
-					title,
-					// Token efficiency: Limit snippet length to ~150 characters
-					snippet:
-						snippet.length > 150 ? `${snippet.slice(0, 147)}...` : snippet,
-					url: url.startsWith("http") ? url : undefined,
-				});
-			}
-			match = resultBlockRegex.exec(html);
-		}
-
-		// Fallback: If primary regex missed, try simple link/snippet extraction
 		if (results.length === 0) {
-			const titleMatches = [
-				...html.matchAll(/<a[^>]*class="result__a"[^>]*>([\s\S]*?)<\/a>/g),
-			];
-			const snippetMatches = [
-				...html.matchAll(
-					/<a[^>]*class="result__snippet"[^>]*>([\s\S]*?)<\/a>/g,
-				),
-			];
-
-			for (
-				let i = 0;
-				i < Math.min(titleMatches.length, snippetMatches.length, maxResults);
-				i++
-			) {
-				const title = cleanHtmlText(titleMatches[i][1]);
-				const snippet = cleanHtmlText(snippetMatches[i][1]);
-				if (title && snippet) {
-					results.push({
-						title,
-						snippet:
-							snippet.length > 150 ? `${snippet.slice(0, 147)}...` : snippet,
-					});
-				}
-			}
+			results = parseFallbackResults(html, maxResults);
 		}
 
-		// DEBUGGING: If still 0 results, log what DuckDuckGo actually gave us
 		if (results.length === 0) {
 			logger.warn(
 				`[WebSearch] 0 results found! HTTP Status: ${response.status}`,

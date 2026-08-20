@@ -78,6 +78,59 @@ async function generateAndSendReply(
 	}
 }
 
+function checkDirectInteraction(
+	text: string,
+	msg: NonNullable<Context["message"]>,
+	from: NonNullable<Context["from"]>,
+	chat: NonNullable<Context["chat"]>,
+	chatIdStr: string,
+): boolean {
+	const containsNickname = /\bket\b/i.test(text);
+	const isMentioned = text.includes(`@${botUsername}`);
+	const isReplyToBot = msg.reply_to_message?.from?.username === botUsername;
+	const isPrivateChat = chat.type === "private";
+
+	const isFollowUp = isConversationFollowUp(chatIdStr, from.id, msg.date);
+	if (isFollowUp) {
+		logger.debug(
+			`[Conversation] Follow-up detected for user ${from.first_name} in chat ${chatIdStr}`,
+		);
+	}
+
+	return (
+		isMentioned ||
+		isReplyToBot ||
+		isPrivateChat ||
+		containsNickname ||
+		isFollowUp
+	);
+}
+
+async function trySpontaneousReply(
+	ctx: Context,
+	chatIdStr: string,
+	chatSettings: NonNullable<ReturnType<typeof Repository.getChat>>,
+): Promise<void> {
+	const now = Math.floor(Date.now() / 1000);
+	const lastRandomReply = chatSettings.last_random_reply_at || 0;
+	if (now - lastRandomReply < COOLDOWN_SECONDS) return;
+
+	const roll = Math.random();
+	if (roll >= chatSettings.reply_probability) return;
+
+	logger.info(
+		`[Spontaneous] Rolling SUCCESS for chat ${chatIdStr} (Roll: ${roll.toFixed(4)} < ${chatSettings.reply_probability})`,
+	);
+
+	Repository.updateChatSettings(chatIdStr, {
+		last_random_reply_at: now,
+	});
+
+	await withChatLock(chatIdStr, () =>
+		withTyping(ctx, () => generateAndSendReply(ctx, chatIdStr, true)),
+	);
+}
+
 export function registerChatHandlers(bot: Bot) {
 	// Listen to all text messages (non-commands)
 	bot.on("message:text", async (ctx) => {
@@ -89,30 +142,20 @@ export function registerChatHandlers(bot: Bot) {
 		const chat = ctx.chat;
 		const msg = ctx.message;
 		const from = ctx.from;
+		if (!chat || !msg || !from) return;
+
 		const chatIdStr = chat.id.toString();
 
 		// Trigger background memory worker counter
 		checkAndRunBackgroundMemoryExtraction(chatIdStr).catch(() => {});
 
-		// 1. Check if it's a mention, nickname match, reply, or quick follow-up
-		const containsNickname = /\bket\b/i.test(text);
-		const isMentioned = text.includes(`@${botUsername}`);
-		const isReplyToBot = msg.reply_to_message?.from?.username === botUsername;
-		const isPrivateChat = chat.type === "private";
-
-		const isFollowUp = isConversationFollowUp(chatIdStr, from.id, msg.date);
-		if (isFollowUp) {
-			logger.debug(
-				`[Conversation] Follow-up detected for user ${from.first_name} in chat ${chatIdStr}`,
-			);
-		}
-
-		const isDirectInteraction =
-			isMentioned ||
-			isReplyToBot ||
-			isPrivateChat ||
-			containsNickname ||
-			isFollowUp;
+		const isDirectInteraction = checkDirectInteraction(
+			text,
+			msg,
+			from,
+			chat,
+			chatIdStr,
+		);
 
 		// Get chat configuration
 		const chatSettings = Repository.getChat(chatIdStr);
@@ -128,30 +171,9 @@ export function registerChatHandlers(bot: Bot) {
 			return;
 		}
 
-		// 2. Check if we should trigger spontaneous participation
-		// Only roll for spontaneous reply if the message is from a real user
-		if (from.is_bot) return;
-
-		const now = Math.floor(Date.now() / 1000);
-		const lastRandomReply = chatSettings.last_random_reply_at || 0;
-		const isCooldownOver = now - lastRandomReply >= COOLDOWN_SECONDS;
-
-		if (isCooldownOver) {
-			const roll = Math.random();
-			if (roll < chatSettings.reply_probability) {
-				logger.info(
-					`[Spontaneous] Rolling SUCCESS for chat ${chatIdStr} (Roll: ${roll.toFixed(4)} < ${chatSettings.reply_probability})`,
-				);
-
-				// Update last random reply timestamp before processing to prevent double triggers
-				Repository.updateChatSettings(chatIdStr, {
-					last_random_reply_at: now,
-				});
-
-				await withChatLock(chatIdStr, () =>
-					withTyping(ctx, () => generateAndSendReply(ctx, chatIdStr, true)),
-				);
-			}
+		// Check if we should trigger spontaneous participation (real users only)
+		if (!from.is_bot) {
+			await trySpontaneousReply(ctx, chatIdStr, chatSettings);
 		}
 	});
 }

@@ -1,4 +1,5 @@
 import { CONFIG } from "../../config/index";
+import type { MessageRow } from "../../db/repository";
 import { Repository } from "../../db/repository";
 import logger from "../../utils/logger";
 import { ai } from "./client";
@@ -35,13 +36,7 @@ export async function checkAndRunBackgroundMemoryExtraction(
 	});
 }
 
-/**
- * Analyzes recent group chat messages to extract user facts even if bot didn't respond.
- */
-async function runBackgroundMemoryExtraction(chatIdStr: string): Promise<void> {
-	const recentMessages = Repository.getRecentMessages(chatIdStr, 20);
-	if (recentMessages.length < 3) return;
-
+function buildExtractionPrompt(recentMessages: MessageRow[]): string {
 	const formattedHistory = recentMessages
 		.map((msg) => {
 			const sender = msg.is_bot_reply
@@ -51,7 +46,7 @@ async function runBackgroundMemoryExtraction(chatIdStr: string): Promise<void> {
 		})
 		.join("\n");
 
-	const prompt = `Analyze the following group chat conversation log.
+	return `Analyze the following group chat conversation log.
 Identify any stated personal facts, user preferences, locations, plans, or events about users in the chat.
 Do NOT invent facts. Do NOT save jokes, sarcasm, or bot responses.
 
@@ -59,7 +54,85 @@ Return ONLY a JSON array of extracted facts.
 
 Chat Log:
 ${formattedHistory}`;
+}
 
+function getExtractionSchema(): Record<string, unknown> {
+	return {
+		type: "ARRAY",
+		items: {
+			type: "OBJECT",
+			properties: {
+				user_id: {
+					type: "INTEGER",
+					description:
+						"The integer user_id extracted from User_ID field if available.",
+				},
+				user_name: {
+					type: "STRING",
+					description: "First name of the user.",
+				},
+				fact: {
+					type: "STRING",
+					description:
+						"Factual statement (e.g. 'likes coffee', 'moved to Ankara'). Do not use word 'User'.",
+				},
+				category: {
+					type: "STRING",
+					description:
+						"'PROFILE' for permanent facts, 'DYNAMIC' for medium-term, 'TEMPORARY' for upcoming events.",
+				},
+				ttl_days: {
+					type: "INTEGER",
+					description:
+						"Expiry in days for temporary facts, or null/0 for permanent facts.",
+				},
+			},
+			required: ["user_name", "fact"],
+		},
+	};
+}
+
+async function saveExtractedMemories(
+	chatIdStr: string,
+	extractedList: unknown[],
+): Promise<number> {
+	if (!Array.isArray(extractedList) || extractedList.length === 0) return 0;
+
+	let savedCount = 0;
+	for (const item of extractedList as Array<{
+		user_id?: number;
+		user_name?: string;
+		fact?: string;
+		category?: string;
+		ttl_days?: number;
+	}>) {
+		if (!item.user_name || !item.fact) continue;
+		const combinedFact = `${item.user_name}: ${item.fact}`;
+		const cat =
+			(item.category as "PROFILE" | "DYNAMIC" | "TEMPORARY") || "PROFILE";
+		const ttl =
+			typeof item.ttl_days === "number" && item.ttl_days > 0
+				? item.ttl_days
+				: null;
+
+		await processNewMemory(chatIdStr, combinedFact, {
+			userId: typeof item.user_id === "number" ? item.user_id : null,
+			category: cat,
+			ttlDays: ttl,
+		});
+		savedCount++;
+	}
+	return savedCount;
+}
+
+/**
+ * Analyzes recent group chat messages to extract user facts even if bot didn't respond.
+ */
+async function runBackgroundMemoryExtraction(chatIdStr: string): Promise<void> {
+	const recentMessages = Repository.getRecentMessages(chatIdStr, 20);
+	if (recentMessages.length < 3) return;
+
+	const prompt = buildExtractionPrompt(recentMessages);
 	logger.info(
 		`[MemoryWorker] Running background memory extraction for chat ${chatIdStr}...`,
 	);
@@ -74,71 +147,20 @@ ${formattedHistory}`;
 						"You are a quiet background memory analyzer for a Telegram group bot. Extract factual details about users. Output strictly JSON.",
 					temperature: 0.2,
 					responseMimeType: "application/json",
-					responseSchema: {
-						type: "ARRAY",
-						items: {
-							type: "OBJECT",
-							properties: {
-								user_id: {
-									type: "INTEGER",
-									description:
-										"The integer user_id extracted from User_ID field if available.",
-								},
-								user_name: {
-									type: "STRING",
-									description: "First name of the user.",
-								},
-								fact: {
-									type: "STRING",
-									description:
-										"Factual statement (e.g. 'likes coffee', 'moved to Ankara'). Do not use word 'User'.",
-								},
-								category: {
-									type: "STRING",
-									description:
-										"'PROFILE' for permanent facts, 'DYNAMIC' for medium-term, 'TEMPORARY' for upcoming events.",
-								},
-								ttl_days: {
-									type: "INTEGER",
-									description:
-										"Expiry in days for temporary facts, or null/0 for permanent facts.",
-								},
-							},
-							required: ["user_name", "fact"],
-						},
-					},
+					// biome-ignore lint/suspicious/noExplicitAny: SDK schema typing
+					responseSchema: getExtractionSchema() as any,
 				},
 			}),
 		);
 
 		const responseText = response.text?.trim() || "[]";
 		const extractedList = JSON.parse(responseText);
+		const savedCount = await saveExtractedMemories(chatIdStr, extractedList);
 
-		if (Array.isArray(extractedList) && extractedList.length > 0) {
-			let savedCount = 0;
-			for (const item of extractedList) {
-				if (item.user_name && item.fact) {
-					const combinedFact = `${item.user_name}: ${item.fact}`;
-					const cat =
-						(item.category as "PROFILE" | "DYNAMIC" | "TEMPORARY") || "PROFILE";
-					const ttl =
-						typeof item.ttl_days === "number" && item.ttl_days > 0
-							? item.ttl_days
-							: null;
-
-					await processNewMemory(chatIdStr, combinedFact, {
-						userId: typeof item.user_id === "number" ? item.user_id : null,
-						category: cat,
-						ttlDays: ttl,
-					});
-					savedCount++;
-				}
-			}
-			if (savedCount > 0) {
-				logger.info(
-					`[MemoryWorker] Background extraction saved ${savedCount} memories for chat ${chatIdStr}.`,
-				);
-			}
+		if (savedCount > 0) {
+			logger.info(
+				`[MemoryWorker] Background extraction saved ${savedCount} memories for chat ${chatIdStr}.`,
+			);
 		}
 	} catch (error) {
 		logger.error(

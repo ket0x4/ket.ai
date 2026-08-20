@@ -697,6 +697,63 @@ async function loadChats() {
 	}
 }
 
+function renderChatAllowControl(c, isOwner) {
+	if (isOwner) {
+		return `
+      <div style="display: flex; align-items: center; gap: 6px;">
+        <span style="font-size: 11px; color: var(--text-muted);">Whitelist</span>
+        <label class="switch">
+          <input type="checkbox" class="chat-allow-toggle" data-chat-id="${c.chat_id}" ${c.is_allowed ? "checked" : ""}>
+          <span class="slider"></span>
+        </label>
+      </div>
+    `;
+	}
+	if (c.is_allowed) {
+		return '<span class="badge" style="background: rgba(16,185,129,0.15); color: #34d399; border-color: rgba(16,185,129,0.3);">Allowed</span>';
+	}
+	return '<span class="badge" style="background: rgba(239,68,68,0.15); color: #f87171; border-color: rgba(239,68,68,0.3);">Inactive</span>';
+}
+
+function renderChatAdminControls(c, isAdmin, probPct) {
+	if (!isAdmin) return "";
+	return `
+    <div class="chat-controls-row">
+      <div class="prob-slider-wrap">
+        <label>Reply Rate:</label>
+        <input type="range" class="chat-prob-slider" data-chat-id="${c.chat_id}" min="0" max="100" value="${probPct}">
+        <span class="prob-val-label" id="prob-label-${c.chat_id}">${probPct}%</span>
+      </div>
+    </div>
+  `;
+}
+
+function renderChatCard(c) {
+	const isOwner = currentRole === "owner";
+	const isAdmin = c.isAdmin || isOwner;
+	const probPct = Math.round((c.reply_probability ?? 0.05) * 100);
+
+	return `
+    <div class="chat-card" data-chat-id="${c.chat_id}">
+      <div class="chat-card-top">
+        <div class="chat-title-group">
+          <span class="chat-title-text">${escapeHtml(c.title || `Group ${c.chat_id}`)}</span>
+          <span class="chat-id-text">${escapeHtml(c.chat_id)}</span>
+        </div>
+        ${renderChatAllowControl(c, isOwner)}
+      </div>
+
+      <div class="chat-stats-row">
+        <div class="chat-stat-item">Messages: <strong>${c.stats?.totalMessages ?? 0}</strong></div>
+        <div class="chat-stat-item">Users: <strong>${c.stats?.uniqueUsers ?? 0}</strong></div>
+        <div class="chat-stat-item">Memories: <strong>${c.memoryCount ?? 0}</strong></div>
+      </div>
+
+      ${renderChatAdminControls(c, isAdmin, probPct)}
+    </div>
+  `;
+}
+
 function renderChatList(chats) {
 	const container = document.getElementById("chat-list-container");
 	if (!container) return;
@@ -710,59 +767,7 @@ function renderChatList(chats) {
 		return;
 	}
 
-	container.innerHTML = chats
-		.map((c) => {
-			const isOwner = currentRole === "owner";
-			const isAdmin = c.isAdmin || isOwner;
-			const probPct = Math.round((c.reply_probability ?? 0.05) * 100);
-
-			return `
-      <div class="chat-card" data-chat-id="${c.chat_id}">
-        <div class="chat-card-top">
-          <div class="chat-title-group">
-            <span class="chat-title-text">${escapeHtml(c.title || `Group ${c.chat_id}`)}</span>
-            <span class="chat-id-text">${escapeHtml(c.chat_id)}</span>
-          </div>
-          ${
-						isOwner
-							? `
-            <div style="display: flex; align-items: center; gap: 6px;">
-              <span style="font-size: 11px; color: var(--text-muted);">Whitelist</span>
-              <label class="switch">
-                <input type="checkbox" class="chat-allow-toggle" data-chat-id="${c.chat_id}" ${c.is_allowed ? "checked" : ""}>
-                <span class="slider"></span>
-              </label>
-            </div>
-          `
-							: c.is_allowed
-								? `<span class="badge" style="background: rgba(16,185,129,0.15); color: #34d399; border-color: rgba(16,185,129,0.3);">Allowed</span>`
-								: `<span class="badge" style="background: rgba(239,68,68,0.15); color: #f87171; border-color: rgba(239,68,68,0.3);">Inactive</span>`
-					}
-        </div>
-
-        <div class="chat-stats-row">
-          <div class="chat-stat-item">Messages: <strong>${c.stats?.totalMessages ?? 0}</strong></div>
-          <div class="chat-stat-item">Users: <strong>${c.stats?.uniqueUsers ?? 0}</strong></div>
-          <div class="chat-stat-item">Memories: <strong>${c.memoryCount ?? 0}</strong></div>
-        </div>
-
-        ${
-					isAdmin
-						? `
-        <div class="chat-controls-row">
-          <div class="prob-slider-wrap">
-            <label>Reply Rate:</label>
-            <input type="range" class="chat-prob-slider" data-chat-id="${c.chat_id}" min="0" max="100" value="${probPct}">
-            <span class="prob-val-label" id="prob-label-${c.chat_id}">${probPct}%</span>
-          </div>
-        </div>
-        `
-						: ""
-				}
-      </div>
-    `;
-		})
-		.join("");
+	container.innerHTML = chats.map(renderChatCard).join("");
 
 	// Attach group allowlist toggle (Owner only)
 	container.querySelectorAll(".chat-allow-toggle").forEach((toggle) => {
