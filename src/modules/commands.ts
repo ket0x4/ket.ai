@@ -168,13 +168,11 @@ export function registerCommands(bot: Bot) {
         // Direct WebApp popup inside 1-on-1 private chat
         keyboard.webApp("Open Dashboard", appUrl);
       } else {
-        // Telegram Bot API restricts direct web_app inline buttons in groups.
-        // We use Telegram Mini App Direct Link (?startapp) and web URL.
+        // In group chats, use Telegram Mini App Direct Link
         if (botUsername) {
           keyboard.url("Open Mini App", `https://t.me/${botUsername}?startapp=dashboard`);
-        }
-        if (appUrl.startsWith("http")) {
-          keyboard.url("Open in Web Browser", appUrl);
+        } else {
+          keyboard.webApp("Open Dashboard", appUrl);
         }
       }
 

@@ -44,46 +44,27 @@ function debounce(fn, delay) {
   };
 }
 
-const initAuth = async () => {
-  if (!initData) {
-    const roleEl = document.getElementById("user-role");
-    const nameEl = document.getElementById("user-name");
-    if (nameEl) nameEl.textContent = "Guest (Browser)";
-    if (roleEl) {
-      roleEl.textContent = "Unauthorized";
-      roleEl.style.backgroundColor = "var(--danger-color)";
-    }
-    const statusEl = document.getElementById("server-status");
-    if (statusEl) {
-      statusEl.innerHTML = '<span class="dot" style="background-color: var(--danger-color);"></span> Auth Required';
-    }
-    return;
-  }
-
-  try {
-    const { user, isOwner } = (await apiFetch("/api/me")) ?? {};
-    if (user) {
-      const userNameEl = document.getElementById("user-name");
-      if (userNameEl)
-        userNameEl.textContent = user.first_name ?? user.username ?? "User";
-
-      const roleEl = document.getElementById("user-role");
-      if (roleEl) {
-        roleEl.textContent = isOwner ? "Owner" : "User";
-        if (!isOwner) {
-          roleEl.style.backgroundColor = "#3b82f6"; // Blue for regular user
-        }
-      }
-    }
-  } catch (e) {
-    console.warn("Auth check warning:", e);
-    const roleEl = document.getElementById("user-role");
-    if (roleEl) {
-      roleEl.textContent = "Invalid Signature";
-      roleEl.style.backgroundColor = "var(--danger-color)";
-    }
-  }
-};
+function blockAccess(title, message) {
+  const appEl = document.getElementById("app");
+  if (!appEl) return;
+  appEl.innerHTML = `
+    <div class="access-denied-container">
+      <div class="access-denied-card">
+        <div class="access-denied-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+          </svg>
+        </div>
+        <h2>${escapeHtml(title)}</h2>
+        <p>${escapeHtml(message)}</p>
+        <div class="access-denied-hint">
+          Please open the bot in Telegram and use the <strong>Console</strong> menu button or <code>/app</code> command.
+        </div>
+      </div>
+    </div>
+  `;
+}
 
 const navBtns = document.querySelectorAll(".nav-btn");
 const tabPanes = document.querySelectorAll(".tab-pane");
@@ -803,7 +784,49 @@ btnRunSandbox?.addEventListener("click", async () => {
   }
 });
 
-initAuth();
-loadDashboardStats();
-loadChats();
-loadSettings();
+const bootstrap = async () => {
+  if (!initData) {
+    blockAccess(
+      "Telegram Access Only",
+      "This dashboard is protected and can only be opened inside Telegram Mini App."
+    );
+    return;
+  }
+
+  try {
+    const auth = await apiFetch("/api/me");
+    if (!auth || !auth.valid) {
+      blockAccess(
+        "Unauthorized",
+        "Invalid Telegram cryptographic signature. Please reopen from Telegram."
+      );
+      return;
+    }
+
+    if (auth.user) {
+      const userNameEl = document.getElementById("user-name");
+      if (userNameEl)
+        userNameEl.textContent = auth.user.first_name ?? auth.user.username ?? "User";
+
+      const roleEl = document.getElementById("user-role");
+      if (roleEl) {
+        roleEl.textContent = auth.isOwner ? "Owner" : "User";
+        if (!auth.isOwner) {
+          roleEl.style.backgroundColor = "#3b82f6";
+        }
+      }
+    }
+
+    // Load initial data only after authentication succeeds
+    loadDashboardStats();
+    loadChats();
+    loadSettings();
+  } catch (e) {
+    blockAccess(
+      "Access Denied",
+      "Could not verify Telegram authentication. Please reopen the bot inside Telegram."
+    );
+  }
+};
+
+bootstrap();
