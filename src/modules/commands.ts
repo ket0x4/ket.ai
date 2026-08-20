@@ -129,7 +129,7 @@ export function registerCommands(bot: Bot) {
   bot.command("start", async (ctx) => {
     await ctx.reply(
       "Hi! I am an LLM-powered AI bot. I track group history, " +
-        "answer your questions, recognize photos, listen to voice messages, and participate in conversations.",
+      "answer your questions, recognize photos, listen to voice messages, and participate in conversations.",
     );
   });
 
@@ -137,36 +137,56 @@ export function registerCommands(bot: Bot) {
   bot.command("help", async (ctx) => {
     await ctx.reply(
       "Available Commands & Capabilities:\n\n" +
-        "**Chat**: I respond if you reply to me directly or mention me in your message.\n" +
-        "**Spontaneous Participation**: I occasionally chime in on the group conversation.\n" +
-        "**Image & Voice Recognition**: I understand photos and listen to voice messages.\n" +
-        "**Management Commands**:\n" +
-        "• `/app` or `/admin` — Open Web Mini App Dashboard\n" +
-        "• `/mem` — Open interactive memory dashboard\n" +
-        "• `/remember <fact>` — Save a new fact to memory\n" +
-        "• `/prob [0-100]` — Set random reply probability (Admin)\n" +
-        "• `/reset` — Clear chat history and memory (Admin)\n" +
-        "• `/model [model]` — Switch AI model (Owner)",
+      "**Chat**: I respond if you reply to me directly or mention me in your message.\n" +
+      "**Spontaneous Participation**: I occasionally chime in on the group conversation.\n" +
+      "**Image & Voice Recognition**: I understand photos and listen to voice messages.\n" +
+      "**Management Commands**:\n" +
+      "• `/app` or `/admin` — Open Web Mini App Dashboard\n" +
+      "• `/mem` — Open interactive memory dashboard\n" +
+      "• `/remember <fact>` — Save a new fact to memory\n" +
+      "• `/prob [0-100]` — Set random reply probability (Admin)\n" +
+      "• `/reset` — Clear chat history and memory (Admin)\n" +
+      "• `/model [model]` — Switch AI model (Owner)",
       { parse_mode: "Markdown" },
     );
   });
 
   // 2b. /app and /admin commands for Telegram Mini App
   bot.command(["app", "admin"], async (ctx) => {
-    if (!(await isAuthorized(ctx))) {
-      await ctx.reply(CONFIG.MESSAGES.not_authorized_command);
-      return;
+    try {
+      if (!(await isAuthorized(ctx))) {
+        await ctx.reply(CONFIG.MESSAGES.not_authorized_command);
+        return;
+      }
+
+      const appUrl = CONFIG.WEB_APP_URL || `http://localhost:${CONFIG.WEB_PORT}`;
+      const isPrivate = ctx.chat?.type === "private";
+      const botUsername = ctx.me?.username || "";
+
+      const keyboard = new InlineKeyboard();
+      if (isPrivate) {
+        // Direct WebApp popup inside 1-on-1 private chat
+        keyboard.webApp("Open Dashboard", appUrl);
+      } else {
+        // Telegram Bot API restricts direct web_app inline buttons in groups.
+        // We use Telegram Mini App Direct Link (?startapp) and web URL.
+        if (botUsername) {
+          keyboard.url("Open Mini App", `https://t.me/${botUsername}?startapp=dashboard`);
+        }
+        if (appUrl.startsWith("http")) {
+          keyboard.url("Open in Web Browser", appUrl);
+        }
+      }
+
+      await ctx.reply(
+        "Click the button below to open the Admin & Memory Dashboard:",
+        {
+          reply_markup: keyboard,
+        },
+      );
+    } catch (error) {
+      logger.error("[Commands] Error handling /app or /admin:", error);
     }
-
-    const appUrl = CONFIG.WEB_APP_URL || `http://localhost:${CONFIG.WEB_PORT}`;
-    const keyboard = new InlineKeyboard().webApp("Open Dashboard", appUrl);
-
-    await ctx.reply(
-      "Click the button below to open the Admin & Memory Dashboard:",
-      {
-        reply_markup: keyboard,
-      },
-    );
   });
 
   // 3. /reset command
@@ -355,10 +375,10 @@ export function registerCommands(bot: Bot) {
 
     await ctx.reply(
       "Usage:\n" +
-        "• `/mem` — Open memory dashboard\n" +
-        "• `/mem me` — View facts saved about you\n" +
-        "• `/mem del <id>` — Delete memory by ID\n" +
-        "• `/mem <number>` — View full text of memory #number",
+      "• `/mem` — Open memory dashboard\n" +
+      "• `/mem me` — View facts saved about you\n" +
+      "• `/mem del <id>` — Delete memory by ID\n" +
+      "• `/mem <number>` — View full text of memory #number",
       { parse_mode: "Markdown" },
     );
   });
@@ -373,8 +393,8 @@ export function registerCommands(bot: Bot) {
         parse_mode: "Markdown",
         reply_markup: payload.keyboard,
       });
-    } catch {}
-    await ctx.answerCallbackQuery().catch(() => {});
+    } catch { }
+    await ctx.answerCallbackQuery().catch(() => { });
   });
 
   bot.callbackQuery(/^mem:page:(\d+)$/, async (ctx) => {
@@ -387,8 +407,8 @@ export function registerCommands(bot: Bot) {
         parse_mode: "Markdown",
         reply_markup: payload.keyboard,
       });
-    } catch {}
-    await ctx.answerCallbackQuery().catch(() => {});
+    } catch { }
+    await ctx.answerCallbackQuery().catch(() => { });
   });
 
   bot.callbackQuery("mem:user_me", async (ctx) => {
@@ -415,8 +435,8 @@ export function registerCommands(bot: Bot) {
         parse_mode: "Markdown",
         reply_markup: keyboard,
       });
-    } catch {}
-    await ctx.answerCallbackQuery().catch(() => {});
+    } catch { }
+    await ctx.answerCallbackQuery().catch(() => { });
   });
 
   bot.callbackQuery("mem:help", async (ctx) => {
@@ -438,12 +458,12 @@ export function registerCommands(bot: Bot) {
         parse_mode: "Markdown",
         reply_markup: keyboard,
       });
-    } catch {}
-    await ctx.answerCallbackQuery().catch(() => {});
+    } catch { }
+    await ctx.answerCallbackQuery().catch(() => { });
   });
 
   bot.callbackQuery("mem:noop", async (ctx) => {
-    await ctx.answerCallbackQuery().catch(() => {});
+    await ctx.answerCallbackQuery().catch(() => { });
   });
 
   // 9. /model command — switch Gemini model per chat (Owner only)
@@ -455,11 +475,11 @@ export function registerCommands(bot: Bot) {
     if (!modelName) {
       await ctx.reply(
         `**Current model**: \`${CONFIG.GEMINI_MODEL}\`\n\n` +
-          `To change:\n` +
-          `\`/model gemini-3.6-flash\`\n` +
-          `\`/model gemini-3.1-pro\`\n` +
-          `\`/model gemini-3.5-flash-lite\`\n` +
-          `\`/model gemini-3.1-flash-lite\``,
+        `To change:\n` +
+        `\`/model gemini-3.6-flash\`\n` +
+        `\`/model gemini-3.1-pro\`\n` +
+        `\`/model gemini-3.5-flash-lite\`\n` +
+        `\`/model gemini-3.1-flash-lite\``,
         { parse_mode: "Markdown" },
       );
       return;
