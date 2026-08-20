@@ -13,6 +13,6 @@
 		"forceConsistentCasingInFileNames": true,
 		"allowJs": false
 	},
-	"include": ["src/**/*", "server/**/*"],
+	"include": ["src/**/*", "server/**/*", "tests/**/*"],
 	"exclude": ["node_modules"]
 }

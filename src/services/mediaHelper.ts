@@ -12,7 +12,7 @@ import { sendLongMessage } from "../utils/message";
 import { botUsername, withChatLock, withTyping } from "./bot";
 import { GeminiService } from "./gemini/index";
 
-export interface MediaProcessorOptions {
+interface MediaProcessorOptions {
 	mediaType: "photo" | "voice";
 	resolveMimeType: (downloaded: { filePath: string; buffer: Buffer }) => string;
 	generateReply: (

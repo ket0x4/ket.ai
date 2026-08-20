@@ -1,6 +1,6 @@
 import logger from "./logger";
 
-export interface ToolTraceEntry {
+interface ToolTraceEntry {
 	id: string;
 	timestamp: string;
 	chatId?: string;

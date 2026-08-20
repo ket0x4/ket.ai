@@ -1,7 +1,7 @@
 import logger from "../../utils/logger";
 import type { AgentTool } from "../types";
 
-export interface SearchResult {
+interface SearchResult {
 	title: string;
 	snippet: string;
 	url?: string;

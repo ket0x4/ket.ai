@@ -10,6 +10,9 @@ RUN bun install --frozen-lockfile
 # Copy the rest of the application
 COPY . .
 
+# Build frontend web assets
+RUN cd web && bun install && bun run build
+
 # Compile the Bun app to a standalone Linux x64 binary
 RUN bun build --compile --minify --target=bun-linux-x64 src/index.ts --outfile ket
 
@@ -21,8 +24,9 @@ WORKDIR /app
 # Set timezone
 ENV TZ=Europe/Istanbul
 
-# Copy the compiled standalone binary from stage 1
+# Copy the compiled standalone binary and static assets from stage 1
 COPY --from=builder /app/ket /app/ket
+COPY --from=builder /app/public /app/public
 
 # The bot expects config.json, system.txt, bot.db, and logs directory in /app (mapped via volumes)
 CMD ["/app/ket"]

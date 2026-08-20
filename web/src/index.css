@@ -1,0 +1,103 @@
+@import "tailwindcss";
+
+@layer base {
+	:root {
+		--font-sans:
+			"Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI",
+			Roboto, sans-serif;
+		--font-mono: "JetBrains Mono", monospace;
+
+		--background: 240 10% 3.9%;
+		--foreground: 0 0% 98%;
+
+		--card: 240 10% 4.9%;
+		--card-foreground: 0 0% 98%;
+
+		--popover: 240 10% 4.9%;
+		--popover-foreground: 0 0% 98%;
+
+		--primary: 217.2 91.2% 59.8%;
+		--primary-foreground: 222.2 47.4% 11.2%;
+
+		--secondary: 240 3.7% 15.9%;
+		--secondary-foreground: 0 0% 98%;
+
+		--muted: 240 3.7% 15.9%;
+		--muted-foreground: 240 5% 64.9%;
+
+		--accent: 240 3.7% 15.9%;
+		--accent-foreground: 0 0% 98%;
+
+		--destructive: 0 62.8% 30.6%;
+		--destructive-foreground: 0 0% 98%;
+
+		--border: 240 3.7% 15.9%;
+		--input: 240 3.7% 15.9%;
+		--ring: 217.2 91.2% 59.8%;
+
+		--radius: 0.75rem;
+
+		--profile: 217.2 91.2% 59.8%;
+		--dynamic: 142.1 70.6% 45.3%;
+		--temporary: 38 92% 50%;
+	}
+}
+
+body {
+	font-family: var(--font-sans);
+	background-color: hsl(var(--background));
+	color: hsl(var(--foreground));
+	overflow-x: hidden;
+	-webkit-font-smoothing: antialiased;
+}
+
+/* Custom modern scrollbars */
+::-webkit-scrollbar {
+	width: 6px;
+	height: 6px;
+}
+
+::-webkit-scrollbar-track {
+	background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+	background: hsl(var(--muted-foreground) / 0.2);
+	border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+	background: hsl(var(--muted-foreground) / 0.4);
+}
+
+/* Glassmorphism helpers */
+.glass-card {
+	background: hsl(var(--card) / 0.7);
+	backdrop-filter: blur(12px);
+	-webkit-backdrop-filter: blur(12px);
+	border: 1px solid hsl(var(--border) / 0.6);
+}
+
+.glass-header {
+	background: hsl(var(--background) / 0.8);
+	backdrop-filter: blur(16px);
+	-webkit-backdrop-filter: blur(16px);
+	border-bottom: 1px solid hsl(var(--border) / 0.5);
+}
+
+/* Subtle glow animations */
+@keyframes pulse-glow {
+	0%,
+	100% {
+		opacity: 0.8;
+		filter: drop-shadow(0 0 8px rgba(59, 130, 246, 0.4));
+	}
+	50% {
+		opacity: 1;
+		filter: drop-shadow(0 0 16px rgba(59, 130, 246, 0.7));
+	}
+}
+
+.animate-pulse-glow {
+	animation: pulse-glow 3s ease-in-out infinite;
+}

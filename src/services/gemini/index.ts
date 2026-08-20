@@ -1,4 +1,4 @@
-import { toolRegistry } from "../../agent";
+import { toolRegistry } from "../../agent/index";
 import { CONFIG } from "../../config";
 import type { MessageRow } from "../../db/repository";
 import { Repository } from "../../db/repository";
@@ -13,7 +13,7 @@ import {
 	runWithRetry,
 } from "./utils";
 
-export type ToolCallCallback = (
+type ToolCallCallback = (
 	toolName: string,
 	args: Record<string, unknown>,
 	step: number,

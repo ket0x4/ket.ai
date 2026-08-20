@@ -10,11 +10,11 @@ interface DownloadedMedia {
 	fileSize: number | undefined;
 }
 
-export interface DownloadError {
+interface DownloadError {
 	error: string;
 }
 
-export type DownloadResult = DownloadedMedia | DownloadError;
+type DownloadResult = DownloadedMedia | DownloadError;
 
 /**
  * Downloads a media file (photo, voice, etc.) from Telegram servers.

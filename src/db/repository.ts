@@ -2,7 +2,7 @@ import { CONFIG } from "../config/index";
 import logger from "../utils/logger";
 import { db } from "./index";
 
-export interface ChatRow {
+interface ChatRow {
 	chat_id: string;
 	title: string | null;
 	reply_probability: number;
@@ -130,7 +130,7 @@ const stmts = {
 	),
 };
 
-export interface MemoryItem {
+interface MemoryItem {
 	id: number;
 	text: string;
 	embedding: number[];

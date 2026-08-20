@@ -6,8 +6,4 @@ import { webSearchTool } from "./tools/webSearch";
 toolRegistry.register(webSearchTool);
 toolRegistry.register(urlSummarizerTool);
 
-export * from "./registry";
-export * from "./tools/urlSummarizer";
-export * from "./tools/webSearch";
-export * from "./types";
 export { toolRegistry };

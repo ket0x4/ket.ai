@@ -1,4 +1,6 @@
 node_modules/
+**/node_modules/
+public/assets/
 *.exe
 *.db
 .env

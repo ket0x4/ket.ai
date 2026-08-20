@@ -1,7 +1,7 @@
 import logger from "../../utils/logger";
 import type { AgentTool } from "../types";
 
-export interface PageSummaryResult {
+interface PageSummaryResult {
 	url: string;
 	title?: string;
 	content: string;

@@ -47,7 +47,7 @@ function splitMessage(text: string): string[] {
 	return chunks;
 }
 
-export interface SendOptions {
+interface SendOptions {
 	reply_to_message_id?: number;
 	edit_message_id?: number;
 	parse_mode?: ParseMode;
