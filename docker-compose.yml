@@ -5,13 +5,13 @@ services:
       dockerfile: Dockerfile
     container_name: ket-ai
     restart: unless-stopped
+    ports:
+      - "3003:3003"
     environment:
       - TZ=Europe/Istanbul
     volumes:
-      # Mount configuration and system prompt files
       - ./config.json:/app/config.json:rw
       - ./system.txt:/app/system.txt:ro
-      # Mount the data directory for SQLite database files
       - ./data:/app/data:rw
-      # Mount logs directory to access app.log and error.log on host machine
       - ./logs:/app/logs:rw
+      - ./public:/app/public:ro
