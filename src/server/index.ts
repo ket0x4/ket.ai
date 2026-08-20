@@ -207,6 +207,69 @@ function errorResponse(message: string, status = 400): Response {
 	return jsonResponse({ error: message }, status);
 }
 
+function buildCategoryStats(
+	catRows: { category: string; count: number }[],
+): Record<string, number> {
+	const categoryStats: Record<string, number> = {
+		PROFILE: 0,
+		DYNAMIC: 0,
+		TEMPORARY: 0,
+	};
+	for (const r of catRows) {
+		const k = r.category || "PROFILE";
+		categoryStats[k] = (categoryStats[k] || 0) + r.count;
+	}
+	return categoryStats;
+}
+
+type MemoryLookupResult =
+	| {
+			success: true;
+			id: number;
+			memory: NonNullable<ReturnType<typeof Repository.getMemoryById>>;
+	  }
+	| { success: false; response: Response };
+
+function resolveMemoryForAction(
+	pathname: string,
+	auth: AuthContext,
+	actionName: string,
+): MemoryLookupResult {
+	const idStr = pathname.replace("/api/memories/", "");
+	const id = parseInt(idStr, 10);
+	if (Number.isNaN(id)) {
+		return { success: false, response: errorResponse("Invalid memory ID") };
+	}
+
+	const memory = Repository.getMemoryById(id);
+	if (!memory) {
+		return { success: false, response: errorResponse("Memory not found", 404) };
+	}
+
+	let allowed = false;
+	if (auth.role === "owner") {
+		allowed = true;
+	} else if (auth.role === "admin") {
+		allowed =
+			auth.adminChatIds.includes(memory.chat_id) ||
+			memory.user_id === auth.user?.id;
+	} else {
+		allowed = memory.user_id === auth.user?.id;
+	}
+
+	if (!allowed) {
+		return {
+			success: false,
+			response: errorResponse(
+				`Forbidden: You cannot ${actionName} this memory`,
+				403,
+			),
+		};
+	}
+
+	return { success: true, id, memory };
+}
+
 const PUBLIC_DIR = path.resolve(process.cwd(), "public");
 
 let serverInstance: ReturnType<typeof Bun.serve> | null = null;
@@ -280,15 +343,7 @@ export function startServer(): ReturnType<typeof Bun.serve> {
 									"SELECT category, COUNT(*) as count FROM memories GROUP BY category",
 								)
 								.all() as { category: string; count: number }[];
-							const categoryStats: Record<string, number> = {
-								PROFILE: 0,
-								DYNAMIC: 0,
-								TEMPORARY: 0,
-							};
-							for (const r of catRows) {
-								const k = r.category || "PROFILE";
-								categoryStats[k] = (categoryStats[k] || 0) + r.count;
-							}
+							const categoryStats = buildCategoryStats(catRows);
 
 							let dbSizeBytes = 0;
 							try {
@@ -358,15 +413,7 @@ export function startServer(): ReturnType<typeof Bun.serve> {
 								category: string;
 								count: number;
 							}[];
-							const categoryStats: Record<string, number> = {
-								PROFILE: 0,
-								DYNAMIC: 0,
-								TEMPORARY: 0,
-							};
-							for (const r of catRows) {
-								const k = r.category || "PROFILE";
-								categoryStats[k] = (categoryStats[k] || 0) + r.count;
-							}
+							const categoryStats = buildCategoryStats(catRows);
 
 							const topChats = db
 								.prepare(`
@@ -635,31 +682,9 @@ export function startServer(): ReturnType<typeof Bun.serve> {
 
 				// Delete memory by ID: /api/memories/:id
 				if (pathname.startsWith("/api/memories/") && req.method === "DELETE") {
-					const idStr = pathname.replace("/api/memories/", "");
-					const id = parseInt(idStr, 10);
-					if (Number.isNaN(id)) return errorResponse("Invalid memory ID");
-
-					const memory = Repository.getMemoryById(id);
-					if (!memory) return errorResponse("Memory not found", 404);
-
-					// RBAC Check
-					let allowed = false;
-					if (auth.role === "owner") {
-						allowed = true;
-					} else if (auth.role === "admin") {
-						allowed =
-							auth.adminChatIds.includes(memory.chat_id) ||
-							memory.user_id === auth.user.id;
-					} else {
-						allowed = memory.user_id === auth.user.id;
-					}
-
-					if (!allowed) {
-						return errorResponse(
-							"Forbidden: You cannot delete this memory",
-							403,
-						);
-					}
+					const lookup = resolveMemoryForAction(pathname, auth, "delete");
+					if (!lookup.success) return lookup.response;
+					const { id, memory } = lookup;
 
 					try {
 						Repository.deleteMemoriesByIds([id], memory.chat_id);
@@ -675,28 +700,9 @@ export function startServer(): ReturnType<typeof Bun.serve> {
 
 				// Update memory by ID: PATCH /api/memories/:id
 				if (pathname.startsWith("/api/memories/") && req.method === "PATCH") {
-					const idStr = pathname.replace("/api/memories/", "");
-					const id = parseInt(idStr, 10);
-					if (Number.isNaN(id)) return errorResponse("Invalid memory ID");
-
-					const memory = Repository.getMemoryById(id);
-					if (!memory) return errorResponse("Memory not found", 404);
-
-					// RBAC Check
-					let allowed = false;
-					if (auth.role === "owner") {
-						allowed = true;
-					} else if (auth.role === "admin") {
-						allowed =
-							auth.adminChatIds.includes(memory.chat_id) ||
-							memory.user_id === auth.user.id;
-					} else {
-						allowed = memory.user_id === auth.user.id;
-					}
-
-					if (!allowed) {
-						return errorResponse("Forbidden: You cannot edit this memory", 403);
-					}
+					const lookup = resolveMemoryForAction(pathname, auth, "edit");
+					if (!lookup.success) return lookup.response;
+					const { id, memory } = lookup;
 
 					try {
 						const body = (await req.json()) as {

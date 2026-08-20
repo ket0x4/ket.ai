@@ -6,9 +6,12 @@ import logger from "../utils/logger";
 import { sendLongMessage } from "../utils/message";
 
 /**
- * Checks if the user is the bot owner or an administrator of the group.
+ * Checks if the user is authorized for given chat member roles (or owner / private chat).
  */
-async function isAuthorized(ctx: Context): Promise<boolean> {
+async function checkMemberRole(
+	ctx: Context,
+	allowedRoles: string[],
+): Promise<boolean> {
 	if (!ctx.from) return false;
 
 	// Bot owner is always authorized
@@ -21,32 +24,20 @@ async function isAuthorized(ctx: Context): Promise<boolean> {
 		return true;
 	}
 
-	// Check if user is group admin
 	try {
 		const member = await ctx.getChatMember(ctx.from.id);
-		return ["creator", "administrator"].includes(member.status);
+		return allowedRoles.includes(member.status);
 	} catch (_error) {
 		return false;
 	}
 }
 
+async function isAuthorized(ctx: Context): Promise<boolean> {
+	return checkMemberRole(ctx, ["creator", "administrator"]);
+}
+
 async function isOwnerOrCreator(ctx: Context): Promise<boolean> {
-	if (!ctx.from) return false;
-
-	if (CONFIG.BOT_OWNER_ID && ctx.from.id === CONFIG.BOT_OWNER_ID) {
-		return true;
-	}
-
-	if (ctx.chat?.type === "private") {
-		return true;
-	}
-
-	try {
-		const member = await ctx.getChatMember(ctx.from.id);
-		return member.status === "creator";
-	} catch (_error) {
-		return false;
-	}
+	return checkMemberRole(ctx, ["creator"]);
 }
 
 const MEMORIES_PER_PAGE = 5;
@@ -385,11 +376,10 @@ export function registerCommands(bot: Bot) {
 		);
 	});
 
-	// Callback queries for /mem inline keyboard
-	bot.callbackQuery("mem:dashboard", async (ctx) => {
-		if (!ctx.chat) return;
-		const chatId = ctx.chat.id.toString();
-		const payload = getMemDashboardPayload(chatId);
+	async function sendOrEditCallback(
+		ctx: Context,
+		payload: { text: string; keyboard: InlineKeyboard },
+	): Promise<void> {
 		try {
 			await ctx.editMessageText(payload.text, {
 				parse_mode: "Markdown",
@@ -397,20 +387,25 @@ export function registerCommands(bot: Bot) {
 			});
 		} catch {}
 		await ctx.answerCallbackQuery().catch(() => {});
+	}
+
+	const backToDashboardKeyboard = new InlineKeyboard().text(
+		"Back to Dashboard",
+		"mem:dashboard",
+	);
+
+	// Callback queries for /mem inline keyboard
+	bot.callbackQuery("mem:dashboard", async (ctx) => {
+		if (!ctx.chat) return;
+		const chatId = ctx.chat.id.toString();
+		await sendOrEditCallback(ctx, getMemDashboardPayload(chatId));
 	});
 
 	bot.callbackQuery(/^mem:page:(\d+)$/, async (ctx) => {
 		if (!ctx.chat) return;
 		const chatId = ctx.chat.id.toString();
 		const targetPage = parseInt(ctx.match[1], 10);
-		const payload = getMemoriesPagePayload(chatId, targetPage);
-		try {
-			await ctx.editMessageText(payload.text, {
-				parse_mode: "Markdown",
-				reply_markup: payload.keyboard,
-			});
-		} catch {}
-		await ctx.answerCallbackQuery().catch(() => {});
+		await sendOrEditCallback(ctx, getMemoriesPagePayload(chatId, targetPage));
 	});
 
 	bot.callbackQuery("mem:user_me", async (ctx) => {
@@ -428,17 +423,10 @@ export function registerCommands(bot: Bot) {
 			text = `**Saved Facts for ${ctx.from.first_name}:**\n\n${list}`;
 		}
 
-		const keyboard = new InlineKeyboard().text(
-			"Back to Dashboard",
-			"mem:dashboard",
-		);
-		try {
-			await ctx.editMessageText(text, {
-				parse_mode: "Markdown",
-				reply_markup: keyboard,
-			});
-		} catch {}
-		await ctx.answerCallbackQuery().catch(() => {});
+		await sendOrEditCallback(ctx, {
+			text,
+			keyboard: backToDashboardKeyboard,
+		});
 	});
 
 	bot.callbackQuery("mem:help", async (ctx) => {
@@ -446,22 +434,15 @@ export function registerCommands(bot: Bot) {
 			"**How to Add Memories**\n\n" +
 			"1. Use command: `/remember <fact>`\n" +
 			"2. Or reply to any user message with `/remember` to save it.\n" +
-			"3. Natural phrases like *'remember this'*, *'keep in mind'*, *'note this'* will also be automatically extracted.";
-
-		"**How to Delete Memories**\n\n" +
+			"3. Natural phrases like *'remember this'*, *'keep in mind'*, *'note this'* will also be automatically extracted.\n\n" +
+			"**How to Delete Memories**\n\n" +
 			"1. Type `/mem del <id>` (e.g., `/mem del 42`).\n" +
 			"2. Admins can clear all group memories using `/mem clear`.";
-		const keyboard = new InlineKeyboard().text(
-			"Back to Dashboard",
-			"mem:dashboard",
-		);
-		try {
-			await ctx.editMessageText(text, {
-				parse_mode: "Markdown",
-				reply_markup: keyboard,
-			});
-		} catch {}
-		await ctx.answerCallbackQuery().catch(() => {});
+
+		await sendOrEditCallback(ctx, {
+			text,
+			keyboard: backToDashboardKeyboard,
+		});
 	});
 
 	bot.callbackQuery("mem:noop", async (ctx) => {

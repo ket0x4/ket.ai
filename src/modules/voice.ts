@@ -1,15 +1,9 @@
 import type { Bot } from "grammy";
-import { CONFIG } from "../config/index";
-import { Repository } from "../db/repository";
-import { botUsername, withChatLock, withTyping } from "../services/bot";
 import { GeminiService } from "../services/gemini/index";
-import { isConversationFollowUp } from "../utils/conversation";
-import logger from "../utils/logger";
 import {
-	downloadTelegramFile,
-	isDownloadError,
-} from "../utils/mediaDownloader";
-import { sendLongMessage } from "../utils/message";
+	isDirectMediaInteraction,
+	processMediaInteraction,
+} from "../services/mediaHelper";
 
 /**
  * Determines the audio MIME type from a Telegram voice file path.
@@ -27,84 +21,25 @@ function getAudioMimeType(filePath: string): string {
 export function registerVoiceHandlers(bot: Bot) {
 	// Listen to voice messages
 	bot.on("message:voice", async (ctx) => {
-		const msg = ctx.message;
-		const chat = ctx.chat;
-		const chatIdStr = chat.id.toString();
+		const isDirect = isDirectMediaInteraction(ctx, "Voice");
 
-		// 1. Check if the bot is mentioned via reply or in private chat
-		const isReplyToBot = msg.reply_to_message?.from?.username === botUsername;
-		const isPrivateChat = chat.type === "private";
-
-		// Detect quick conversation follow-up
-		const isFollowUp = ctx.from
-			? isConversationFollowUp(chatIdStr, ctx.from.id, msg.date)
-			: false;
-		if (isFollowUp) {
-			logger.debug(
-				`[Voice] Follow-up voice detected for user ${ctx.from?.first_name} in chat ${chatIdStr}`,
-			);
-		}
-
-		const isDirectInteraction = isReplyToBot || isPrivateChat || isFollowUp;
-
-		if (!isDirectInteraction) {
-			// Not directed to the bot, just log and skip
+		if (!isDirect) {
 			return;
 		}
 
-		const chatSettings = Repository.getChat(chatIdStr);
-		if (!chatSettings) return;
-
-		await withChatLock(chatIdStr, () =>
-			withTyping(ctx, async () => {
-				try {
-					logger.info(`[Voice] Downloading voice message from Telegram...`);
-
-					const downloadResult = await downloadTelegramFile(ctx, "voice");
-					if (isDownloadError(downloadResult)) {
-						await ctx.reply(downloadResult.error, {
-							reply_to_message_id: msg.message_id,
-						});
-						return;
-					}
-
-					// Determine MIME type from the actual file extension
-					const mimeType = getAudioMimeType(downloadResult.filePath);
-
-					// Fetch recent history for context
-					const activeTopic = await GeminiService.ensureTopicSummary(
-						chatIdStr,
-						chatSettings.current_topic,
-					);
-					const history = Repository.getRecentMessages(
-						chatIdStr,
-						CONFIG.IMAGE_HISTORY_LIMIT,
-					);
-
-					logger.info(
-						`[Voice] Sending voice message to Gemini for analysis...`,
-					);
-					const reply = await GeminiService.generateVoiceReply(
-						downloadResult.buffer,
-						mimeType,
-						history,
-						activeTopic,
-					);
-
-					// Reply to the voice message
-					await sendLongMessage(ctx, reply, {
-						reply_to_message_id: msg.message_id,
-					});
-				} catch (error) {
-					logger.error("Error processing voice message:", error);
-					await ctx.reply(
-						"Failed to process your voice message. Please try again later.",
-						{
-							reply_to_message_id: msg.message_id,
-						},
-					);
-				}
-			}),
-		);
+		await processMediaInteraction(ctx, {
+			mediaType: "voice",
+			resolveMimeType: (downloadResult) =>
+				getAudioMimeType(downloadResult.filePath),
+			generateReply: (buffer, mimeType, history, activeTopic) =>
+				GeminiService.generateVoiceReply(
+					buffer,
+					mimeType,
+					history,
+					activeTopic,
+				),
+			fallbackErrorMessage:
+				"Failed to process your voice message. Please try again later.",
+		});
 	});
 }
