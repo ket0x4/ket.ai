@@ -6,7 +6,18 @@
 		"useIgnoreFile": true
 	},
 	"files": {
-		"ignoreUnknown": false
+		"ignoreUnknown": false,
+		"includes": [
+			"src/**/*",
+			"web/src/**/*",
+			"tests/**/*",
+			"package.json",
+			"web/package.json",
+			"biome.json",
+			"tsconfig.json",
+			"docker-compose.yml",
+			"Dockerfile"
+		]
 	},
 	"formatter": {
 		"enabled": true,

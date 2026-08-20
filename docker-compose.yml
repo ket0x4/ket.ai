@@ -14,4 +14,3 @@ services:
       - ./system.txt:/app/system.txt:ro
       - ./data:/app/data:rw
       - ./logs:/app/logs:rw
-      - ./public:/app/public:ro

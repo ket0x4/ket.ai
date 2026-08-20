@@ -1010,27 +1010,81 @@ function handleLogsGet(url: URL, auth: AuthContext): Response {
 	}
 }
 
+const MIME_TYPES: Record<string, string> = {
+	".html": "text/html; charset=utf-8",
+	".js": "text/javascript; charset=utf-8",
+	".mjs": "text/javascript; charset=utf-8",
+	".css": "text/css; charset=utf-8",
+	".json": "application/json; charset=utf-8",
+	".png": "image/png",
+	".jpg": "image/jpeg",
+	".jpeg": "image/jpeg",
+	".gif": "image/gif",
+	".svg": "image/svg+xml",
+	".ico": "image/x-icon",
+	".woff": "font/woff",
+	".woff2": "font/woff2",
+	".ttf": "font/ttf",
+	".webp": "image/webp",
+};
+
 const PUBLIC_DIR = path.resolve(process.cwd(), "public");
 
 function serveStaticFile(pathname: string): Response {
 	try {
-		let filePath = path.join(
-			PUBLIC_DIR,
-			pathname === "/" ? "index.html" : pathname,
-		);
+		const cleanPath = pathname === "/" ? "/index.html" : pathname;
+		const ext = path.extname(cleanPath).toLowerCase();
+		const filePath = path.join(PUBLIC_DIR, cleanPath);
 
+		// Directory traversal security
 		if (!filePath.startsWith(PUBLIC_DIR)) {
 			return new Response("Forbidden", { status: 403 });
 		}
 
-		if (!fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) {
-			filePath = path.join(PUBLIC_DIR, "index.html");
+		// When a static asset with file extension is requested
+		if (ext) {
+			if (!fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) {
+				return new Response("Not Found", {
+					status: 404,
+					headers: { "Content-Type": "text/plain; charset=utf-8" },
+				});
+			}
+
+			const file = Bun.file(filePath);
+			const mime = MIME_TYPES[ext] || file.type || "application/octet-stream";
+			const isHashedAsset = cleanPath.startsWith("/assets/");
+
+			return new Response(file, {
+				headers: {
+					"Content-Type": mime,
+					"Cache-Control": isHashedAsset
+						? "public, max-age=31536000, immutable"
+						: "no-cache, no-store, must-revalidate",
+				},
+			});
 		}
 
-		const file = Bun.file(filePath);
-		return new Response(file);
+		// Single Page App fallback for HTML navigation
+		const indexHtmlPath = path.join(PUBLIC_DIR, "index.html");
+		if (!fs.existsSync(indexHtmlPath)) {
+			return new Response(
+				"Application not built. Please run bun run build:web.",
+				{
+					status: 404,
+					headers: { "Content-Type": "text/plain; charset=utf-8" },
+				},
+			);
+		}
+
+		const indexFile = Bun.file(indexHtmlPath);
+		return new Response(indexFile, {
+			headers: {
+				"Content-Type": "text/html; charset=utf-8",
+				"Cache-Control": "no-cache, no-store, must-revalidate",
+			},
+		});
 	} catch (_e) {
-		return new Response("Not Found", { status: 404 });
+		return new Response("Internal Server Error", { status: 500 });
 	}
 }
 
