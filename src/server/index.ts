@@ -156,6 +156,7 @@ async function getAuthContext(req: Request): Promise<AuthContext> {
 	const initData =
 		req.headers.get("x-telegram-init-data") ||
 		new URL(req.url).searchParams.get("initData") ||
+		new URL(req.url).searchParams.get("tgWebAppData") ||
 		"";
 
 	if (!initData) return makeGuestAuthContext();
@@ -1209,7 +1210,11 @@ export function startServer(): ReturnType<typeof Bun.serve> {
 
 			if (url.pathname.startsWith("/api/")) {
 				const auth = await getAuthContext(req);
-				if (!auth.valid || !auth.user) {
+				if (
+					url.pathname !== "/api/me" &&
+					url.pathname !== "/api/auth/verify" &&
+					(!auth.valid || !auth.user)
+				) {
 					return errorResponse("Unauthorized: Invalid Telegram initData", 401);
 				}
 				return handleApiRequest(req, url, auth);

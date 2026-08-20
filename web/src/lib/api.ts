@@ -39,10 +39,26 @@ const getInitData = (): string => {
 	}
 
 	if (typeof window !== "undefined") {
-		const params = new URLSearchParams(window.location.search);
-		const paramInitData = params.get("initData");
-		if (paramInitData) return paramInitData;
+		// 1. Check URL search query (?initData=... or ?tgWebAppData=...)
+		const searchParams = new URLSearchParams(window.location.search);
+		const paramInitData =
+			searchParams.get("initData") || searchParams.get("tgWebAppData");
+		if (paramInitData) {
+			return decodeURIComponent(paramInitData);
+		}
 
+		// 2. Check URL hash (#tgWebAppData=... which Telegram Web frequently sets)
+		if (window.location.hash) {
+			const hashString = window.location.hash.replace(/^#/, "");
+			const hashParams = new URLSearchParams(hashString);
+			const hashInitData =
+				hashParams.get("tgWebAppData") || hashParams.get("initData");
+			if (hashInitData) {
+				return decodeURIComponent(hashInitData);
+			}
+		}
+
+		// 3. Check stored developer token
 		const stored = localStorage.getItem("ket_dev_init_data");
 		if (stored) return stored;
 	}

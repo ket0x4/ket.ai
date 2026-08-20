@@ -1,54 +1,86 @@
 @import "tailwindcss";
 
-@layer base {
-	:root {
-		--font-sans:
-			"Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI",
-			Roboto, sans-serif;
-		--font-mono: "JetBrains Mono", monospace;
+@theme {
+	--font-sans:
+		"Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+		sans-serif;
+	--font-mono: "JetBrains Mono", monospace;
 
-		--background: 240 10% 3.9%;
-		--foreground: 0 0% 98%;
+	--color-background: #09090b;
+	--color-foreground: #fafafa;
 
-		--card: 240 10% 4.9%;
-		--card-foreground: 0 0% 98%;
+	--color-card: #141417;
+	--color-card-foreground: #fafafa;
 
-		--popover: 240 10% 4.9%;
-		--popover-foreground: 0 0% 98%;
+	--color-popover: #141417;
+	--color-popover-foreground: #fafafa;
 
-		--primary: 217.2 91.2% 59.8%;
-		--primary-foreground: 222.2 47.4% 11.2%;
+	--color-primary: #3b82f6;
+	--color-primary-foreground: #ffffff;
 
-		--secondary: 240 3.7% 15.9%;
-		--secondary-foreground: 0 0% 98%;
+	--color-secondary: #27272a;
+	--color-secondary-foreground: #fafafa;
 
-		--muted: 240 3.7% 15.9%;
-		--muted-foreground: 240 5% 64.9%;
+	--color-muted: #1e1e24;
+	--color-muted-foreground: #a1a1aa;
 
-		--accent: 240 3.7% 15.9%;
-		--accent-foreground: 0 0% 98%;
+	--color-accent: #27272a;
+	--color-accent-foreground: #fafafa;
 
-		--destructive: 0 62.8% 30.6%;
-		--destructive-foreground: 0 0% 98%;
+	--color-destructive: #ef4444;
+	--color-destructive-foreground: #ffffff;
 
-		--border: 240 3.7% 15.9%;
-		--input: 240 3.7% 15.9%;
-		--ring: 217.2 91.2% 59.8%;
+	--color-border: #27272a;
+	--color-input: #27272a;
+	--color-ring: #3b82f6;
 
-		--radius: 0.75rem;
+	--color-profile: #3b82f6;
+	--color-dynamic: #10b981;
+	--color-temporary: #f59e0b;
+}
 
-		--profile: 217.2 91.2% 59.8%;
-		--dynamic: 142.1 70.6% 45.3%;
-		--temporary: 38 92% 50%;
-	}
+:root {
+	--background: #09090b;
+	--foreground: #fafafa;
+	--card: #141417;
+	--card-foreground: #fafafa;
+	--popover: #141417;
+	--popover-foreground: #fafafa;
+	--primary: #3b82f6;
+	--primary-foreground: #ffffff;
+	--secondary: #27272a;
+	--secondary-foreground: #fafafa;
+	--muted: #1e1e24;
+	--muted-foreground: #a1a1aa;
+	--accent: #27272a;
+	--accent-foreground: #fafafa;
+	--destructive: #ef4444;
+	--destructive-foreground: #ffffff;
+	--border: #27272a;
+	--input: #27272a;
+	--ring: #3b82f6;
+}
+
+html,
+body {
+	height: 100%;
+	width: 100%;
+	margin: 0;
+	padding: 0;
 }
 
 body {
 	font-family: var(--font-sans);
-	background-color: hsl(var(--background));
-	color: hsl(var(--foreground));
+	background-color: var(--background);
+	color: var(--foreground);
 	overflow-x: hidden;
 	-webkit-font-smoothing: antialiased;
+}
+
+#root {
+	min-height: 100%;
+	display: flex;
+	flex-direction: column;
 }
 
 /* Custom modern scrollbars */
@@ -62,27 +94,27 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-	background: hsl(var(--muted-foreground) / 0.2);
+	background: rgba(161, 161, 170, 0.2);
 	border-radius: 9999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-	background: hsl(var(--muted-foreground) / 0.4);
+	background: rgba(161, 161, 170, 0.4);
 }
 
 /* Glassmorphism helpers */
 .glass-card {
-	background: hsl(var(--card) / 0.7);
+	background: rgba(20, 20, 23, 0.85);
 	backdrop-filter: blur(12px);
 	-webkit-backdrop-filter: blur(12px);
-	border: 1px solid hsl(var(--border) / 0.6);
+	border: 1px solid rgba(39, 39, 42, 0.8);
 }
 
 .glass-header {
-	background: hsl(var(--background) / 0.8);
+	background: rgba(9, 9, 11, 0.85);
 	backdrop-filter: blur(16px);
 	-webkit-backdrop-filter: blur(16px);
-	border-bottom: 1px solid hsl(var(--border) / 0.5);
+	border-bottom: 1px solid rgba(39, 39, 42, 0.6);
 }
 
 /* Subtle glow animations */
