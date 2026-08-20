@@ -1,120 +1,210 @@
-import fs from "fs";
-import path from "path";
-import crypto from "crypto";
+import crypto from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
 import { CONFIG, updateBotSettings } from "../config/index";
 import { db } from "../db/index";
 import { Repository } from "../db/repository";
-import { processNewMemory, generateEmbedding } from "../services/gemini/memory";
+import { bot } from "../services/bot";
 import { ai } from "../services/gemini/client";
+import { generateEmbedding, processNewMemory } from "../services/gemini/memory";
 import { getSystemInstruction } from "../services/gemini/utils";
-import { ToolTraceLogger } from "../utils/toolTrace";
 import logger from "../utils/logger";
+import { ToolTraceLogger } from "../utils/toolTrace";
 
 export interface TelegramUser {
-  id: number;
-  first_name: string;
-  last_name?: string;
-  username?: string;
-  language_code?: string;
-  is_premium?: boolean;
+	id: number;
+	first_name: string;
+	last_name?: string;
+	username?: string;
+	language_code?: string;
+	is_premium?: boolean;
 }
 
+export type UserRole = "owner" | "admin" | "user";
+
 export interface AuthContext {
-  valid: boolean;
-  user?: TelegramUser;
-  isOwner: boolean;
+	valid: boolean;
+	user?: TelegramUser;
+	role: UserRole;
+	isOwner: boolean;
+	adminChatIds: string[];
+	memberChatIds: string[];
+}
+
+// In-memory cache for Telegram group administrator status (5 min TTL)
+const adminStatusCache = new Map<
+	string,
+	{ isAdmin: boolean; expiresAt: number }
+>();
+
+async function checkIsChatAdmin(
+	chatId: string,
+	userId: number,
+): Promise<boolean> {
+	if (CONFIG.BOT_OWNER_ID && userId === CONFIG.BOT_OWNER_ID) return true;
+	if (chatId === userId.toString()) return true;
+
+	const cacheKey = `${chatId}:${userId}`;
+	const cached = adminStatusCache.get(cacheKey);
+	const now = Date.now();
+	if (cached && cached.expiresAt > now) {
+		return cached.isAdmin;
+	}
+
+	try {
+		const member = await bot.api.getChatMember(chatId, userId);
+		const isAdmin = ["creator", "administrator"].includes(member.status);
+		adminStatusCache.set(cacheKey, { isAdmin, expiresAt: now + 5 * 60 * 1000 });
+		return isAdmin;
+	} catch (_err) {
+		adminStatusCache.set(cacheKey, {
+			isAdmin: false,
+			expiresAt: now + 60 * 1000,
+		});
+		return false;
+	}
 }
 
 /**
  * Validates Telegram initData cryptographic signature.
  */
 export function verifyTelegramInitData(
-  initDataRaw: string,
-  botToken: string,
-): AuthContext {
-  if (!initDataRaw) {
-    return { valid: false, isOwner: false };
-  }
+	initDataRaw: string,
+	botToken: string,
+): { valid: boolean; user?: TelegramUser } {
+	if (!initDataRaw) {
+		return { valid: false };
+	}
 
-  try {
-    const urlParams = new URLSearchParams(initDataRaw);
-    const hash = urlParams.get("hash");
-    if (!hash) {
-      return { valid: false, isOwner: false };
-    }
+	try {
+		const urlParams = new URLSearchParams(initDataRaw);
+		const hash = urlParams.get("hash");
+		if (!hash) {
+			return { valid: false };
+		}
 
-    urlParams.delete("hash");
+		urlParams.delete("hash");
 
-    const params: string[] = [];
-    urlParams.forEach((val, key) => {
-      params.push(`${key}=${val}`);
-    });
-    params.sort();
+		const params: string[] = [];
+		urlParams.forEach((val, key) => {
+			params.push(`${key}=${val}`);
+		});
+		params.sort();
 
-    const dataCheckString = params.join("\n");
+		const dataCheckString = params.join("\n");
 
-    const secretKey = crypto
-      .createHmac("sha256", "WebAppData")
-      .update(botToken)
-      .digest();
-    const calculatedHash = crypto
-      .createHmac("sha256", secretKey)
-      .update(dataCheckString)
-      .digest("hex");
+		const secretKey = crypto
+			.createHmac("sha256", "WebAppData")
+			.update(botToken)
+			.digest();
+		const calculatedHash = crypto
+			.createHmac("sha256", secretKey)
+			.update(dataCheckString)
+			.digest("hex");
 
-    if (calculatedHash.toLowerCase() !== hash.toLowerCase()) {
-      return { valid: false, isOwner: false };
-    }
+		if (calculatedHash.toLowerCase() !== hash.toLowerCase()) {
+			return { valid: false };
+		}
 
-    const userStr = urlParams.get("user");
-    const user: TelegramUser | undefined = userStr
-      ? JSON.parse(userStr)
-      : undefined;
-    const isOwner = Boolean(
-      user && CONFIG.BOT_OWNER_ID ? user.id === CONFIG.BOT_OWNER_ID : false,
-    );
+		const userStr = urlParams.get("user");
+		const user: TelegramUser | undefined = userStr
+			? JSON.parse(userStr)
+			: undefined;
 
-    return { valid: true, user, isOwner };
-  } catch (error) {
-    logger.error("[Server Auth] Error validating initData:", error);
-    return { valid: false, isOwner: false };
-  }
+		return { valid: Boolean(user), user };
+	} catch (error) {
+		logger.error("[Server Auth] Error validating initData:", error);
+		return { valid: false };
+	}
 }
 
 /**
- * Extracts auth context from Request headers or query string.
- * Strictly verifies cryptographic Telegram WebApp signature.
+ * Extracts and resolves full role and permissions from Request.
  */
-function getAuthContext(req: Request): AuthContext {
-  const initData =
-    req.headers.get("x-telegram-init-data") ||
-    new URL(req.url).searchParams.get("initData") ||
-    "";
+async function getAuthContext(req: Request): Promise<AuthContext> {
+	const initData =
+		req.headers.get("x-telegram-init-data") ||
+		new URL(req.url).searchParams.get("initData") ||
+		"";
 
-  if (!initData) {
-    return {
-      valid: false,
-      isOwner: false,
-    };
-  }
+	if (!initData) {
+		return {
+			valid: false,
+			role: "user",
+			isOwner: false,
+			adminChatIds: [],
+			memberChatIds: [],
+		};
+	}
 
-  return verifyTelegramInitData(initData, CONFIG.TELEGRAM_BOT_TOKEN);
+	const { valid, user } = verifyTelegramInitData(
+		initData,
+		CONFIG.TELEGRAM_BOT_TOKEN,
+	);
+	if (!valid || !user) {
+		return {
+			valid: false,
+			role: "user",
+			isOwner: false,
+			adminChatIds: [],
+			memberChatIds: [],
+		};
+	}
+
+	const userId = user.id;
+	const isOwner = Boolean(
+		CONFIG.BOT_OWNER_ID && userId === CONFIG.BOT_OWNER_ID,
+	);
+	const memberChatIds = Repository.getUserMemberChatIds(userId);
+	const adminChatIds: string[] = [];
+
+	if (isOwner) {
+		const allChats = db.prepare("SELECT chat_id FROM chats").all() as {
+			chat_id: string;
+		}[];
+		for (const c of allChats) {
+			adminChatIds.push(c.chat_id);
+		}
+	} else {
+		for (const chatId of memberChatIds) {
+			if (chatId !== userId.toString()) {
+				const isAdmin = await checkIsChatAdmin(chatId, userId);
+				if (isAdmin) adminChatIds.push(chatId);
+			}
+		}
+	}
+
+	let role: UserRole = "user";
+	if (isOwner) {
+		role = "owner";
+	} else if (adminChatIds.length > 0) {
+		role = "admin";
+	}
+
+	return {
+		valid: true,
+		user,
+		role,
+		isOwner,
+		adminChatIds,
+		memberChatIds,
+	};
 }
 
 function jsonResponse(data: unknown, status = 200): Response {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: {
-      "Content-Type": "application/json; charset=utf-8",
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Headers": "*",
-      "Access-Control-Allow-Methods": "*",
-    },
-  });
+	return new Response(JSON.stringify(data), {
+		status,
+		headers: {
+			"Content-Type": "application/json; charset=utf-8",
+			"Access-Control-Allow-Origin": "*",
+			"Access-Control-Allow-Headers": "*",
+			"Access-Control-Allow-Methods": "*",
+		},
+	});
 }
 
 function errorResponse(message: string, status = 400): Response {
-  return jsonResponse({ error: message }, status);
+	return jsonResponse({ error: message }, status);
 }
 
 const PUBLIC_DIR = path.resolve(process.cwd(), "public");
@@ -122,626 +212,935 @@ const PUBLIC_DIR = path.resolve(process.cwd(), "public");
 let serverInstance: ReturnType<typeof Bun.serve> | null = null;
 
 export function startServer(): ReturnType<typeof Bun.serve> {
-  const port = CONFIG.WEB_PORT;
+	const port = CONFIG.WEB_PORT;
 
-  logger.info(
-    `[Server] Starting Telegram Mini App HTTP server on port ${port}...`,
-  );
+	logger.info(
+		`[Server] Starting Telegram Mini App HTTP server on port ${port}...`,
+	);
 
-  serverInstance = Bun.serve({
-    port,
-    async fetch(req) {
-      const url = new URL(req.url);
-      const pathname = url.pathname;
+	serverInstance = Bun.serve({
+		port,
+		async fetch(req) {
+			const url = new URL(req.url);
+			const pathname = url.pathname;
 
-      // Handle CORS preflight options
-      if (req.method === "OPTIONS") {
-        return new Response(null, {
-          status: 204,
-          headers: {
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Headers": "*",
-            "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
-          },
-        });
-      }
+			// Handle CORS preflight options
+			if (req.method === "OPTIONS") {
+				return new Response(null, {
+					status: 204,
+					headers: {
+						"Access-Control-Allow-Origin": "*",
+						"Access-Control-Allow-Headers": "*",
+						"Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
+					},
+				});
+			}
 
-      // API Routes
-      if (pathname.startsWith("/api/")) {
-        const auth = getAuthContext(req);
+			// API Routes
+			if (pathname.startsWith("/api/")) {
+				const auth = await getAuthContext(req);
 
-        if (!auth.valid) {
-          return errorResponse("Unauthorized: Invalid Telegram initData", 401);
-        }
+				if (!auth.valid || !auth.user) {
+					return errorResponse("Unauthorized: Invalid Telegram initData", 401);
+				}
 
-        // 1. Auth check
-        if (pathname === "/api/auth/verify" || pathname === "/api/me") {
-          return jsonResponse({
-            valid: true,
-            user: auth.user,
-            isOwner: auth.isOwner,
-          });
-        }
+				// 1. Auth check: /api/me or /api/auth/verify
+				if (pathname === "/api/auth/verify" || pathname === "/api/me") {
+					return jsonResponse({
+						valid: true,
+						user: auth.user,
+						role: auth.role,
+						isOwner: auth.isOwner,
+						adminChatIds: auth.adminChatIds,
+						memberChatIds: auth.memberChatIds,
+					});
+				}
 
-        // 2. Stats
-        if (pathname === "/api/stats" && req.method === "GET") {
-          try {
-            const chatsRow = db
-              .prepare("SELECT COUNT(*) as count FROM chats")
-              .get() as { count: number };
-            const allowedRow = db
-              .prepare(
-                "SELECT COUNT(*) as count FROM chats WHERE is_allowed = 1",
-              )
-              .get() as { count: number };
-            const messagesRow = db
-              .prepare("SELECT COUNT(*) as count FROM messages")
-              .get() as { count: number };
-            const memoriesRow = db
-              .prepare("SELECT COUNT(*) as count FROM memories")
-              .get() as { count: number };
+				// 2. Stats API: /api/stats
+				if (pathname === "/api/stats" && req.method === "GET") {
+					try {
+						if (auth.role === "owner") {
+							const chatsRow = db
+								.prepare("SELECT COUNT(*) as count FROM chats")
+								.get() as { count: number };
+							const allowedRow = db
+								.prepare(
+									"SELECT COUNT(*) as count FROM chats WHERE is_allowed = 1",
+								)
+								.get() as { count: number };
+							const messagesRow = db
+								.prepare("SELECT COUNT(*) as count FROM messages")
+								.get() as { count: number };
+							const memoriesRow = db
+								.prepare("SELECT COUNT(*) as count FROM memories")
+								.get() as { count: number };
 
-            const catRows = db
-              .prepare(
-                "SELECT category, COUNT(*) as count FROM memories GROUP BY category",
-              )
-              .all() as { category: string; count: number }[];
-            const categoryStats: Record<string, number> = {
-              PROFILE: 0,
-              DYNAMIC: 0,
-              TEMPORARY: 0,
-            };
-            for (const r of catRows) {
-              const k = r.category || "PROFILE";
-              categoryStats[k] = (categoryStats[k] || 0) + r.count;
-            }
+							const catRows = db
+								.prepare(
+									"SELECT category, COUNT(*) as count FROM memories GROUP BY category",
+								)
+								.all() as { category: string; count: number }[];
+							const categoryStats: Record<string, number> = {
+								PROFILE: 0,
+								DYNAMIC: 0,
+								TEMPORARY: 0,
+							};
+							for (const r of catRows) {
+								const k = r.category || "PROFILE";
+								categoryStats[k] = (categoryStats[k] || 0) + r.count;
+							}
 
-            let dbSizeBytes = 0;
-            try {
-              if (fs.existsSync(CONFIG.DB_PATH)) {
-                dbSizeBytes = fs.statSync(CONFIG.DB_PATH).size;
-              }
-            } catch (e) {}
+							let dbSizeBytes = 0;
+							try {
+								if (fs.existsSync(CONFIG.DB_PATH)) {
+									dbSizeBytes = fs.statSync(CONFIG.DB_PATH).size;
+								}
+							} catch (_e) {}
 
-            const topChats = db
-              .prepare(
-                `
-              SELECT c.chat_id, c.title, c.is_allowed, COUNT(m.id) as message_count
-              FROM chats c
-              LEFT JOIN messages m ON c.chat_id = m.chat_id
-              GROUP BY c.chat_id
-              ORDER BY message_count DESC LIMIT 3
-            `,
-              )
-              .all();
+							const topChats = db
+								.prepare(`
+                SELECT c.chat_id, c.title, c.is_allowed, COUNT(m.id) as message_count
+                FROM chats c
+                LEFT JOIN messages m ON c.chat_id = m.chat_id
+                GROUP BY c.chat_id
+                ORDER BY message_count DESC LIMIT 3
+              `)
+								.all();
 
-            const memUsage = process.memoryUsage();
+							const memUsage = process.memoryUsage();
 
-            return jsonResponse({
-              totalChats: chatsRow?.count || 0,
-              allowedChats: allowedRow?.count || 0,
-              totalMessages: messagesRow?.count || 0,
-              totalMemories: memoriesRow?.count || 0,
-              categoryStats,
-              dbSizeBytes,
-              topChats,
-              uptimeSeconds: Math.floor(process.uptime()),
-              memoryUsageMb:
-                Math.round((memUsage.heapUsed / 1024 / 1024) * 100) / 100,
-              model: CONFIG.GEMINI_MODEL,
-              webSearch: CONFIG.ENABLE_WEB_SEARCH,
-            });
-          } catch (e) {
-            logger.error("[Server Stats] Error fetching stats:", e);
-            return errorResponse("Failed to fetch stats", 500);
-          }
-        }
+							return jsonResponse({
+								role: "owner",
+								totalChats: chatsRow?.count || 0,
+								allowedChats: allowedRow?.count || 0,
+								totalMessages: messagesRow?.count || 0,
+								totalMemories: memoriesRow?.count || 0,
+								categoryStats,
+								dbSizeBytes,
+								topChats,
+								uptimeSeconds: Math.floor(process.uptime()),
+								memoryUsageMb:
+									Math.round((memUsage.heapUsed / 1024 / 1024) * 100) / 100,
+								model: CONFIG.GEMINI_MODEL,
+								webSearch: CONFIG.ENABLE_WEB_SEARCH,
+							});
+						} else if (auth.role === "admin") {
+							if (auth.adminChatIds.length === 0) {
+								return jsonResponse({
+									role: "admin",
+									managedGroupsCount: 0,
+									totalMessages: 0,
+									totalMemories: 0,
+									categoryStats: { PROFILE: 0, DYNAMIC: 0, TEMPORARY: 0 },
+									topChats: [],
+								});
+							}
 
-        // 2b. Settings API
-        if (pathname === "/api/settings") {
-          if (req.method === "GET") {
-            return jsonResponse({
-              gemini_model: CONFIG.GEMINI_MODEL,
-              default_reply_probability: CONFIG.DEFAULT_REPLY_PROBABILITY,
-              chat_history_limit: CONFIG.CHAT_HISTORY_LIMIT,
-              enable_web_search: CONFIG.ENABLE_WEB_SEARCH,
-              max_agent_steps: CONFIG.MAX_AGENT_STEPS,
-              log_level: CONFIG.LOG_LEVEL,
-            });
-          }
+							const chatPlaceholders = auth.adminChatIds
+								.map(() => "?")
+								.join(",");
+							const messagesRow = db
+								.prepare(
+									`SELECT COUNT(*) as count FROM messages WHERE chat_id IN (${chatPlaceholders})`,
+								)
+								.get(...auth.adminChatIds) as { count: number };
+							const memoriesRow = db
+								.prepare(
+									`SELECT COUNT(*) as count FROM memories WHERE chat_id IN (${chatPlaceholders})`,
+								)
+								.get(...auth.adminChatIds) as { count: number };
 
-          if (req.method === "PATCH") {
-            if (!auth.isOwner) {
-              return errorResponse(
-                "Only bot owner can update global settings",
-                403,
-              );
-            }
-            try {
-              const body = (await req.json()) as {
-                gemini_model?: string;
-                default_reply_probability?: number;
-                chat_history_limit?: number;
-                enable_web_search?: boolean;
-                max_agent_steps?: number;
-                log_level?: "debug" | "info" | "warn" | "error";
-              };
+							const catRows = db
+								.prepare(
+									`SELECT category, COUNT(*) as count FROM memories WHERE chat_id IN (${chatPlaceholders}) GROUP BY category`,
+								)
+								.all(...auth.adminChatIds) as {
+								category: string;
+								count: number;
+							}[];
+							const categoryStats: Record<string, number> = {
+								PROFILE: 0,
+								DYNAMIC: 0,
+								TEMPORARY: 0,
+							};
+							for (const r of catRows) {
+								const k = r.category || "PROFILE";
+								categoryStats[k] = (categoryStats[k] || 0) + r.count;
+							}
 
-              updateBotSettings(body);
+							const topChats = db
+								.prepare(`
+                SELECT c.chat_id, c.title, c.is_allowed, COUNT(m.id) as message_count
+                FROM chats c
+                LEFT JOIN messages m ON c.chat_id = m.chat_id
+                WHERE c.chat_id IN (${chatPlaceholders})
+                GROUP BY c.chat_id
+                ORDER BY message_count DESC LIMIT 3
+              `)
+								.all(...auth.adminChatIds);
 
-              return jsonResponse({
-                success: true,
-                message: "Settings updated successfully",
-                settings: {
-                  gemini_model: CONFIG.GEMINI_MODEL,
-                  default_reply_probability: CONFIG.DEFAULT_REPLY_PROBABILITY,
-                  chat_history_limit: CONFIG.CHAT_HISTORY_LIMIT,
-                  enable_web_search: CONFIG.ENABLE_WEB_SEARCH,
-                  max_agent_steps: CONFIG.MAX_AGENT_STEPS,
-                  log_level: CONFIG.LOG_LEVEL,
-                },
-              });
-            } catch (e) {
-              logger.error(
-                "[Server Settings PATCH] Error updating settings:",
-                e,
-              );
-              return errorResponse("Failed to update settings", 500);
-            }
-          }
-        }
+							return jsonResponse({
+								role: "admin",
+								managedGroupsCount: auth.adminChatIds.length,
+								totalMessages: messagesRow?.count || 0,
+								totalMemories: memoriesRow?.count || 0,
+								categoryStats,
+								topChats,
+							});
+						} else {
+							// Regular user personal stats
+							const userStats = Repository.getUserStats(auth.user.id);
+							return jsonResponse({
+								role: "user",
+								totalMessages: userStats.totalMessages,
+								totalMemories: userStats.totalMemories,
+								totalGroups: userStats.totalGroups,
+							});
+						}
+					} catch (e) {
+						logger.error("[Server Stats] Error fetching stats:", e);
+						return errorResponse("Failed to fetch stats", 500);
+					}
+				}
 
-        // Clear memory cache: POST /api/settings/cache-clear
-        if (pathname === "/api/settings/cache-clear" && req.method === "POST") {
-          try {
-            Repository.clearMemoryCache();
-            return jsonResponse({
-              success: true,
-              message: "Memory cache cleared successfully",
-            });
-          } catch (e) {
-            logger.error("[Server Settings] Error clearing cache:", e);
-            return errorResponse("Failed to clear memory cache", 500);
-          }
-        }
+				// 3. Settings API: /api/settings (Owner only)
+				if (pathname === "/api/settings") {
+					if (!auth.isOwner) {
+						return errorResponse(
+							"Forbidden: Only bot owner can view or edit global settings",
+							403,
+						);
+					}
 
-        // 3. Memories API
-        if (pathname === "/api/memories") {
-          if (req.method === "GET") {
-            const chatIdParam = url.searchParams.get("chat_id");
-            const searchParam =
-              url.searchParams.get("search")?.toLowerCase() || "";
-            const categoryParam = url.searchParams.get("category");
+					if (req.method === "GET") {
+						return jsonResponse({
+							gemini_model: CONFIG.GEMINI_MODEL,
+							default_reply_probability: CONFIG.DEFAULT_REPLY_PROBABILITY,
+							chat_history_limit: CONFIG.CHAT_HISTORY_LIMIT,
+							enable_web_search: CONFIG.ENABLE_WEB_SEARCH,
+							max_agent_steps: CONFIG.MAX_AGENT_STEPS,
+							log_level: CONFIG.LOG_LEVEL,
+						});
+					}
 
-            let query = `
+					if (req.method === "PATCH") {
+						try {
+							const body = (await req.json()) as {
+								gemini_model?: string;
+								default_reply_probability?: number;
+								chat_history_limit?: number;
+								enable_web_search?: boolean;
+								max_agent_steps?: number;
+								log_level?: "debug" | "info" | "warn" | "error";
+							};
+
+							updateBotSettings(body);
+
+							return jsonResponse({
+								success: true,
+								message: "Settings updated successfully",
+								settings: {
+									gemini_model: CONFIG.GEMINI_MODEL,
+									default_reply_probability: CONFIG.DEFAULT_REPLY_PROBABILITY,
+									chat_history_limit: CONFIG.CHAT_HISTORY_LIMIT,
+									enable_web_search: CONFIG.ENABLE_WEB_SEARCH,
+									max_agent_steps: CONFIG.MAX_AGENT_STEPS,
+									log_level: CONFIG.LOG_LEVEL,
+								},
+							});
+						} catch (e) {
+							logger.error(
+								"[Server Settings PATCH] Error updating settings:",
+								e,
+							);
+							return errorResponse("Failed to update settings", 500);
+						}
+					}
+				}
+
+				// Clear memory cache: POST /api/settings/cache-clear (Owner only)
+				if (pathname === "/api/settings/cache-clear" && req.method === "POST") {
+					if (!auth.isOwner) {
+						return errorResponse(
+							"Forbidden: Only bot owner can clear cache",
+							403,
+						);
+					}
+					try {
+						Repository.clearMemoryCache();
+						return jsonResponse({
+							success: true,
+							message: "Memory cache cleared successfully",
+						});
+					} catch (e) {
+						logger.error("[Server Settings] Error clearing cache:", e);
+						return errorResponse("Failed to clear memory cache", 500);
+					}
+				}
+
+				// 4. Memories API: /api/memories
+				if (pathname === "/api/memories") {
+					if (req.method === "GET") {
+						const chatIdParam = url.searchParams.get("chat_id");
+						const searchParam =
+							url.searchParams.get("search")?.toLowerCase() || "";
+						const categoryParam = url.searchParams.get("category");
+						const filterScope = url.searchParams.get("scope"); // "mine" | "all"
+
+						let query = `
               SELECT id, chat_id, memory_text, created_at, user_id, category, expires_at
               FROM memories
             `;
-            const conditions: string[] = [];
-            const params: (string | number)[] = [];
+						const conditions: string[] = [];
+						const params: (string | number)[] = [];
 
-            if (chatIdParam) {
-              conditions.push("chat_id = ?");
-              params.push(chatIdParam);
-            }
-            if (categoryParam) {
-              conditions.push("category = ?");
-              params.push(categoryParam);
-            }
+						if (auth.role === "owner") {
+							if (chatIdParam) {
+								conditions.push("chat_id = ?");
+								params.push(chatIdParam);
+							}
+							if (filterScope === "mine") {
+								conditions.push("user_id = ?");
+								params.push(auth.user.id);
+							}
+						} else if (auth.role === "admin") {
+							if (filterScope === "mine") {
+								conditions.push("user_id = ?");
+								params.push(auth.user.id);
+							} else if (chatIdParam) {
+								if (
+									!auth.adminChatIds.includes(chatIdParam) &&
+									!auth.memberChatIds.includes(chatIdParam)
+								) {
+									return errorResponse(
+										"Forbidden: You do not have access to this chat's memories",
+										403,
+									);
+								}
+								conditions.push("chat_id = ?");
+								params.push(chatIdParam);
+							} else {
+								const allowedChats = Array.from(
+									new Set([...auth.adminChatIds, ...auth.memberChatIds]),
+								);
+								if (allowedChats.length === 0) {
+									conditions.push("user_id = ?");
+									params.push(auth.user.id);
+								} else {
+									const placeholders = allowedChats.map(() => "?").join(",");
+									conditions.push(
+										`(chat_id IN (${placeholders}) OR user_id = ?)`,
+									);
+									params.push(...allowedChats, auth.user.id);
+								}
+							}
+						} else {
+							// Regular user: can only view memories associated with their user_id OR in chats they belong to with category PROFILE
+							if (chatIdParam) {
+								if (!auth.memberChatIds.includes(chatIdParam)) {
+									return errorResponse(
+										"Forbidden: You do not participate in this chat",
+										403,
+									);
+								}
+								conditions.push(
+									"chat_id = ? AND (user_id = ? OR category = 'PROFILE')",
+								);
+								params.push(chatIdParam, auth.user.id);
+							} else {
+								conditions.push("user_id = ?");
+								params.push(auth.user.id);
+							}
+						}
 
-            if (conditions.length > 0) {
-              query += " WHERE " + conditions.join(" AND ");
-            }
-            query += " ORDER BY created_at DESC LIMIT 500";
+						if (categoryParam) {
+							conditions.push("category = ?");
+							params.push(categoryParam);
+						}
 
-            const rows = db.prepare(query).all(...params) as {
-              id: number;
-              chat_id: string;
-              memory_text: string;
-              created_at: number;
-              user_id: number | null;
-              category: string;
-              expires_at: number | null;
-            }[];
+						if (conditions.length > 0) {
+							query += ` WHERE ${conditions.join(" AND ")}`;
+						}
+						query += " ORDER BY created_at DESC LIMIT 500";
 
-            const filtered = rows.filter((r) =>
-              searchParam
-                ? r.memory_text.toLowerCase().includes(searchParam)
-                : true,
-            );
+						const rows = db.prepare(query).all(...params) as {
+							id: number;
+							chat_id: string;
+							memory_text: string;
+							created_at: number;
+							user_id: number | null;
+							category: string;
+							expires_at: number | null;
+						}[];
 
-            return jsonResponse(filtered);
-          }
+						const filtered = rows.filter((r) =>
+							searchParam
+								? r.memory_text.toLowerCase().includes(searchParam)
+								: true,
+						);
 
-          if (req.method === "POST") {
-            try {
-              const body = (await req.json()) as {
-                chatId: string;
-                memoryText: string;
-                category?: "PROFILE" | "DYNAMIC" | "TEMPORARY";
-              };
+						return jsonResponse(filtered);
+					}
 
-              if (!body.chatId || !body.memoryText) {
-                return errorResponse("Missing chatId or memoryText");
-              }
+					if (req.method === "POST") {
+						try {
+							const body = (await req.json()) as {
+								chatId: string;
+								memoryText: string;
+								category?: "PROFILE" | "DYNAMIC" | "TEMPORARY";
+							};
 
-              await processNewMemory(body.chatId, body.memoryText, {
-                category: body.category || "PROFILE",
-              });
+							if (!body.chatId || !body.memoryText) {
+								return errorResponse("Missing chatId or memoryText");
+							}
 
-              return jsonResponse({
-                success: true,
-                message: "Memory created successfully",
-              });
-            } catch (e) {
-              logger.error("[Server Memory POST] Error adding memory:", e);
-              return errorResponse("Failed to create memory", 500);
-            }
-          }
-        }
+							// Permission check
+							if (auth.role === "user") {
+								if (
+									body.chatId !== auth.user.id.toString() &&
+									!auth.memberChatIds.includes(body.chatId)
+								) {
+									return errorResponse(
+										"Forbidden: You cannot add memories to unjoined chats",
+										403,
+									);
+								}
+							} else if (auth.role === "admin") {
+								if (
+									!auth.adminChatIds.includes(body.chatId) &&
+									body.chatId !== auth.user.id.toString()
+								) {
+									return errorResponse(
+										"Forbidden: You are not an admin of this chat",
+										403,
+									);
+								}
+							}
 
-        // Delete memory by ID: /api/memories/:id
-        if (pathname.startsWith("/api/memories/") && req.method === "DELETE") {
-          const idStr = pathname.replace("/api/memories/", "");
-          const id = parseInt(idStr, 10);
-          if (isNaN(id)) {
-            return errorResponse("Invalid memory ID");
-          }
+							await processNewMemory(body.chatId, body.memoryText, {
+								category: body.category || "PROFILE",
+								userId: auth.user.id,
+							});
 
-          try {
-            Repository.deleteMemoriesByIds([id]);
-            return jsonResponse({
-              success: true,
-              message: `Memory ${id} deleted`,
-            });
-          } catch (e) {
-            logger.error("[Server Memory DELETE] Error deleting memory:", e);
-            return errorResponse("Failed to delete memory", 500);
-          }
-        }
+							return jsonResponse({
+								success: true,
+								message: "Memory created successfully",
+							});
+						} catch (e) {
+							logger.error("[Server Memory POST] Error adding memory:", e);
+							return errorResponse("Failed to create memory", 500);
+						}
+					}
+				}
 
-        // Update memory by ID: PATCH /api/memories/:id
-        if (pathname.startsWith("/api/memories/") && req.method === "PATCH") {
-          const idStr = pathname.replace("/api/memories/", "");
-          const id = parseInt(idStr, 10);
-          if (isNaN(id)) return errorResponse("Invalid memory ID");
+				// Delete memory by ID: /api/memories/:id
+				if (pathname.startsWith("/api/memories/") && req.method === "DELETE") {
+					const idStr = pathname.replace("/api/memories/", "");
+					const id = parseInt(idStr, 10);
+					if (Number.isNaN(id)) return errorResponse("Invalid memory ID");
 
-          try {
-            const body = (await req.json()) as {
-              memoryText?: string;
-              category?: string;
-            };
-            if (!body.memoryText)
-              return errorResponse("memoryText is required");
+					const memory = Repository.getMemoryById(id);
+					if (!memory) return errorResponse("Memory not found", 404);
 
-            const emb = await generateEmbedding(
-              body.memoryText,
-              "RETRIEVAL_DOCUMENT",
-            );
-            Repository.updateMemory(id, body.memoryText, body.category, emb);
+					// RBAC Check
+					let allowed = false;
+					if (auth.role === "owner") {
+						allowed = true;
+					} else if (auth.role === "admin") {
+						allowed =
+							auth.adminChatIds.includes(memory.chat_id) ||
+							memory.user_id === auth.user.id;
+					} else {
+						allowed = memory.user_id === auth.user.id;
+					}
 
-            return jsonResponse({
-              success: true,
-              message: `Memory ${id} updated`,
-            });
-          } catch (e) {
-            logger.error("[Server Memory PATCH] Error updating memory:", e);
-            return errorResponse("Failed to update memory", 500);
-          }
-        }
+					if (!allowed) {
+						return errorResponse(
+							"Forbidden: You cannot delete this memory",
+							403,
+						);
+					}
 
-        // Prune expired memories: POST /api/memories/prune
-        if (pathname === "/api/memories/prune" && req.method === "POST") {
-          try {
-            const body = (await req.json().catch(() => ({}))) as {
-              chatId?: string;
-            };
-            const now = Math.floor(Date.now() / 1000);
+					try {
+						Repository.deleteMemoriesByIds([id], memory.chat_id);
+						return jsonResponse({
+							success: true,
+							message: `Memory ${id} deleted`,
+						});
+					} catch (e) {
+						logger.error("[Server Memory DELETE] Error deleting memory:", e);
+						return errorResponse("Failed to delete memory", 500);
+					}
+				}
 
-            let changes = 0;
-            if (body.chatId) {
-              changes = Repository.pruneExpiredMemories(body.chatId);
-            } else {
-              const result = db
-                .prepare(
-                  "DELETE FROM memories WHERE expires_at IS NOT NULL AND expires_at <= ?",
-                )
-                .run(now);
-              changes = result.changes;
-              Repository.clearMemoryCache();
-            }
+				// Update memory by ID: PATCH /api/memories/:id
+				if (pathname.startsWith("/api/memories/") && req.method === "PATCH") {
+					const idStr = pathname.replace("/api/memories/", "");
+					const id = parseInt(idStr, 10);
+					if (Number.isNaN(id)) return errorResponse("Invalid memory ID");
 
-            return jsonResponse({ success: true, prunedCount: changes });
-          } catch (e) {
-            logger.error("[Server Prune] Error pruning expired memories:", e);
-            return errorResponse("Failed to prune memories", 500);
-          }
-        }
+					const memory = Repository.getMemoryById(id);
+					if (!memory) return errorResponse("Memory not found", 404);
 
-        // Export memories: GET /api/memories/export
-        if (pathname === "/api/memories/export" && req.method === "GET") {
-          try {
-            const rows = db
-              .prepare(
-                "SELECT chat_id, memory_text, created_at, user_id, category, expires_at FROM memories ORDER BY created_at DESC",
-              )
-              .all();
-            return jsonResponse({
-              exportedAt: new Date().toISOString(),
-              total: rows.length,
-              memories: rows,
-            });
-          } catch (e) {
-            logger.error("[Server Export] Error exporting memories:", e);
-            return errorResponse("Failed to export memories", 500);
-          }
-        }
+					// RBAC Check
+					let allowed = false;
+					if (auth.role === "owner") {
+						allowed = true;
+					} else if (auth.role === "admin") {
+						allowed =
+							auth.adminChatIds.includes(memory.chat_id) ||
+							memory.user_id === auth.user.id;
+					} else {
+						allowed = memory.user_id === auth.user.id;
+					}
 
-        // Import memories: POST /api/memories/import
-        if (pathname === "/api/memories/import" && req.method === "POST") {
-          try {
-            const body = (await req.json()) as {
-              memories: Array<{
-                chatId?: string;
-                chat_id?: string;
-                memoryText?: string;
-                memory_text?: string;
-                category?: "PROFILE" | "DYNAMIC" | "TEMPORARY";
-              }>;
-            };
+					if (!allowed) {
+						return errorResponse("Forbidden: You cannot edit this memory", 403);
+					}
 
-            if (!Array.isArray(body.memories)) {
-              return errorResponse("Invalid format: memories array expected");
-            }
+					try {
+						const body = (await req.json()) as {
+							memoryText?: string;
+							category?: string;
+						};
+						if (!body.memoryText)
+							return errorResponse("memoryText is required");
 
-            let count = 0;
-            for (const mem of body.memories) {
-              const chatId = mem.chatId || mem.chat_id;
-              const text = mem.memoryText || mem.memory_text;
-              if (chatId && text) {
-                await processNewMemory(chatId, text, {
-                  category: mem.category || "PROFILE",
-                });
-                count++;
-              }
-            }
+						const emb = await generateEmbedding(
+							body.memoryText,
+							"RETRIEVAL_DOCUMENT",
+						);
+						Repository.updateMemory(
+							id,
+							body.memoryText,
+							body.category,
+							emb,
+							memory.chat_id,
+						);
 
-            return jsonResponse({ success: true, importedCount: count });
-          } catch (e) {
-            logger.error("[Server Import] Error importing memories:", e);
-            return errorResponse("Failed to import memories", 500);
-          }
-        }
+						return jsonResponse({
+							success: true,
+							message: `Memory ${id} updated`,
+						});
+					} catch (e) {
+						logger.error("[Server Memory PATCH] Error updating memory:", e);
+						return errorResponse("Failed to update memory", 500);
+					}
+				}
 
-        // Tool Traces: GET /api/tool-traces
-        if (pathname === "/api/tool-traces" && req.method === "GET") {
-          return jsonResponse({ traces: ToolTraceLogger.getAll() });
-        }
+				// Prune expired memories: POST /api/memories/prune
+				if (pathname === "/api/memories/prune" && req.method === "POST") {
+					try {
+						const body = (await req.json().catch(() => ({}))) as {
+							chatId?: string;
+						};
 
-        // AI Sandbox: POST /api/sandbox
-        if (pathname === "/api/sandbox" && req.method === "POST") {
-          try {
-            const body = (await req.json()) as {
-              prompt: string;
-              systemInstruction?: string;
-            };
-            if (!body.prompt || !body.prompt.trim()) {
-              return errorResponse("Prompt is required");
-            }
+						if (auth.role === "user") {
+							return errorResponse(
+								"Forbidden: Regular users cannot prune group memories",
+								403,
+							);
+						}
 
-            const startTime = Date.now();
-            const systemPrompt =
-              body.systemInstruction || getSystemInstruction();
+						if (auth.role === "admin") {
+							if (!body.chatId || !auth.adminChatIds.includes(body.chatId)) {
+								return errorResponse(
+									"Forbidden: You can only prune memories for your managed groups",
+									403,
+								);
+							}
+						}
 
-            const response = await ai.models.generateContent({
-              model: CONFIG.GEMINI_MODEL,
-              contents: [{ role: "user", parts: [{ text: body.prompt }] }],
-              config: {
-                systemInstruction: systemPrompt,
-                temperature: 0.8,
-                maxOutputTokens: 500,
-              },
-            });
+						const now = Math.floor(Date.now() / 1000);
+						let changes = 0;
+						if (body.chatId) {
+							changes = Repository.pruneExpiredMemories(body.chatId);
+						} else {
+							const result = db
+								.prepare(
+									"DELETE FROM memories WHERE expires_at IS NOT NULL AND expires_at <= ?",
+								)
+								.run(now);
+							changes = result.changes;
+							Repository.clearMemoryCache();
+						}
 
-            const durationMs = Date.now() - startTime;
-            const replyText = response.text || "Empty response";
+						return jsonResponse({ success: true, prunedCount: changes });
+					} catch (e) {
+						logger.error("[Server Prune] Error pruning expired memories:", e);
+						return errorResponse("Failed to prune memories", 500);
+					}
+				}
 
-            return jsonResponse({
-              reply: replyText,
-              executionTimeMs: durationMs,
-              model: CONFIG.GEMINI_MODEL,
-            });
-          } catch (e) {
-            logger.error(
-              "[Server Sandbox] Error generating sandbox response:",
-              e,
-            );
-            return errorResponse(
-              "Failed to generate response: " +
-                (e instanceof Error ? e.message : String(e)),
-              500,
-            );
-          }
-        }
+				// Export memories: GET /api/memories/export (Owner & Admin only)
+				if (pathname === "/api/memories/export" && req.method === "GET") {
+					if (auth.role === "user") {
+						return errorResponse(
+							"Forbidden: Export is restricted to group admins and bot owner",
+							403,
+						);
+					}
+					try {
+						let query =
+							"SELECT chat_id, memory_text, created_at, user_id, category, expires_at FROM memories";
+						const params: string[] = [];
+						if (auth.role === "admin") {
+							const placeholders =
+								auth.adminChatIds.map(() => "?").join(",") || "''";
+							query += ` WHERE chat_id IN (${placeholders})`;
+							params.push(...auth.adminChatIds);
+						}
+						query += " ORDER BY created_at DESC";
+						const rows = db.prepare(query).all(...params);
+						return jsonResponse({
+							exportedAt: new Date().toISOString(),
+							total: rows.length,
+							memories: rows,
+						});
+					} catch (e) {
+						logger.error("[Server Export] Error exporting memories:", e);
+						return errorResponse("Failed to export memories", 500);
+					}
+				}
 
-        // 4. Chats API
-        if (pathname === "/api/chats" && req.method === "GET") {
-          try {
-            const chats = db
-              .prepare("SELECT * FROM chats ORDER BY created_at DESC")
-              .all() as {
-              chat_id: string;
-              title: string | null;
-              reply_probability: number;
-              last_random_reply_at: number;
-              current_topic: string | null;
-              is_allowed: number;
-              created_at: number;
-            }[];
+				// Import memories: POST /api/memories/import (Owner & Admin only)
+				if (pathname === "/api/memories/import" && req.method === "POST") {
+					if (auth.role === "user") {
+						return errorResponse(
+							"Forbidden: Import is restricted to group admins and bot owner",
+							403,
+						);
+					}
+					try {
+						const body = (await req.json()) as {
+							memories: Array<{
+								chatId?: string;
+								chat_id?: string;
+								memoryText?: string;
+								memory_text?: string;
+								category?: "PROFILE" | "DYNAMIC" | "TEMPORARY";
+							}>;
+						};
 
-            const result = chats.map((c) => {
-              const stats = Repository.getChatStats(c.chat_id);
-              const memCount = Repository.getMemories(c.chat_id).length;
-              return {
-                ...c,
-                is_allowed: Boolean(c.is_allowed),
-                stats,
-                memoryCount: memCount,
-              };
-            });
+						if (!Array.isArray(body.memories)) {
+							return errorResponse("Invalid format: memories array expected");
+						}
 
-            return jsonResponse(result);
-          } catch (e) {
-            logger.error("[Server Chats GET] Error fetching chats:", e);
-            return errorResponse("Failed to fetch chats", 500);
-          }
-        }
+						let count = 0;
+						for (const mem of body.memories) {
+							const chatId = mem.chatId || mem.chat_id;
+							const text = mem.memoryText || mem.memory_text;
+							if (chatId && text) {
+								if (
+									auth.role === "admin" &&
+									!auth.adminChatIds.includes(chatId)
+								) {
+									continue;
+								}
+								await processNewMemory(chatId, text, {
+									category: mem.category || "PROFILE",
+									userId: auth.user.id,
+								});
+								count++;
+							}
+						}
 
-        // Patch chat settings: /api/chats/:id
-        if (pathname.startsWith("/api/chats/") && req.method === "PATCH") {
-          const chatId = pathname.replace("/api/chats/", "");
-          if (!chatId) return errorResponse("Invalid chat ID");
+						return jsonResponse({ success: true, importedCount: count });
+					} catch (e) {
+						logger.error("[Server Import] Error importing memories:", e);
+						return errorResponse("Failed to import memories", 500);
+					}
+				}
 
-          try {
-            const body = (await req.json()) as {
-              is_allowed?: boolean;
-              reply_probability?: number;
-            };
+				// Tool Traces: GET /api/tool-traces (Owner only)
+				if (pathname === "/api/tool-traces" && req.method === "GET") {
+					if (!auth.isOwner) {
+						return errorResponse(
+							"Forbidden: Only bot owner can view tool traces",
+							403,
+						);
+					}
+					return jsonResponse({ traces: ToolTraceLogger.getAll() });
+				}
 
-            if (typeof body.is_allowed === "boolean") {
-              Repository.setChatAllowed(chatId, body.is_allowed);
-            }
-            if (typeof body.reply_probability === "number") {
-              Repository.updateChatSettings(chatId, {
-                reply_probability: body.reply_probability,
-              });
-            }
+				// AI Sandbox: POST /api/sandbox (Owner only)
+				if (pathname === "/api/sandbox" && req.method === "POST") {
+					if (!auth.isOwner) {
+						return errorResponse(
+							"Forbidden: Only bot owner can access sandbox",
+							403,
+						);
+					}
+					try {
+						const body = (await req.json()) as {
+							prompt: string;
+							systemInstruction?: string;
+						};
+						if (!body.prompt?.trim()) {
+							return errorResponse("Prompt is required");
+						}
 
-            return jsonResponse({
-              success: true,
-              message: `Chat ${chatId} updated`,
-            });
-          } catch (e) {
-            logger.error("[Server Chat PATCH] Error updating chat:", e);
-            return errorResponse("Failed to update chat", 500);
-          }
-        }
+						const startTime = Date.now();
+						const systemPrompt =
+							body.systemInstruction || getSystemInstruction();
 
-        // 5. Logs API
-        if (pathname === "/api/logs" && req.method === "GET") {
-          try {
-            const logType =
-              url.searchParams.get("type") === "error"
-                ? "error.log"
-                : "app.log";
-            const levelFilter = url.searchParams.get("level")?.toUpperCase();
-            const searchFilter =
-              url.searchParams.get("search")?.toLowerCase() || "";
-            const limit = parseInt(url.searchParams.get("limit") || "150", 10);
+						const response = await ai.models.generateContent({
+							model: CONFIG.GEMINI_MODEL,
+							contents: [{ role: "user", parts: [{ text: body.prompt }] }],
+							config: {
+								systemInstruction: systemPrompt,
+								temperature: 0.8,
+								maxOutputTokens: 500,
+							},
+						});
 
-            const logFilePath = path.join(
-              process.cwd(),
-              CONFIG.LOG_DIR,
-              logType,
-            );
+						const durationMs = Date.now() - startTime;
+						const replyText = response.text || "Empty response";
 
-            if (!fs.existsSync(logFilePath)) {
-              return jsonResponse({ logs: [] });
-            }
+						return jsonResponse({
+							reply: replyText,
+							executionTimeMs: durationMs,
+							model: CONFIG.GEMINI_MODEL,
+						});
+					} catch (e) {
+						logger.error(
+							"[Server Sandbox] Error generating sandbox response:",
+							e,
+						);
+						return errorResponse(
+							"Failed to generate response: " +
+								(e instanceof Error ? e.message : String(e)),
+							500,
+						);
+					}
+				}
 
-            const rawContent = fs.readFileSync(logFilePath, "utf-8");
-            const lines = rawContent
-              .split("\n")
-              .filter((l) => l.trim().length > 0);
-            const recentLines = lines.slice(-limit);
+				// 5. Chats API: /api/chats
+				if (pathname === "/api/chats" && req.method === "GET") {
+					try {
+						let query = "SELECT * FROM chats";
+						const params: string[] = [];
 
-            const parsedLogs = recentLines
-              .map((line, idx) => {
-                const match = line.match(
-                  /^(\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2}\.\d{3})\s+\[([A-Z]+)\s*\]\s+(.*)$/,
-                );
-                if (match) {
-                  return {
-                    id: idx,
-                    timestamp: match[1],
-                    level: match[2],
-                    message: match[3],
-                    raw: line,
-                  };
-                }
-                return {
-                  id: idx,
-                  timestamp: "",
-                  level: "INFO",
-                  message: line,
-                  raw: line,
-                };
-              })
-              .filter((log) => {
-                if (
-                  levelFilter &&
-                  levelFilter !== "ALL" &&
-                  log.level !== levelFilter
-                ) {
-                  return false;
-                }
-                if (
-                  searchFilter &&
-                  !log.raw.toLowerCase().includes(searchFilter)
-                ) {
-                  return false;
-                }
-                return true;
-              });
+						if (auth.role === "owner") {
+							query += " ORDER BY created_at DESC";
+						} else if (auth.role === "admin") {
+							const allRelevantChats = Array.from(
+								new Set([...auth.adminChatIds, ...auth.memberChatIds]),
+							);
+							if (allRelevantChats.length === 0) {
+								return jsonResponse([]);
+							}
+							const placeholders = allRelevantChats.map(() => "?").join(",");
+							query += ` WHERE chat_id IN (${placeholders}) ORDER BY created_at DESC`;
+							params.push(...allRelevantChats);
+						} else {
+							if (auth.memberChatIds.length === 0) {
+								return jsonResponse([]);
+							}
+							const placeholders = auth.memberChatIds.map(() => "?").join(",");
+							query += ` WHERE chat_id IN (${placeholders}) ORDER BY created_at DESC`;
+							params.push(...auth.memberChatIds);
+						}
 
-            return jsonResponse({ logs: parsedLogs });
-          } catch (e) {
-            logger.error("[Server Logs GET] Error reading log file:", e);
-            return errorResponse("Failed to read logs", 500);
-          }
-        }
+						const chats = db.prepare(query).all(...params) as {
+							chat_id: string;
+							title: string | null;
+							reply_probability: number;
+							last_random_reply_at: number;
+							current_topic: string | null;
+							is_allowed: number;
+							created_at: number;
+						}[];
 
-        return errorResponse("Endpoint not found", 404);
-      }
+						const result = chats.map((c) => {
+							const stats = Repository.getChatStats(c.chat_id);
+							const memCount = Repository.getMemories(c.chat_id).length;
+							const isAdmin =
+								auth.isOwner || auth.adminChatIds.includes(c.chat_id);
+							return {
+								...c,
+								is_allowed: Boolean(c.is_allowed),
+								stats,
+								memoryCount: memCount,
+								isAdmin,
+							};
+						});
 
-      // Static file serving for SPA
-      try {
-        let filePath = path.join(
-          PUBLIC_DIR,
-          pathname === "/" ? "index.html" : pathname,
-        );
+						return jsonResponse(result);
+					} catch (e) {
+						logger.error("[Server Chats GET] Error fetching chats:", e);
+						return errorResponse("Failed to fetch chats", 500);
+					}
+				}
 
-        // Prevent path traversal
-        if (!filePath.startsWith(PUBLIC_DIR)) {
-          return new Response("Forbidden", { status: 403 });
-        }
+				// Patch chat settings: /api/chats/:id
+				if (pathname.startsWith("/api/chats/") && req.method === "PATCH") {
+					const chatId = pathname.replace("/api/chats/", "");
+					if (!chatId) return errorResponse("Invalid chat ID");
 
-        if (!fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) {
-          filePath = path.join(PUBLIC_DIR, "index.html");
-        }
+					const isAdmin = auth.isOwner || auth.adminChatIds.includes(chatId);
+					if (!isAdmin) {
+						return errorResponse(
+							"Forbidden: You are not an administrator of this chat",
+							403,
+						);
+					}
 
-        const file = Bun.file(filePath);
-        return new Response(file);
-      } catch (e) {
-        return new Response("Not Found", { status: 404 });
-      }
-    },
-  });
+					try {
+						const body = (await req.json()) as {
+							is_allowed?: boolean;
+							reply_probability?: number;
+						};
 
-  logger.info(
-    `[Server] Telegram Mini App HTTP server running at http://localhost:${port}`,
-  );
-  return serverInstance;
+						// Only Owner can modify whitelist (is_allowed)
+						if (typeof body.is_allowed === "boolean") {
+							if (!auth.isOwner) {
+								return errorResponse(
+									"Forbidden: Only bot owner can approve or disable groups",
+									403,
+								);
+							}
+							Repository.setChatAllowed(chatId, body.is_allowed);
+						}
+
+						// Both Owner and Group Admin can adjust reply_probability
+						if (typeof body.reply_probability === "number") {
+							Repository.updateChatSettings(chatId, {
+								reply_probability: body.reply_probability,
+							});
+						}
+
+						return jsonResponse({
+							success: true,
+							message: `Chat ${chatId} updated`,
+						});
+					} catch (e) {
+						logger.error("[Server Chat PATCH] Error updating chat:", e);
+						return errorResponse("Failed to update chat", 500);
+					}
+				}
+
+				// 6. Logs API: /api/logs (Owner only)
+				if (pathname === "/api/logs" && req.method === "GET") {
+					if (!auth.isOwner) {
+						return errorResponse(
+							"Forbidden: Only bot owner can access server logs",
+							403,
+						);
+					}
+
+					try {
+						const logType =
+							url.searchParams.get("type") === "error"
+								? "error.log"
+								: "app.log";
+						const levelFilter = url.searchParams.get("level")?.toUpperCase();
+						const searchFilter =
+							url.searchParams.get("search")?.toLowerCase() || "";
+						const limit = parseInt(url.searchParams.get("limit") || "150", 10);
+
+						const logFilePath = path.join(
+							process.cwd(),
+							CONFIG.LOG_DIR,
+							logType,
+						);
+
+						if (!fs.existsSync(logFilePath)) {
+							return jsonResponse({ logs: [] });
+						}
+
+						const rawContent = fs.readFileSync(logFilePath, "utf-8");
+						const lines = rawContent
+							.split("\n")
+							.filter((l) => l.trim().length > 0);
+						const recentLines = lines.slice(-limit);
+
+						const parsedLogs = recentLines
+							.map((line, idx) => {
+								const match = line.match(
+									/^(\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2}\.\d{3})\s+\[([A-Z]+)\s*\]\s+(.*)$/,
+								);
+								if (match) {
+									return {
+										id: idx,
+										timestamp: match[1],
+										level: match[2],
+										message: match[3],
+										raw: line,
+									};
+								}
+								return {
+									id: idx,
+									timestamp: "",
+									level: "INFO",
+									message: line,
+									raw: line,
+								};
+							})
+							.filter((log) => {
+								if (
+									levelFilter &&
+									levelFilter !== "ALL" &&
+									log.level !== levelFilter
+								) {
+									return false;
+								}
+								if (
+									searchFilter &&
+									!log.raw.toLowerCase().includes(searchFilter)
+								) {
+									return false;
+								}
+								return true;
+							});
+
+						return jsonResponse({ logs: parsedLogs });
+					} catch (e) {
+						logger.error("[Server Logs GET] Error reading log file:", e);
+						return errorResponse("Failed to read logs", 500);
+					}
+				}
+
+				return errorResponse("Endpoint not found", 404);
+			}
+
+			// Static file serving for SPA
+			try {
+				let filePath = path.join(
+					PUBLIC_DIR,
+					pathname === "/" ? "index.html" : pathname,
+				);
+
+				if (!filePath.startsWith(PUBLIC_DIR)) {
+					return new Response("Forbidden", { status: 403 });
+				}
+
+				if (!fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) {
+					filePath = path.join(PUBLIC_DIR, "index.html");
+				}
+
+				const file = Bun.file(filePath);
+				return new Response(file);
+			} catch (_e) {
+				return new Response("Not Found", { status: 404 });
+			}
+		},
+	});
+
+	logger.info(
+		`[Server] Telegram Mini App HTTP server running at http://localhost:${port}`,
+	);
+	return serverInstance;
 }
 
 export function stopServer(): void {
-  if (serverInstance) {
-    try {
-      serverInstance.stop();
-      logger.info("[Server] HTTP server stopped.");
-    } catch (e) {
-      logger.error("[Server] Error stopping HTTP server:", e);
-    }
-    serverInstance = null;
-  }
+	if (serverInstance) {
+		try {
+			serverInstance.stop();
+			logger.info("[Server] HTTP server stopped.");
+		} catch (e) {
+			logger.error("[Server] Error stopping HTTP server:", e);
+		}
+		serverInstance = null;
+	}
 }

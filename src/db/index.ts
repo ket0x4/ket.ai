@@ -1,6 +1,6 @@
 import { Database } from "bun:sqlite";
-import { dirname } from "path";
-import { existsSync, mkdirSync } from "fs";
+import { existsSync, mkdirSync } from "node:fs";
+import { dirname } from "node:path";
 import { CONFIG } from "../config/index";
 import logger from "../utils/logger";
 
@@ -8,18 +8,18 @@ import logger from "../utils/logger";
 let dbPath = CONFIG.DB_PATH;
 const dbDir = dirname(dbPath);
 if (dbDir && dbDir !== "." && !existsSync(dbDir)) {
-  try {
-    mkdirSync(dbDir, { recursive: true });
-  } catch (err) {
-    logger.warn(
-      `[DB] Could not create database directory at "${dbDir}". Falling back to "./data/bot.db"`,
-    );
-    dbPath = "./data/bot.db";
-    const fallbackDir = dirname(dbPath);
-    if (fallbackDir && !existsSync(fallbackDir)) {
-      mkdirSync(fallbackDir, { recursive: true });
-    }
-  }
+	try {
+		mkdirSync(dbDir, { recursive: true });
+	} catch (_err) {
+		logger.warn(
+			`[DB] Could not create database directory at "${dbDir}". Falling back to "./data/bot.db"`,
+		);
+		dbPath = "./data/bot.db";
+		const fallbackDir = dirname(dbPath);
+		if (fallbackDir && !existsSync(fallbackDir)) {
+			mkdirSync(fallbackDir, { recursive: true });
+		}
+	}
 }
 
 // Initialize the database and ensure schema is ready
@@ -32,10 +32,10 @@ db.run("PRAGMA foreign_keys=ON");
 
 // Run migrations (create tables)
 export function runMigrations() {
-  logger.info("Running database migrations (Strict Mode)...");
+	logger.info("Running database migrations (Strict Mode)...");
 
-  // Table: users
-  db.run(`
+	// Table: users
+	db.run(`
     CREATE TABLE IF NOT EXISTS users (
       user_id INTEGER PRIMARY KEY,
       username TEXT,
@@ -44,8 +44,8 @@ export function runMigrations() {
     ) STRICT;
   `);
 
-  // Table: chats
-  db.run(`
+	// Table: chats
+	db.run(`
     CREATE TABLE IF NOT EXISTS chats (
       chat_id TEXT PRIMARY KEY,
       title TEXT,
@@ -57,8 +57,8 @@ export function runMigrations() {
     ) STRICT;
   `);
 
-  // Table: messages
-  db.run(`
+	// Table: messages
+	db.run(`
     CREATE TABLE IF NOT EXISTS messages (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       chat_id TEXT NOT NULL,
@@ -75,14 +75,14 @@ export function runMigrations() {
     ) STRICT;
   `);
 
-  // Indexes for faster lookups on message history
-  db.run(`
+	// Indexes for faster lookups on message history
+	db.run(`
     CREATE INDEX IF NOT EXISTS idx_messages_chat_id_sent_at_id
     ON messages(chat_id, sent_at DESC, id DESC);
   `);
 
-  // Table: memories
-  db.run(`
+	// Table: memories
+	db.run(`
     CREATE TABLE IF NOT EXISTS memories (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       chat_id TEXT NOT NULL,
@@ -96,18 +96,18 @@ export function runMigrations() {
     ) STRICT;
   `);
 
-  // Index for faster lookups on memories
-  db.run(`
+	// Index for faster lookups on memories
+	db.run(`
     CREATE INDEX IF NOT EXISTS idx_memories_chat_id
     ON memories(chat_id);
   `);
 
-  db.run(`
+	db.run(`
     CREATE INDEX IF NOT EXISTS idx_memories_chat_user
     ON memories(chat_id, user_id);
   `);
 
-  db.run(`
+	db.run(`
     CREATE INDEX IF NOT EXISTS idx_memories_chat_expires
     ON memories(chat_id, expires_at);
   `);
