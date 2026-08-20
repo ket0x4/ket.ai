@@ -45,18 +45,43 @@ function debounce(fn, delay) {
 }
 
 const initAuth = async () => {
+  if (!initData) {
+    const roleEl = document.getElementById("user-role");
+    const nameEl = document.getElementById("user-name");
+    if (nameEl) nameEl.textContent = "Guest (Browser)";
+    if (roleEl) {
+      roleEl.textContent = "Unauthorized";
+      roleEl.style.backgroundColor = "var(--danger-color)";
+    }
+    const statusEl = document.getElementById("server-status");
+    if (statusEl) {
+      statusEl.innerHTML = '<span class="dot" style="background-color: var(--danger-color);"></span> Auth Required';
+    }
+    return;
+  }
+
   try {
     const { user, isOwner } = (await apiFetch("/api/me")) ?? {};
     if (user) {
       const userNameEl = document.getElementById("user-name");
       if (userNameEl)
-        userNameEl.textContent = user.first_name ?? user.username ?? "Admin";
+        userNameEl.textContent = user.first_name ?? user.username ?? "User";
 
       const roleEl = document.getElementById("user-role");
-      if (roleEl) roleEl.textContent = isOwner ? "Owner" : "Group Admin";
+      if (roleEl) {
+        roleEl.textContent = isOwner ? "Owner" : "User";
+        if (!isOwner) {
+          roleEl.style.backgroundColor = "#3b82f6"; // Blue for regular user
+        }
+      }
     }
   } catch (e) {
     console.warn("Auth check warning:", e);
+    const roleEl = document.getElementById("user-role");
+    if (roleEl) {
+      roleEl.textContent = "Invalid Signature";
+      roleEl.style.backgroundColor = "var(--danger-color)";
+    }
   }
 };
 

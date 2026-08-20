@@ -71,7 +71,7 @@ export function verifyTelegramInitData(
       ? JSON.parse(userStr)
       : undefined;
     const isOwner = Boolean(
-      user && CONFIG.BOT_OWNER_ID ? user.id === CONFIG.BOT_OWNER_ID : true,
+      user && CONFIG.BOT_OWNER_ID ? user.id === CONFIG.BOT_OWNER_ID : false,
     );
 
     return { valid: true, user, isOwner };
@@ -83,6 +83,7 @@ export function verifyTelegramInitData(
 
 /**
  * Extracts auth context from Request headers or query string.
+ * Strictly verifies cryptographic Telegram WebApp signature.
  */
 function getAuthContext(req: Request): AuthContext {
   const initData =
@@ -92,27 +93,12 @@ function getAuthContext(req: Request): AuthContext {
 
   if (!initData) {
     return {
-      valid: true,
-      user: { id: CONFIG.BOT_OWNER_ID || 1, first_name: "Admin (Local)" },
-      isOwner: true,
+      valid: false,
+      isOwner: false,
     };
   }
 
-  const auth = verifyTelegramInitData(initData, CONFIG.TELEGRAM_BOT_TOKEN);
-
-  if (!auth.valid) {
-    return {
-      valid: true,
-      user: { id: CONFIG.BOT_OWNER_ID || 1, first_name: "Admin (Local)" },
-      isOwner: true,
-    };
-  }
-
-  if (auth.valid && !CONFIG.BOT_OWNER_ID) {
-    auth.isOwner = true;
-  }
-
-  return auth;
+  return verifyTelegramInitData(initData, CONFIG.TELEGRAM_BOT_TOKEN);
 }
 
 function jsonResponse(data: unknown, status = 200): Response {
