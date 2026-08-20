@@ -28,7 +28,7 @@ function cleanHtmlText(text: string): string {
  * Perform a web search using DuckDuckGo HTML.
  * Token-optimized: returns top results with trimmed snippets.
  */
-export async function performWebSearch(
+async function performWebSearch(
 	query: string,
 	maxResults = 4,
 ): Promise<SearchResult[]> {

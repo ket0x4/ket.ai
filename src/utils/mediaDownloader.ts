@@ -4,7 +4,7 @@ import logger from "./logger";
 
 const MAX_FILE_SIZE_BYTES = 30 * 1024 * 1024; // 30MB
 
-export interface DownloadedMedia {
+interface DownloadedMedia {
 	buffer: Buffer;
 	filePath: string;
 	fileSize: number | undefined;

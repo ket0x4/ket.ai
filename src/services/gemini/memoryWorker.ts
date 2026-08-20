@@ -38,9 +38,7 @@ export async function checkAndRunBackgroundMemoryExtraction(
 /**
  * Analyzes recent group chat messages to extract user facts even if bot didn't respond.
  */
-export async function runBackgroundMemoryExtraction(
-	chatIdStr: string,
-): Promise<void> {
+async function runBackgroundMemoryExtraction(chatIdStr: string): Promise<void> {
 	const recentMessages = Repository.getRecentMessages(chatIdStr, 20);
 	if (recentMessages.length < 3) return;
 

@@ -31,15 +31,6 @@ export function getSystemInstruction(): string {
 	return cachedSystemPrompt;
 }
 
-/**
- * Reloads the system prompt from disk. Useful for hot-reloading
- * the prompt without restarting the bot.
- */
-export function reloadSystemPrompt(): void {
-	cachedSystemPrompt = loadSystemPrompt();
-	logger.info("[SystemPrompt] Reloaded system.txt from disk.");
-}
-
 export async function runWithRetry<T>(
 	fn: () => Promise<T>,
 	retries = 3,

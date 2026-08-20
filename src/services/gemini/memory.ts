@@ -161,7 +161,7 @@ export async function getRelevantMemories(
 	return topMemories;
 }
 
-export async function consolidateMemories(chatIdStr: string) {
+async function consolidateMemories(chatIdStr: string) {
 	const allMemories = Repository.getMemories(chatIdStr);
 	if (allMemories.length < 10) return;
 

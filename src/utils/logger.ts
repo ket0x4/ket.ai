@@ -4,7 +4,7 @@ import util from "node:util";
 import zlib from "node:zlib";
 import { CONFIG } from "../config/index.js";
 
-export type LogLevel = "debug" | "info" | "warn" | "error";
+type LogLevel = "debug" | "info" | "warn" | "error";
 
 const LOG_LEVEL_SEVERITY: Record<LogLevel, number> = {
 	debug: 0,
@@ -277,5 +277,5 @@ class Logger {
 	}
 }
 
-export const logger = new Logger();
+const logger = new Logger();
 export default logger;

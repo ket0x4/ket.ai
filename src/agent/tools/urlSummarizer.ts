@@ -67,7 +67,7 @@ function extractCleanText(html: string): { title: string; content: string } {
  * Fetches content from a web URL and extracts clean readable text.
  * Token-optimized: limits total content length to max ~2500 characters.
  */
-export async function fetchPageContent(
+async function fetchPageContent(
 	urlInput: string,
 	maxLength = 2500,
 ): Promise<PageSummaryResult> {

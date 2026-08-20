@@ -31,7 +31,7 @@ db.run("PRAGMA busy_timeout=5000");
 db.run("PRAGMA foreign_keys=ON");
 
 // Run migrations (create tables)
-export function runMigrations() {
+function runMigrations() {
 	logger.info("Running database migrations (Strict Mode)...");
 
 	// Table: users

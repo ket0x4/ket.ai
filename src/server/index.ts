@@ -11,7 +11,7 @@ import { getSystemInstruction } from "../services/gemini/utils";
 import logger from "../utils/logger";
 import { ToolTraceLogger } from "../utils/toolTrace";
 
-export interface TelegramUser {
+interface TelegramUser {
 	id: number;
 	first_name: string;
 	last_name?: string;
@@ -20,9 +20,9 @@ export interface TelegramUser {
 	is_premium?: boolean;
 }
 
-export type UserRole = "owner" | "admin" | "user";
+type UserRole = "owner" | "admin" | "user";
 
-export interface AuthContext {
+interface AuthContext {
 	valid: boolean;
 	user?: TelegramUser;
 	role: UserRole;
@@ -68,7 +68,7 @@ async function checkIsChatAdmin(
 /**
  * Validates Telegram initData cryptographic signature.
  */
-export function verifyTelegramInitData(
+function verifyTelegramInitData(
 	initDataRaw: string,
 	botToken: string,
 ): { valid: boolean; user?: TelegramUser } {

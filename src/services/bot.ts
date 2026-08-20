@@ -149,7 +149,7 @@ const leavingChats = new Set<string>();
 /**
  * Initializes and configures the bot.
  */
-export async function initBot() {
+async function initBot() {
 	logger.info("Fetching bot metadata...");
 	const me = await bot.api.getMe();
 	botUsername = me.username;
