@@ -1,11 +1,13 @@
 import { type Context, Bot as GrammyBot } from "grammy";
 import { CONFIG } from "../config/index";
+import { db } from "../db/index";
 import { Repository } from "../db/repository";
 import { registerChatHandlers } from "../modules/chat";
 import { registerCommandHandlers } from "../modules/commands";
 import { registerImageHandlers } from "../modules/image";
 import { registerVoiceHandlers } from "../modules/voice";
 import logger from "../utils/logger";
+import { extractTelegramChatTitle } from "../utils/message";
 
 export const bot = new GrammyBot(CONFIG.TELEGRAM_BOT_TOKEN);
 
@@ -235,6 +237,82 @@ function checkBotWritePermission(
 	return true;
 }
 
+function isPlaceholderChatTitle(title?: string | null): boolean {
+	return (
+		!title ||
+		title.trim() === "" ||
+		title === "Whitelisted Chat" ||
+		title === "Seeded Group" ||
+		title.startsWith("Group (-")
+	);
+}
+
+async function syncSingleChatTitle(
+	chatId: string,
+	currentTitle: string | null,
+): Promise<void> {
+	if (!isPlaceholderChatTitle(currentTitle)) return;
+
+	try {
+		const tgChat = await bot.api.getChat(chatId);
+		const realTitle = extractTelegramChatTitle(tgChat);
+
+		if (realTitle) {
+			Repository.updateChatSettings(chatId, { title: realTitle });
+			logger.info(`[Bot Sync] Synced title for chat ${chatId}: "${realTitle}"`);
+		}
+	} catch {
+		// Chat might not be accessible or bot not in chat yet
+	}
+}
+
+/**
+ * Automatically fetches and updates actual Telegram chat titles for chats with missing or placeholder titles.
+ */
+async function syncChatTitles(): Promise<void> {
+	try {
+		const chats = db
+			.prepare("SELECT chat_id, title FROM chats WHERE is_allowed = 1")
+			.all() as Array<{ chat_id: string; title: string | null }>;
+
+		for (const c of chats) {
+			await syncSingleChatTitle(c.chat_id, c.title);
+		}
+	} catch (err) {
+		logger.debug("[Bot Sync] Error during chat title synchronization:", err);
+	}
+}
+
+function formatChatFriendlyTitle(
+	chat: NonNullable<Context["chat"]>,
+	from?: Context["from"],
+): string {
+	if (chat.type === "private") {
+		const name = from ? extractTelegramChatTitle(from) : "";
+		return name || "Private Chat";
+	}
+	return chat.title || `Group (${chat.id.toString()})`;
+}
+
+async function handleGroupAuth(
+	ctx: Context,
+	chatIdStr: string,
+	chatTitle?: string,
+): Promise<boolean> {
+	const dbChat = Repository.getChat(chatIdStr);
+	const isAllowed = dbChat?.is_allowed === 1;
+
+	if (!isAllowed) {
+		await handleUnauthorizedGroup(ctx, chatIdStr, chatTitle);
+		return false;
+	}
+
+	if (chatTitle) {
+		Repository.upsertChat(chatIdStr, chatTitle, true);
+	}
+	return true;
+}
+
 /**
  * Initializes and configures the bot.
  */
@@ -244,8 +322,9 @@ async function initBot() {
 	botUsername = me.username;
 	logger.info(`Bot initialized as @${botUsername}`);
 
-	// 1. Seed initially allowed chats from config/env
+	// 1. Seed initially allowed chats from config/env and sync titles
 	Repository.initSeedAllowedChats(CONFIG.ALLOWED_CHAT_IDS);
+	void syncChatTitles();
 
 	// 2. Middleware: Whitelist Checker & Title Syncer
 	bot.use(async (ctx, next) => {
@@ -253,39 +332,21 @@ async function initBot() {
 		if (!chat) return await next();
 
 		const chatIdStr = chat.id.toString();
-		const from = ctx.from;
-
-		// Calculate friendly title
-		const chatTitle =
-			chat.type === "private"
-				? from?.first_name
-					? `${from.first_name}${from.last_name ? ` ${from.last_name}` : ""}${from.username ? ` (@${from.username})` : ""}`
-					: "Private Chat"
-				: chat.title || `Group (${chatIdStr})`;
+		const friendlyTitle = formatChatFriendlyTitle(chat, ctx.from);
 
 		if (chat.type === "private") {
 			const allowed = await handlePrivateChatAuth(ctx, chatIdStr);
 			if (allowed) {
-				Repository.upsertChat(chatIdStr, chatTitle, true);
+				Repository.upsertChat(chatIdStr, friendlyTitle, true);
 				return await next();
 			}
 			return;
 		}
 
-		const dbChat = Repository.getChat(chatIdStr);
-		const isAllowed = dbChat?.is_allowed === 1;
-
-		if (!isAllowed) {
-			await handleUnauthorizedGroup(ctx, chatIdStr, chat.title);
-			return;
+		const isGroupAllowed = await handleGroupAuth(ctx, chatIdStr, chat.title);
+		if (isGroupAllowed) {
+			await next();
 		}
-
-		// Update title in db if available
-		if (chat.title) {
-			Repository.upsertChat(chatIdStr, chat.title, isAllowed);
-		}
-
-		await next();
 	});
 
 	// 3. Supergroup Migration Handler

@@ -211,7 +211,7 @@ export const Repository = {
 			for (const id of ids) {
 				const existing = stmts.getChat.get(id) as ChatRow | null;
 				if (!existing) {
-					stmts.insertChat.run(id, "Seeded Group", defaultProb, 1, now);
+					stmts.insertChat.run(id, "", defaultProb, 1, now);
 				} else if (existing.is_allowed === 0) {
 					stmts.setChatAllowed.run(1, id);
 				}
@@ -256,11 +256,7 @@ export const Repository = {
 	/**
 	 * Creates or updates a chat entry.
 	 */
-	upsertChat(
-		chatId: string,
-		title: string = "",
-		isAllowed?: boolean,
-	): ChatRow {
+	upsertChat(chatId: string, title: string = "", isAllowed?: boolean): ChatRow {
 		const existing = this.getChat(chatId);
 		const now = Math.floor(Date.now() / 1000);
 		const defaultProb = CONFIG.DEFAULT_REPLY_PROBABILITY;
@@ -272,11 +268,19 @@ export const Repository = {
 			this.updateChatSettings(chatId, { title });
 		}
 
-		if (isAllowed !== undefined && existing && existing.is_allowed !== (isAllowed ? 1 : 0)) {
+		if (
+			isAllowed !== undefined &&
+			existing &&
+			existing.is_allowed !== (isAllowed ? 1 : 0)
+		) {
 			this.setChatAllowed(chatId, isAllowed);
 		}
 
-		return this.getChat(chatId)!;
+		const updated = this.getChat(chatId);
+		if (!updated) {
+			throw new Error(`Failed to retrieve chat ${chatId} after upsert`);
+		}
+		return updated;
 	},
 
 	/**

@@ -257,9 +257,7 @@ export const PersonaModal: FC<PersonaModalProps> = ({
 							) : (
 								<PlusCircle className="w-4 h-4" />
 							)}
-							<span>
-								{isEdit ? "Save Changes" : "Create Persona"}
-							</span>
+							<span>{isEdit ? "Save Changes" : "Create Persona"}</span>
 						</Button>
 					</DialogFooter>
 				</form>

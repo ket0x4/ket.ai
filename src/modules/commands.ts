@@ -3,7 +3,7 @@ import { CONFIG, updateModel } from "../config/index";
 import { Repository } from "../db/repository";
 import { processNewMemory } from "../services/gemini/memory";
 import logger from "../utils/logger";
-import { sendLongMessage } from "../utils/message";
+import { extractTelegramChatTitle, sendLongMessage } from "../utils/message";
 
 /**
  * Checks if the user is authorized for given chat member roles (or owner / private chat).
@@ -296,6 +296,22 @@ export function registerCommandHandlers(bot: Bot) {
 		await ctx.reply("Chat history and group memories cleared successfully.");
 	});
 
+	async function fetchTelegramChatTitle(
+		api: Context["api"],
+		chatId: string,
+	): Promise<string> {
+		try {
+			const tgChat = await api.getChat(chatId);
+			return extractTelegramChatTitle(tgChat);
+		} catch (e) {
+			logger.debug(
+				`[/allow] Could not fetch Telegram chat title for ${chatId}:`,
+				e,
+			);
+		}
+		return "";
+	}
+
 	// 4. Admin command: /allow <chatId> (Owner only)
 	bot.command("allow", async (ctx) => {
 		if (!CONFIG.BOT_OWNER_ID || ctx.from?.id !== CONFIG.BOT_OWNER_ID) return;
@@ -306,17 +322,23 @@ export function registerCommandHandlers(bot: Bot) {
 			return;
 		}
 
+		const title = await fetchTelegramChatTitle(ctx.api, targetChatId);
 		const chat = Repository.getChat(targetChatId);
 		if (!chat) {
-			Repository.createChat(targetChatId, "Whitelisted Chat", true);
+			Repository.createChat(targetChatId, title, true);
 		} else {
 			Repository.setChatAllowed(targetChatId, true);
+			if (title) {
+				Repository.updateChatSettings(targetChatId, { title });
+			}
 		}
 
-		await ctx.reply(
-			`[OK] Chat permission granted to group ID \`${targetChatId}\`.`,
-			{ parse_mode: "Markdown" },
-		);
+		const chatLabel = title
+			? `"${title}" (\`${targetChatId}\`)`
+			: `group ID \`${targetChatId}\``;
+		await ctx.reply(`[OK] Chat permission granted to ${chatLabel}.`, {
+			parse_mode: "Markdown",
+		});
 	});
 
 	// 5. Admin command: /disallow <chatId> (Owner only)

@@ -37,3 +37,19 @@ export function getErrorMessage(
 	if (typeof err === "string" && err.trim().length > 0) return err;
 	return fallback;
 }
+
+export function getChatDisplayName(chat: {
+	chat_id: string;
+	title?: string | null;
+}): string {
+	if (
+		chat.title &&
+		chat.title !== "Whitelisted Chat" &&
+		chat.title !== "Seeded Group"
+	) {
+		return chat.title;
+	}
+	return chat.chat_id.startsWith("-")
+		? `Group (${chat.chat_id})`
+		: `Chat (${chat.chat_id})`;
+}

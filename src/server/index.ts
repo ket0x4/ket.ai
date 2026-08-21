@@ -10,6 +10,7 @@ import { generateEmbedding, processNewMemory } from "../services/gemini/memory";
 import { getSystemInstruction, runWithRetry } from "../services/gemini/utils";
 
 import logger from "../utils/logger";
+import { extractTelegramChatTitle } from "../utils/message";
 import { ToolTraceLogger } from "../utils/toolTrace";
 
 interface TelegramUser {
@@ -273,6 +274,25 @@ function resolveMemoryForAction(
 	return { success: true, id, memory };
 }
 
+function formatTopChats(
+	chats: Array<{
+		chat_id: string;
+		title: string | null;
+		is_allowed: number;
+		message_count: number;
+	}>,
+) {
+	return chats.map((c) => ({
+		...c,
+		title:
+			!c.title || c.title === "Whitelisted Chat" || c.title === "Seeded Group"
+				? c.chat_id.startsWith("-")
+					? `Group (${c.chat_id})`
+					: `Chat (${c.chat_id})`
+				: c.title,
+	}));
+}
+
 function getOwnerStats(): Response {
 	const chatsRow = db.prepare("SELECT COUNT(*) as count FROM chats").get() as {
 		count: number;
@@ -301,7 +321,7 @@ function getOwnerStats(): Response {
 		}
 	} catch {}
 
-	const topChats = db
+	const rawTopChats = db
 		.prepare(`
 			SELECT c.chat_id, c.title, c.is_allowed, COUNT(m.id) as message_count
 			FROM chats c
@@ -309,7 +329,13 @@ function getOwnerStats(): Response {
 			GROUP BY c.chat_id
 			ORDER BY message_count DESC LIMIT 3
 		`)
-		.all();
+		.all() as Array<{
+		chat_id: string;
+		title: string | null;
+		is_allowed: number;
+		message_count: number;
+	}>;
+	const topChats = formatTopChats(rawTopChats);
 
 	const memUsage = process.memoryUsage();
 
@@ -360,7 +386,7 @@ function getAdminStats(adminChatIds: string[]): Response {
 		.all(...adminChatIds) as { category: string; count: number }[];
 	const categoryStats = buildCategoryStats(catRows);
 
-	const topChats = db
+	const rawTopChats = db
 		.prepare(`
 			SELECT c.chat_id, c.title, c.is_allowed, COUNT(m.id) as message_count
 			FROM chats c
@@ -369,7 +395,13 @@ function getAdminStats(adminChatIds: string[]): Response {
 			GROUP BY c.chat_id
 			ORDER BY message_count DESC LIMIT 3
 		`)
-		.all(...adminChatIds);
+		.all(...adminChatIds) as Array<{
+		chat_id: string;
+		title: string | null;
+		is_allowed: number;
+		message_count: number;
+	}>;
+	const topChats = formatTopChats(rawTopChats);
 
 	return jsonResponse({
 		role: "admin",
@@ -601,7 +633,11 @@ function handleMemoriesGet(url: URL, auth: AuthContext): Response {
 
 	const mapped = rows.map((r) => {
 		let chatTitle = r.chat_title;
-		if (!chatTitle) {
+		if (
+			!chatTitle ||
+			chatTitle === "Whitelisted Chat" ||
+			chatTitle === "Seeded Group"
+		) {
 			if (auth.user && r.chat_id === auth.user.id.toString()) {
 				chatTitle = `Personal Profile (${auth.user.first_name || "Me"})`;
 			} else if (r.user_first_name) {
@@ -883,7 +919,73 @@ async function handleSandbox(
 	}
 }
 
-function handleChatsGet(auth: AuthContext): Response {
+function isPlaceholderTitle(title?: string | null): boolean {
+	return (
+		!title ||
+		title.trim() === "" ||
+		title === "Whitelisted Chat" ||
+		title === "Seeded Group" ||
+		title.startsWith("Group (-")
+	);
+}
+
+async function fetchTelegramTitle(chatId: string): Promise<string | null> {
+	try {
+		const tgChat = await bot.api.getChat(chatId);
+		const title = extractTelegramChatTitle(tgChat);
+		return title || null;
+	} catch {
+		// Ignore Telegram API fetch errors
+	}
+	return null;
+}
+
+function getRecentUserFallback(chatId: string): string {
+	try {
+		const recentUser = db
+			.prepare(
+				`SELECT u.first_name, u.username FROM messages m JOIN users u ON m.user_id = u.user_id WHERE m.chat_id = ? AND m.is_bot_reply = 0 ORDER BY m.sent_at DESC LIMIT 1`,
+			)
+			.get(chatId) as { first_name: string; username: string | null } | null;
+
+		if (recentUser?.first_name) {
+			return chatId.startsWith("-")
+				? `Group (${recentUser.first_name} & Group)`
+				: `Chat (${recentUser.first_name})`;
+		}
+	} catch {}
+
+	return chatId.startsWith("-") ? `Group (${chatId})` : `User (${chatId})`;
+}
+
+/**
+ * Resolves a friendly, accurate, and up-to-date title for a Telegram chat.
+ * Fetches official info via Telegram Bot API when missing or set to a placeholder,
+ * and falls back gracefully to recent active participants.
+ */
+async function resolveChatDisplayTitle(
+	chatId: string,
+	currentTitle: string | null | undefined,
+	currentUser?: TelegramUser,
+): Promise<string> {
+	if (currentTitle && !isPlaceholderTitle(currentTitle)) {
+		return currentTitle;
+	}
+
+	const tgTitle = await fetchTelegramTitle(chatId);
+	if (tgTitle) {
+		Repository.updateChatSettings(chatId, { title: tgTitle });
+		return tgTitle;
+	}
+
+	if (currentUser && chatId === currentUser.id.toString()) {
+		return `Personal Chat (${currentUser.first_name || "Me"})`;
+	}
+
+	return getRecentUserFallback(chatId);
+}
+
+async function handleChatsGet(auth: AuthContext): Promise<Response> {
 	try {
 		let query = "SELECT * FROM chats";
 		const params: string[] = [];
@@ -916,47 +1018,29 @@ function handleChatsGet(auth: AuthContext): Response {
 			created_at: number;
 		}[];
 
-		const result = chats.map((c) => {
-			const stats = Repository.getChatStats(c.chat_id);
-			const memCount = Repository.getMemories(c.chat_id).length;
-			const isAdmin = auth.isOwner || auth.adminChatIds.includes(c.chat_id);
+		const result = await Promise.all(
+			chats.map(async (c) => {
+				const stats = Repository.getChatStats(c.chat_id);
+				const memCount = Repository.getMemories(c.chat_id).length;
+				const isAdmin = auth.isOwner || auth.adminChatIds.includes(c.chat_id);
 
-			let displayTitle = c.title;
-			if (!displayTitle) {
-				if (auth.user && c.chat_id === auth.user.id.toString()) {
-					displayTitle = `Personal Chat (${auth.user.first_name || "Me"})`;
-				} else {
-					const recentUser = db
-						.prepare(
-							`SELECT u.first_name, u.username FROM messages m JOIN users u ON m.user_id = u.user_id WHERE m.chat_id = ? AND m.is_bot_reply = 0 ORDER BY m.sent_at DESC LIMIT 1`,
-						)
-						.get(c.chat_id) as {
-						first_name: string;
-						username: string | null;
-					} | null;
+				const displayTitle = await resolveChatDisplayTitle(
+					c.chat_id,
+					c.title,
+					auth.user,
+				);
 
-					if (recentUser?.first_name) {
-						displayTitle = c.chat_id.startsWith("-")
-							? `Group (${recentUser.first_name} & Group)`
-							: `Chat (${recentUser.first_name})`;
-					} else {
-						displayTitle = c.chat_id.startsWith("-")
-							? `Group (${c.chat_id})`
-							: `User (${c.chat_id})`;
-					}
-				}
-			}
-
-			return {
-				...c,
-				title: displayTitle,
-				is_allowed: Boolean(c.is_allowed),
-				active_persona_id: c.active_persona_id,
-				stats,
-				memoryCount: memCount,
-				isAdmin,
-			};
-		});
+				return {
+					...c,
+					title: displayTitle,
+					is_allowed: Boolean(c.is_allowed),
+					active_persona_id: c.active_persona_id,
+					stats,
+					memoryCount: memCount,
+					isAdmin,
+				};
+			}),
+		);
 
 		return jsonResponse(result);
 	} catch (e) {

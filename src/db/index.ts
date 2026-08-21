@@ -75,6 +75,15 @@ function runMigrations() {
 		logger.debug("[DB Migration] active_persona_id check/alter skipped:", e);
 	}
 
+	// Clean legacy placeholder titles so real Telegram titles can be dynamically resolved
+	try {
+		db.run(
+			"UPDATE chats SET title = NULL WHERE title IN ('Whitelisted Chat', 'Seeded Group', '')",
+		);
+	} catch (e) {
+		logger.debug("[DB Migration] chat title cleanup skipped:", e);
+	}
+
 	// Check if personas table has legacy schema (e.g. id INTEGER PRIMARY KEY)
 	try {
 		const personasTable = db

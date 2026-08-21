@@ -92,3 +92,22 @@ export async function sendLongMessage(
 		});
 	}
 }
+
+/**
+ * Extracts a friendly title or user full name from a Telegram getChat response.
+ */
+export function extractTelegramChatTitle(tgChat: {
+	title?: string;
+	first_name?: string;
+	last_name?: string;
+	username?: string;
+}): string {
+	if (tgChat.title) return tgChat.title;
+	if (tgChat.first_name) {
+		const fullName = tgChat.last_name
+			? `${tgChat.first_name} ${tgChat.last_name}`
+			: tgChat.first_name;
+		return tgChat.username ? `${fullName} (@${tgChat.username})` : fullName;
+	}
+	return "";
+}

@@ -26,7 +26,7 @@ import {
 import { useAsyncAction } from "@/hooks/useAsyncAction";
 import { api } from "@/lib/api";
 import { MEMORY_CATEGORIES, MEMORY_CATEGORY_LIST } from "@/lib/constants";
-import { formatDate } from "@/lib/utils";
+import { formatDate, getChatDisplayName } from "@/lib/utils";
 import type { Chat, Memory, TelegramUser, UserRole } from "@/types";
 
 interface MemoryCardProps {
@@ -283,12 +283,22 @@ export const MemoriesTab: FC<MemoriesTabProps> = ({
 	};
 
 	const getChatLabel = (m: Memory) => {
-		if (m.chat_title) return m.chat_title;
+		if (
+			m.chat_title &&
+			m.chat_title !== "Whitelisted Chat" &&
+			m.chat_title !== "Seeded Group"
+		) {
+			return m.chat_title;
+		}
 		if (currentUser && m.chat_id === currentUser.id.toString()) {
 			return `Personal Profile (${currentUser.first_name || "Me"})`;
 		}
 		const found = chats.find((c) => c.chat_id === m.chat_id);
-		return found?.title || `Group (${m.chat_id})`;
+		return found
+			? getChatDisplayName(found)
+			: m.chat_id.startsWith("-")
+				? `Group (${m.chat_id})`
+				: `Chat (${m.chat_id})`;
 	};
 
 	return (
@@ -304,68 +314,79 @@ export const MemoriesTab: FC<MemoriesTabProps> = ({
 					/>
 				</div>
 
-				<div className="flex items-center gap-2 flex-wrap">
+				<div className="flex items-center gap-2">
+					<Button
+						variant="outline"
+						size="sm"
+						onClick={handleExport}
+						className="text-xs h-9 gap-1.5"
+						title="Export memory graph as JSON"
+					>
+						<Download className="w-3.5 h-3.5" />
+						<span className="hidden sm:inline">Export</span>
+					</Button>
+
+					<input
+						type="file"
+						ref={fileInputRef}
+						onChange={handleFileChange}
+						accept=".json"
+						className="hidden"
+					/>
+					<Button
+						variant="outline"
+						size="sm"
+						onClick={() => fileInputRef.current?.click()}
+						className="text-xs h-9 gap-1.5"
+						title="Import memory graph from JSON"
+					>
+						<Upload className="w-3.5 h-3.5" />
+						<span className="hidden sm:inline">Import</span>
+					</Button>
+
 					{role !== "user" && (
-						<>
-							<Button
-								variant="outline"
-								size="sm"
-								onClick={handleExport}
-								className="flex items-center gap-1.5 text-xs h-9"
-							>
-								<Download className="w-3.5 h-3.5" />
-								<span className="hidden sm:inline">Export</span>
-							</Button>
-
-							<Button
-								variant="outline"
-								size="sm"
-								onClick={() => fileInputRef.current?.click()}
-								className="flex items-center gap-1.5 text-xs h-9"
-							>
-								<Upload className="w-3.5 h-3.5" />
-								<span className="hidden sm:inline">Import</span>
-							</Button>
-							<input
-								type="file"
-								ref={fileInputRef}
-								accept=".json"
-								className="hidden"
-								onChange={handleFileChange}
-							/>
-
-							<Button
-								variant="outline"
-								size="sm"
-								onClick={handlePrune}
-								disabled={isPruning}
-								className="flex items-center gap-1.5 text-xs h-9 text-amber-400 hover:text-amber-300"
-							>
-								<Trash2 className="w-3.5 h-3.5" />
-								<span>{isPruning ? "Pruning..." : "Prune Expired"}</span>
-							</Button>
-						</>
+						<Button
+							variant="outline"
+							size="sm"
+							onClick={handlePrune}
+							disabled={isPruning}
+							className="text-xs h-9 gap-1.5 text-amber-400 hover:text-amber-300"
+							title="Prune expired memories"
+						>
+							<Trash2 className="w-3.5 h-3.5" />
+							<span className="hidden sm:inline">
+								{isPruning ? "Pruning..." : "Prune Expired"}
+							</span>
+						</Button>
 					)}
 
 					<Button
-						size="sm"
 						onClick={onOpenAddModal}
-						className="flex items-center gap-1.5 text-xs h-9 shadow-md shadow-primary/20"
+						size="sm"
+						className="text-xs h-9 gap-1.5 shadow-sm shadow-primary/20"
 					>
-						<Plus className="w-4 h-4" />
-						<span>Add New Fact</span>
+						<Plus className="w-3.5 h-3.5" />
+						<span>Add Fact</span>
 					</Button>
 				</div>
 			</div>
 
-			<div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+			{/* Filters */}
+			<div className="grid grid-cols-1 sm:grid-cols-4 gap-2.5">
 				<Select value={scopeFilter} onValueChange={setScopeFilter}>
 					<SelectTrigger className="w-full bg-card/60 text-xs h-9">
 						<SelectValue placeholder="Scope" />
 					</SelectTrigger>
 					<SelectContent>
-						<SelectItem value="mine" className="text-xs">My Saved Facts</SelectItem>
-						<SelectItem value="all" className="text-xs">All Accessible Memories</SelectItem>
+						<SelectItem value="all" className="text-xs">
+							All Scopes
+						</SelectItem>
+						<SelectItem value="user" className="text-xs">
+							User-Specific Only
+						</SelectItem>
+						<SelectItem value="group" className="text-xs">
+							Group-Wide Only
+						</SelectItem>
 					</SelectContent>
 				</Select>
 
@@ -374,10 +395,12 @@ export const MemoriesTab: FC<MemoriesTabProps> = ({
 						<SelectValue placeholder="All Groups" />
 					</SelectTrigger>
 					<SelectContent>
-						<SelectItem value="all" className="text-xs">All Groups & Chats</SelectItem>
+						<SelectItem value="all" className="text-xs">
+							All Groups & Chats
+						</SelectItem>
 						{chats.map((c) => (
 							<SelectItem key={c.chat_id} value={c.chat_id} className="text-xs">
-								{c.title || `Group (${c.chat_id})`}
+								{getChatDisplayName(c)}
 							</SelectItem>
 						))}
 					</SelectContent>
@@ -388,7 +411,9 @@ export const MemoriesTab: FC<MemoriesTabProps> = ({
 						<SelectValue placeholder="All Categories" />
 					</SelectTrigger>
 					<SelectContent>
-						<SelectItem value="all" className="text-xs">All Categories</SelectItem>
+						<SelectItem value="all" className="text-xs">
+							All Categories
+						</SelectItem>
 						{MEMORY_CATEGORY_LIST.map((cat) => (
 							<SelectItem key={cat.value} value={cat.value} className="text-xs">
 								{cat.label}

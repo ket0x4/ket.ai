@@ -141,34 +141,54 @@ export default function App() {
 					{/* Navigation Bar */}
 					<div className="overflow-x-auto pb-1.5 no-scrollbar -mx-1 px-1 touch-pan-x">
 						<TabsList className="inline-flex w-max sm:w-auto p-1 bg-secondary/50 border border-border/60 rounded-xl gap-1">
-							<TabsTrigger value="dashboard" className="gap-1.5 text-xs shrink-0 whitespace-nowrap">
+							<TabsTrigger
+								value="dashboard"
+								className="gap-1.5 text-xs shrink-0 whitespace-nowrap"
+							>
 								<LayoutDashboard className="w-3.5 h-3.5" />
 								<span>Dashboard</span>
 							</TabsTrigger>
 
-							<TabsTrigger value="memories" className="gap-1.5 text-xs shrink-0 whitespace-nowrap">
+							<TabsTrigger
+								value="memories"
+								className="gap-1.5 text-xs shrink-0 whitespace-nowrap"
+							>
 								<Brain className="w-3.5 h-3.5" />
-								<span>{role === "user" ? "Personal Memory" : "Group Memory"}</span>
+								<span>
+									{role === "user" ? "Personal Memory" : "Group Memory"}
+								</span>
 							</TabsTrigger>
 
-							<TabsTrigger value="personas" className="gap-1.5 text-xs shrink-0 whitespace-nowrap">
+							<TabsTrigger
+								value="personas"
+								className="gap-1.5 text-xs shrink-0 whitespace-nowrap"
+							>
 								<Bot className="w-3.5 h-3.5" />
 								<span>Personas</span>
 							</TabsTrigger>
 
-							<TabsTrigger value="groups" className="gap-1.5 text-xs shrink-0 whitespace-nowrap">
+							<TabsTrigger
+								value="groups"
+								className="gap-1.5 text-xs shrink-0 whitespace-nowrap"
+							>
 								<Users className="w-3.5 h-3.5" />
 								<span>Groups</span>
 							</TabsTrigger>
 
 							{role === "owner" && (
 								<>
-									<TabsTrigger value="system" className="gap-1.5 text-xs shrink-0 whitespace-nowrap">
+									<TabsTrigger
+										value="system"
+										className="gap-1.5 text-xs shrink-0 whitespace-nowrap"
+									>
 										<Settings className="w-3.5 h-3.5" />
 										<span>Settings & Logs</span>
 									</TabsTrigger>
 
-									<TabsTrigger value="sandbox" className="gap-1.5 text-xs shrink-0 whitespace-nowrap">
+									<TabsTrigger
+										value="sandbox"
+										className="gap-1.5 text-xs shrink-0 whitespace-nowrap"
+									>
 										<Sparkles className="w-3.5 h-3.5" />
 										<span>AI Sandbox</span>
 									</TabsTrigger>

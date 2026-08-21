@@ -20,6 +20,7 @@ import {
 } from "@/components/ui";
 import { useAsyncAction } from "@/hooks/useAsyncAction";
 import { api } from "@/lib/api";
+import { getChatDisplayName } from "@/lib/utils";
 import type { Chat, UserRole } from "@/types";
 
 interface GroupCardProps {
@@ -70,7 +71,7 @@ const GroupCard: FC<GroupCardProps> = ({ chat, role, onToggleAllowed }) => {
 				<div className="flex items-start justify-between gap-2">
 					<div className="min-w-0 flex-1">
 						<CardTitle className="text-sm font-semibold truncate text-foreground">
-							{chat.title || `Group (${chat.chat_id})`}
+							{getChatDisplayName(chat)}
 						</CardTitle>
 						<span className="text-[11px] font-mono text-muted-foreground block truncate">
 							ID: {chat.chat_id}

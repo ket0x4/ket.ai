@@ -432,7 +432,9 @@ const LiveLogsCard: FC = () => {
 									>
 										{lvl}
 									</span>
-									<span className="text-zinc-200 break-words whitespace-pre-wrap">{l.message}</span>
+									<span className="text-zinc-200 break-words whitespace-pre-wrap">
+										{l.message}
+									</span>
 								</div>
 							);
 						})

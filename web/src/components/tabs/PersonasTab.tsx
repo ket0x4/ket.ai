@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/select";
 import { useAsyncAction } from "@/hooks/useAsyncAction";
 import { api } from "@/lib/api";
+import { getChatDisplayName } from "@/lib/utils";
 import type { Chat, Persona, TelegramUser, UserRole } from "@/types";
 
 interface PersonaCardProps {
@@ -203,7 +204,7 @@ export const PersonasTab: FC<PersonasTabProps> = ({
 			if (canManage) {
 				result.push({
 					id: c.chat_id,
-					title: c.title || `Group (${c.chat_id})`,
+					title: getChatDisplayName(c),
 					isDM: false,
 				});
 			}
@@ -223,7 +224,8 @@ export const PersonasTab: FC<PersonasTabProps> = ({
 			setPersonas(res.personas || []);
 			setActivePersonas(res.activePersonas || {});
 		} catch (err) {
-			const msg = err instanceof Error ? err.message : "Failed to load personas";
+			const msg =
+				err instanceof Error ? err.message : "Failed to load personas";
 			toast.error(msg);
 		}
 	}, []);

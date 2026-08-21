@@ -19,6 +19,7 @@ import {
 import { useAsyncAction } from "@/hooks/useAsyncAction";
 import { api } from "@/lib/api";
 import { MEMORY_CATEGORY_LIST } from "@/lib/constants";
+import { getChatDisplayName } from "@/lib/utils";
 import type {
 	Chat,
 	Memory,
@@ -151,20 +152,30 @@ export const MemoryModal: FC<MemoryModalProps> = ({
 									Target Chat / Group
 								</label>
 								<Select value={chatId} onValueChange={setChatId}>
-									<SelectTrigger id="target-chat-select" className="w-full text-xs">
+									<SelectTrigger
+										id="target-chat-select"
+										className="w-full text-xs"
+									>
 										<SelectValue placeholder="Select destination..." />
 									</SelectTrigger>
 									<SelectContent>
 										{currentUser && (
-											<SelectItem value={currentUser.id.toString()} className="text-xs">
-												Personal Profile (${currentUser.first_name || "Me"})
+											<SelectItem
+												value={currentUser.id.toString()}
+												className="text-xs"
+											>
+												Personal Profile ({currentUser.first_name || "Me"})
 											</SelectItem>
 										)}
 										{availableChats
 											.filter((c) => c.chat_id !== currentUser?.id.toString())
 											.map((c) => (
-												<SelectItem key={c.chat_id} value={c.chat_id} className="text-xs">
-													{c.title || `Group (${c.chat_id})`}
+												<SelectItem
+													key={c.chat_id}
+													value={c.chat_id}
+													className="text-xs"
+												>
+													{getChatDisplayName(c)}
 												</SelectItem>
 											))}
 									</SelectContent>
@@ -183,12 +194,19 @@ export const MemoryModal: FC<MemoryModalProps> = ({
 								value={category}
 								onValueChange={(val) => setCategory(val as MemoryCategory)}
 							>
-								<SelectTrigger id="memory-category-select" className="w-full text-xs">
+								<SelectTrigger
+									id="memory-category-select"
+									className="w-full text-xs"
+								>
 									<SelectValue />
 								</SelectTrigger>
 								<SelectContent>
 									{MEMORY_CATEGORY_LIST.map((cat) => (
-										<SelectItem key={cat.value} value={cat.value} className="text-xs">
+										<SelectItem
+											key={cat.value}
+											value={cat.value}
+											className="text-xs"
+										>
 											<span className={`font-medium ${cat.textColor}`}>
 												{cat.label}
 											</span>{" "}
