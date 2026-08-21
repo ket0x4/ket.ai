@@ -216,16 +216,16 @@ const MemoryDistributionCard: FC<{
 					))}
 				</div>
 
-				<div className="grid grid-cols-3 gap-2 text-xs pt-1">
+				<div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs pt-1">
 					{MEMORY_CATEGORY_LIST.map((cat) => (
 						<div
 							key={cat.value}
-							className={`flex items-center gap-2 p-2 rounded-lg ${cat.chipBg} border ${cat.chipBorder}`}
+							className={`flex items-center gap-2 p-2 sm:p-2.5 rounded-lg ${cat.chipBg} border ${cat.chipBorder}`}
 						>
 							<span
 								className={`w-2 h-2 rounded-full ${cat.dotColor} shrink-0`}
 							/>
-							<div className="truncate">
+							<div className="truncate min-w-0">
 								<span className={`font-semibold ${cat.textColor}`}>
 									{cat.label}:{" "}
 								</span>
@@ -241,17 +241,17 @@ const MemoryDistributionCard: FC<{
 				</div>
 
 				{role === "owner" && (
-					<div className="pt-3 border-t border-border/60 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+					<div className="pt-3 border-t border-border/60 grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
 						{systemMetrics.map((item) => {
 							const Icon = item.icon;
 							return (
 								<div
 									key={item.label}
-									className="flex items-center gap-2.5 p-2 rounded-lg bg-background/50 border border-border/40"
+									className="flex items-center gap-2.5 p-2 rounded-lg bg-background/50 border border-border/40 min-w-0"
 								>
 									<Icon className={`w-4 h-4 shrink-0 ${item.iconColor}`} />
-									<div>
-										<div className="text-[10px] text-muted-foreground uppercase font-medium">
+									<div className="min-w-0">
+										<div className="text-[10px] text-muted-foreground uppercase font-medium truncate">
 											{item.label}
 										</div>
 										<div
@@ -283,14 +283,14 @@ const TopActiveGroupsCard: FC<{
 					<span>Active Groups</span>
 				</CardTitle>
 				<CardDescription>
-					Recent Telegram channels ordered by activity volume.
+					Most active Telegram groups ranked by message volume and interaction.
 				</CardDescription>
 			</div>
 			<Button
 				variant="outline"
 				size="sm"
 				onClick={onNavigateToGroups}
-				className="flex items-center gap-1 text-xs"
+				className="flex items-center gap-1 text-xs h-8"
 			>
 				<span>View All</span>
 				<ArrowUpRight className="w-3.5 h-3.5" />
@@ -304,17 +304,17 @@ const TopActiveGroupsCard: FC<{
 							key={c.chat_id}
 							className="py-2.5 flex items-center justify-between gap-3 text-xs first:pt-0 last:pb-0"
 						>
-							<div className="min-w-0">
+							<div className="min-w-0 flex-1">
 								<div className="font-medium text-foreground truncate text-sm">
 									{c.title || `Group (${c.chat_id})`}
 								</div>
-								<div className="text-[11px] text-muted-foreground font-mono">
+								<div className="text-[11px] text-muted-foreground font-mono truncate">
 									{c.chat_id}
 								</div>
 							</div>
 							<div className="shrink-0 flex items-center gap-1 px-2.5 py-1 rounded-full bg-primary/10 border border-primary/20 text-primary font-mono font-semibold text-xs">
 								<MessageSquare className="w-3 h-3" />
-								<span>{c.message_count} msgs</span>
+								<span>{c.message_count} messages</span>
 							</div>
 						</div>
 					))}
@@ -322,8 +322,8 @@ const TopActiveGroupsCard: FC<{
 			) : (
 				<EmptyState
 					icon={Server}
-					title="No active groups"
-					description="No active groups recorded yet."
+					title="No active groups found"
+					description="No registered active groups with message history found yet."
 					bordered={false}
 					className="py-8"
 				/>

@@ -404,7 +404,7 @@ const LiveLogsCard: FC = () => {
 					</div>
 				</div>
 
-				<div className="rounded-xl border border-zinc-800 bg-black/90 p-3.5 font-mono text-[11px] leading-relaxed max-h-72 overflow-y-auto space-y-1 text-zinc-300">
+				<div className="rounded-xl border border-zinc-800 bg-black/90 p-3 sm:p-3.5 font-mono text-[11px] leading-relaxed max-h-80 overflow-y-auto overflow-x-auto space-y-1 text-zinc-300">
 					{isLoading && logs.length === 0 ? (
 						<div className="text-zinc-500 py-4 text-center">
 							Loading log lines...
@@ -422,17 +422,17 @@ const LiveLogsCard: FC = () => {
 							return (
 								<div
 									key={`${l.timestamp}-${l.message}`}
-									className="flex items-start gap-2 break-all hover:bg-white/5 p-0.5 rounded"
+									className="flex items-start gap-2 break-all hover:bg-white/5 p-1 rounded"
 								>
-									<span className="text-zinc-500 shrink-0 select-none">
+									<span className="text-zinc-500 shrink-0 select-none text-[10px]">
 										{l.timestamp}
 									</span>
 									<span
-										className={`px-1 rounded border text-[10px] font-bold shrink-0 ${lvlColor}`}
+										className={`px-1 rounded border text-[9px] sm:text-[10px] font-bold shrink-0 ${lvlColor}`}
 									>
 										{lvl}
 									</span>
-									<span className="text-zinc-200">{l.message}</span>
+									<span className="text-zinc-200 break-words whitespace-pre-wrap">{l.message}</span>
 								</div>
 							);
 						})
@@ -497,7 +497,7 @@ const ToolTracesCard: FC = () => {
 			</CardHeader>
 
 			<CardContent>
-				<div className="rounded-xl border border-zinc-800 bg-black/90 p-3.5 font-mono text-[11px] max-h-64 overflow-y-auto space-y-2.5">
+				<div className="rounded-xl border border-zinc-800 bg-black/90 p-3 sm:p-3.5 font-mono text-[11px] max-h-72 overflow-y-auto overflow-x-auto space-y-2.5">
 					{isLoading && traces.length === 0 ? (
 						<div className="text-zinc-500 py-4 text-center">
 							Loading traces...
@@ -516,12 +516,12 @@ const ToolTracesCard: FC = () => {
 										{new Date(t.timestamp).toLocaleTimeString()}
 									</span>
 								</div>
-								<div className="text-zinc-300 text-[11px]">
+								<div className="text-zinc-300 text-[11px] break-words">
 									<span className="text-zinc-500">Args: </span>
 									{JSON.stringify(t.args)}
 								</div>
 								{t.result !== undefined && (
-									<div className="text-emerald-400 text-[11px] truncate">
+									<div className="text-emerald-400 text-[11px] break-words">
 										<span className="text-zinc-500">Result: </span>
 										{JSON.stringify(t.result)}
 									</div>

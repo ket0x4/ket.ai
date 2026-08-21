@@ -52,7 +52,10 @@ export type MemoryCategory = "PROFILE" | "DYNAMIC" | "TEMPORARY";
 export interface Memory {
 	id: number;
 	chat_id: string;
+	chat_title?: string;
 	user_id?: number;
+	user_first_name?: string;
+	user_username?: string;
 	memory_text: string;
 	category: MemoryCategory;
 	created_at: number;
@@ -69,7 +72,7 @@ export interface Persona {
 	name: string;
 	description?: string | null;
 	prompt: string;
-	emoji: string;
+	emoji?: string;
 	is_system: number; // 0 or 1
 	created_by?: number | null;
 	created_at: number;

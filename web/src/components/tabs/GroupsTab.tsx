@@ -49,17 +49,17 @@ const GroupCard: FC<GroupCardProps> = ({ chat, role, onToggleAllowed }) => {
 	const groupStats = [
 		{
 			icon: MessageSquare,
-			label: "Msgs",
+			label: "Messages",
 			value: chat.stats?.totalMessages ?? 0,
 		},
 		{
 			icon: Users,
-			label: "Users",
+			label: "Members",
 			value: chat.stats?.uniqueUsers ?? 0,
 		},
 		{
 			icon: Brain,
-			label: "Facts",
+			label: "Memories",
 			value: chat.memoryCount ?? 0,
 		},
 	];
@@ -68,12 +68,12 @@ const GroupCard: FC<GroupCardProps> = ({ chat, role, onToggleAllowed }) => {
 		<Card className="glass-card hover:border-primary/40 transition-all duration-200">
 			<CardHeader className="p-4 pb-2">
 				<div className="flex items-start justify-between gap-2">
-					<div className="min-w-0">
+					<div className="min-w-0 flex-1">
 						<CardTitle className="text-sm font-semibold truncate text-foreground">
-							{chat.title || `Group ${chat.chat_id}`}
+							{chat.title || `Group (${chat.chat_id})`}
 						</CardTitle>
-						<span className="text-[11px] font-mono text-muted-foreground block">
-							{chat.chat_id}
+						<span className="text-[11px] font-mono text-muted-foreground block truncate">
+							ID: {chat.chat_id}
 						</span>
 					</div>
 
@@ -124,10 +124,10 @@ const GroupCard: FC<GroupCardProps> = ({ chat, role, onToggleAllowed }) => {
 						<div className="flex items-center justify-between text-xs">
 							<span className="font-medium text-muted-foreground flex items-center gap-1">
 								<Percent className="w-3 h-3" />
-								<span>Reply Likelihood:</span>
+								<span>Random Reply Probability:</span>
 							</span>
 							<span className="font-mono font-bold text-primary">
-								{probability}%
+								%{probability}
 							</span>
 						</div>
 						<Slider
@@ -143,7 +143,7 @@ const GroupCard: FC<GroupCardProps> = ({ chat, role, onToggleAllowed }) => {
 					<div className="text-[11px] text-muted-foreground flex items-center gap-1">
 						<span>Reply Rate: </span>
 						<span className="font-mono font-medium text-foreground">
-							{probability}%
+							%{probability}
 						</span>
 					</div>
 				)}
@@ -174,8 +174,8 @@ export const GroupsTab: FC<GroupsTabProps> = ({
 		const nextAllowed = !currentAllowed;
 		await execute(() => api.chats.update(chatId, { is_allowed: nextAllowed }), {
 			successMessage: nextAllowed
-				? "Group whitelisted!"
-				: "Group removed from whitelist.",
+				? "Group approved for bot usage!"
+				: "Group approval revoked.",
 			errorMessage: "Update failed",
 			onSuccess: onRefresh,
 		});
@@ -185,11 +185,11 @@ export const GroupsTab: FC<GroupsTabProps> = ({
 		<div className="space-y-4 animate-in fade-in duration-200">
 			<SectionHeader
 				icon={Users}
-				title="Groups & Channel Permissions"
+				title="Groups & Chat Permissions"
 				description={
 					role === "owner"
-						? "Manage bot whitelist permissions and random reply probabilities across all channels."
-						: "Overview and manage parameters for your assigned Telegram groups."
+						? "Manage all Telegram groups the bot participates in, approval status, and reply probabilities."
+						: "Review status and parameters of Telegram groups you manage."
 				}
 				actions={
 					<Button
@@ -223,8 +223,8 @@ export const GroupsTab: FC<GroupsTabProps> = ({
 				) : (
 					<EmptyState
 						icon={ShieldAlert}
-						title="No groups registered"
-						description="The bot has not been added to any Telegram groups yet. Add the bot to your group to manage it here."
+						title="No registered groups found"
+						description="Bot has not been added to any Telegram groups yet or no groups are registered."
 						className="col-span-full py-16"
 					/>
 				)}

@@ -558,20 +558,33 @@ function handleMemoriesGet(url: URL, auth: AuthContext): Response {
 		);
 	}
 
-	let query =
-		"SELECT id, chat_id, memory_text, created_at, user_id, category, expires_at FROM memories";
-	const conditions = filterRes.conditions;
+	let query = `
+		SELECT 
+			m.id, m.chat_id, m.memory_text, m.created_at, m.user_id, m.category, m.expires_at,
+			c.title as chat_title,
+			u.first_name as user_first_name,
+			u.username as user_username
+		FROM memories m
+		LEFT JOIN chats c ON m.chat_id = c.chat_id
+		LEFT JOIN users u ON m.user_id = u.user_id
+	`;
+	const conditions = filterRes.conditions.map((cond) =>
+		cond
+			.replace(/\bchat_id\b/g, "m.chat_id")
+			.replace(/\buser_id\b/g, "m.user_id")
+			.replace(/\bcategory\b/g, "m.category"),
+	);
 	const params = filterRes.params;
 
 	if (categoryParam) {
-		conditions.push("category = ?");
+		conditions.push("m.category = ?");
 		params.push(categoryParam);
 	}
 
 	if (conditions.length > 0) {
 		query += ` WHERE ${conditions.join(" AND ")}`;
 	}
-	query += " ORDER BY created_at DESC LIMIT 500";
+	query += " ORDER BY m.created_at DESC LIMIT 500";
 
 	const rows = db.prepare(query).all(...params) as {
 		id: number;
@@ -581,9 +594,29 @@ function handleMemoriesGet(url: URL, auth: AuthContext): Response {
 		user_id: number | null;
 		category: string;
 		expires_at: number | null;
+		chat_title: string | null;
+		user_first_name: string | null;
+		user_username: string | null;
 	}[];
 
-	const filtered = rows.filter((r) =>
+	const mapped = rows.map((r) => {
+		let chatTitle = r.chat_title;
+		if (!chatTitle) {
+			if (auth.user && r.chat_id === auth.user.id.toString()) {
+				chatTitle = `Personal Profile (${auth.user.first_name || "Me"})`;
+			} else if (r.user_first_name) {
+				chatTitle = `${r.user_first_name} (Private)`;
+			} else {
+				chatTitle = `Group (${r.chat_id})`;
+			}
+		}
+		return {
+			...r,
+			chat_title: chatTitle,
+		};
+	});
+
+	const filtered = mapped.filter((r) =>
 		searchParam ? r.memory_text.toLowerCase().includes(searchParam) : true,
 	);
 
@@ -887,8 +920,36 @@ function handleChatsGet(auth: AuthContext): Response {
 			const stats = Repository.getChatStats(c.chat_id);
 			const memCount = Repository.getMemories(c.chat_id).length;
 			const isAdmin = auth.isOwner || auth.adminChatIds.includes(c.chat_id);
+
+			let displayTitle = c.title;
+			if (!displayTitle) {
+				if (auth.user && c.chat_id === auth.user.id.toString()) {
+					displayTitle = `Personal Chat (${auth.user.first_name || "Me"})`;
+				} else {
+					const recentUser = db
+						.prepare(
+							`SELECT u.first_name, u.username FROM messages m JOIN users u ON m.user_id = u.user_id WHERE m.chat_id = ? AND m.is_bot_reply = 0 ORDER BY m.sent_at DESC LIMIT 1`,
+						)
+						.get(c.chat_id) as {
+						first_name: string;
+						username: string | null;
+					} | null;
+
+					if (recentUser?.first_name) {
+						displayTitle = c.chat_id.startsWith("-")
+							? `Group (${recentUser.first_name} & Group)`
+							: `Chat (${recentUser.first_name})`;
+					} else {
+						displayTitle = c.chat_id.startsWith("-")
+							? `Group (${c.chat_id})`
+							: `User (${c.chat_id})`;
+					}
+				}
+			}
+
 			return {
 				...c,
+				title: displayTitle,
 				is_allowed: Boolean(c.is_allowed),
 				active_persona_id: c.active_persona_id,
 				stats,
@@ -1062,7 +1123,7 @@ async function handlePersonaCreate(
 			name: personaName,
 			description: payload.description,
 			prompt: personaPrompt,
-			emoji: payload.emoji || "🤖",
+			emoji: payload.emoji || "",
 			isSystem: false,
 			createdBy: user.id,
 		});

@@ -19,7 +19,7 @@ It doesn't just reply to direct messages; it understands the flow of the convers
   - `/mem me` — View facts remembered about yourself in the group.
   - `/mem del <id>` — Delete a specific memory record by ID.
   - `/remember <fact>` — Explicitly store a fact into memory (or reply to any message with `/remember`).
-  - **Natural Intent Triggers:** Automatic priority extraction when users say *"bunu unutma"*, *"aklında tut"*, *"not et"*, or *"hafızana yaz"*.
+  - **Natural Intent Triggers:** Automatic priority extraction when users say *"remember this"*, *"keep in mind"*, *"note this"*, or *"save this"*.
 - **Image and Audio Recognition:** It can view photos and listen to voice messages shared in the group, and reply with fitting, humorous, "shitposter buddy" style responses.
 - **Spontaneous Mode:** Ket can spontaneously jump into the chat flow with a certain probability (e.g., 5%) to drop a funny or sarcastic comment, making the group chat feel alive.
 

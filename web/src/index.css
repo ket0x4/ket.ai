@@ -63,10 +63,12 @@
 
 html,
 body {
-	height: 100%;
+	min-height: 100%;
+	min-height: 100dvh;
 	width: 100%;
 	margin: 0;
 	padding: 0;
+	overscroll-behavior-y: contain;
 }
 
 body {
@@ -75,18 +77,38 @@ body {
 	color: var(--foreground);
 	overflow-x: hidden;
 	-webkit-font-smoothing: antialiased;
+	-webkit-tap-highlight-color: transparent;
+	padding-top: env(safe-area-inset-top, 0px);
+	padding-bottom: env(safe-area-inset-bottom, 0px);
+	padding-left: env(safe-area-inset-left, 0px);
+	padding-right: env(safe-area-inset-right, 0px);
 }
 
 #root {
 	min-height: 100%;
+	min-height: 100dvh;
 	display: flex;
 	flex-direction: column;
+	width: 100%;
+	max-width: 100%;
+	overflow-x: hidden;
+}
+
+/* Hide scrollbar for Chrome, Safari and Opera */
+.no-scrollbar::-webkit-scrollbar {
+	display: none;
+}
+
+/* Hide scrollbar for IE, Edge and Firefox */
+.no-scrollbar {
+	-ms-overflow-style: none; /* IE and Edge */
+	scrollbar-width: none; /* Firefox */
 }
 
 /* Custom modern scrollbars */
 ::-webkit-scrollbar {
-	width: 6px;
-	height: 6px;
+	width: 5px;
+	height: 5px;
 }
 
 ::-webkit-scrollbar-track {
@@ -111,7 +133,7 @@ body {
 }
 
 .glass-header {
-	background: rgba(9, 9, 11, 0.85);
+	background: rgba(9, 9, 11, 0.88);
 	backdrop-filter: blur(16px);
 	-webkit-backdrop-filter: blur(16px);
 	border-bottom: 1px solid rgba(39, 39, 42, 0.6);

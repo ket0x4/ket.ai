@@ -24,45 +24,24 @@ interface PersonaModalProps {
 	onSuccess: () => void;
 }
 
-const EMOJI_OPTIONS = [
-	"🤖",
-	"💻",
-	"🐱",
-	"👔",
-	"🎮",
-	"🎭",
-	"⚡",
-	"🧠",
-	"🧙‍♂️",
-	"🏴‍☠️",
-	"🔥",
-	"🚀",
-	"🕵️",
-	"☕",
-	"✨",
-];
-
 const INSPIRATION_TEMPLATES = [
 	{
-		title: "Tutor / Eğitmen",
-		emoji: "🧑‍🏫",
-		desc: "Adım adım öğreten sabırlı öğretmen",
+		title: "Educator / Tutor",
+		desc: "Patient, pedagogical approach teaching step-by-step",
 		prompt:
-			"Sabırlı, pedagojik ve öğretici bir eğitmensin. Soruları basitleştirerek, gerçek hayattan örneklerle ve adım adım mantığını anlatarak açıkla.",
+			"You are a patient, pedagogical, and instructive tutor. Simplify complex topics, provide real-world examples, and explain concepts step-by-step. Never use emojis in your responses.",
 	},
 	{
-		title: "Korsan Kaptan",
-		emoji: "🏴‍☠️",
-		desc: "Denizci jargonuyla konuşan korsan",
+		title: "Senior Software Architect",
+		desc: "System architecture and best practices specialist",
 		prompt:
-			"Yedi denizlerin en neşeli ve bilge korsan kaptanısın! Ahoy, tayfa gibi denizci tabirleri kullan ve yanıtlarına macera dolu korsan havası kat.",
+			"You are a meticulous software architect designing high-scale systems. Emphasize Clean Code, SOLID principles, and performance optimizations. Never use emojis in your responses.",
 	},
 	{
-		title: "Kıdemli Mimar",
-		emoji: "🏗️",
-		desc: "Sistem mimarisi ve best practices uzmanı",
+		title: "Philosopher & Analyst",
+		desc: "Wise, analytical, and deeply reflective tone",
 		prompt:
-			"Yüksek ölçekli sistemler tasarlayan titiz bir yazılım mimarısın. Çözümlerinde Clean Code, SOLID ve performans optimizasyonlarına vurgu yap.",
+			"You are a thinker analyzing situations with depth, rationality, logic, and philosophical nuance. Keep insights clear, coherent, and well-grounded. Never use emojis in your responses.",
 	},
 ];
 
@@ -77,7 +56,6 @@ export const PersonaModal: FC<PersonaModalProps> = ({
 	const [name, setName] = useState("");
 	const [description, setDescription] = useState("");
 	const [prompt, setPrompt] = useState("");
-	const [emoji, setEmoji] = useState("🤖");
 	const { isLoading: isSubmitting, execute } = useAsyncAction();
 
 	useEffect(() => {
@@ -85,12 +63,10 @@ export const PersonaModal: FC<PersonaModalProps> = ({
 			setName(persona.name || "");
 			setDescription(persona.description || "");
 			setPrompt(persona.prompt || "");
-			setEmoji(persona.emoji || "🤖");
 		} else if (!isEdit) {
 			setName("");
 			setDescription("");
 			setPrompt("");
-			setEmoji("🤖");
 		}
 	}, [isEdit, persona]);
 
@@ -98,20 +74,19 @@ export const PersonaModal: FC<PersonaModalProps> = ({
 		setName(tpl.title);
 		setDescription(tpl.desc);
 		setPrompt(tpl.prompt);
-		setEmoji(tpl.emoji);
-		toast.info(`"${tpl.title}" şablonu uygulandı`);
+		toast.info(`"${tpl.title}" template applied`);
 	};
 
 	const handleSubmit = async (e: FormEvent) => {
 		e.preventDefault();
 
 		if (!name.trim()) {
-			toast.error("Lütfen bir persona adı girin");
+			toast.error("Please enter a persona name");
 			return;
 		}
 
 		if (!prompt.trim()) {
-			toast.error("Lütfen bir kişilik talimatı (prompt) girin");
+			toast.error("Please enter a system prompt instruction");
 			return;
 		}
 
@@ -122,32 +97,32 @@ export const PersonaModal: FC<PersonaModalProps> = ({
 						name: name.trim(),
 						description: description.trim() || null,
 						prompt: prompt.trim(),
-						emoji,
+						emoji: "",
 					});
-					toast.success("Persona başarıyla güncellendi!");
+					toast.success("Persona updated successfully!");
 				} else {
 					await api.personas.create({
 						name: name.trim(),
 						description: description.trim() || undefined,
 						prompt: prompt.trim(),
-						emoji,
+						emoji: "",
 					});
-					toast.success("Yeni persona başarıyla oluşturuldu!");
+					toast.success("New persona created successfully!");
 				}
 				onSuccess();
 				onOpenChange(false);
 			},
 			{
 				errorMessage: isEdit
-					? "Persona güncellenirken hata oluştu"
-					: "Persona oluşturulurken hata oluştu",
+					? "Error updating persona"
+					: "Error creating persona",
 			},
 		);
 	};
 
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
-			<DialogContent className="max-w-lg w-[95vw] sm:w-full bg-card border-border shadow-2xl p-6 rounded-2xl max-h-[90vh] overflow-y-auto">
+			<DialogContent className="max-w-lg w-[95vw] sm:w-full bg-card border-border shadow-2xl p-5 sm:p-6 rounded-2xl max-h-[85dvh] overflow-y-auto">
 				<DialogHeader className="space-y-1.5 text-left">
 					<div className="flex items-center gap-2">
 						<div className="p-2 rounded-xl bg-primary/10 text-primary">
@@ -157,61 +132,33 @@ export const PersonaModal: FC<PersonaModalProps> = ({
 								<Bot className="w-5 h-5" />
 							)}
 						</div>
-						<DialogTitle className="text-xl font-bold tracking-tight">
-							{isEdit ? "Personayı Düzenle" : "Yeni Persona Oluştur"}
+						<DialogTitle className="text-lg sm:text-xl font-bold tracking-tight">
+							{isEdit ? "Edit Persona" : "Create New Persona"}
 						</DialogTitle>
 					</div>
-					<DialogDescription className="text-sm text-muted-foreground">
+					<DialogDescription className="text-xs text-muted-foreground">
 						{isEdit
-							? "Botun bu kişilikte nasıl davranacağını ve tonunu güncelleyin."
-							: "Botun istediğiniz gibi davranması için özel bir kişilik tanımı yapın."}
+							? "Update how the bot behaves and speaks when this persona is active."
+							: "Define a custom personality to guide how the bot behaves in chats."}
 					</DialogDescription>
 				</DialogHeader>
 
 				<form onSubmit={handleSubmit} className="space-y-4 pt-2">
-					{/* Emoji Selection */}
-					<div className="space-y-1.5">
-						<span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block">
-							İkon / Emoji
-						</span>
-						<div className="flex items-center gap-2 flex-wrap">
-							<div className="w-11 h-11 rounded-xl bg-muted flex items-center justify-center text-2xl border border-border shrink-0">
-								{emoji}
-							</div>
-							<div className="flex flex-wrap gap-1 max-w-[340px]">
-								{EMOJI_OPTIONS.map((e) => (
-									<button
-										key={e}
-										type="button"
-										onClick={() => setEmoji(e)}
-										className={`w-7 h-7 rounded-lg text-sm flex items-center justify-center transition-all ${
-											emoji === e
-												? "bg-primary text-primary-foreground scale-110 shadow-sm"
-												: "bg-muted/60 hover:bg-muted text-muted-foreground hover:text-foreground"
-										}`}
-									>
-										{e}
-									</button>
-								))}
-							</div>
-						</div>
-					</div>
-
 					{/* Name */}
 					<div className="space-y-1.5">
 						<label
 							htmlFor="persona-name"
 							className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block"
 						>
-							Persona Adı *
+							Persona Name *
 						</label>
 						<Input
 							id="persona-name"
-							placeholder="Örn: Sarkastik Kıdemli, Filozof Kedi..."
+							placeholder="e.g. Senior Architect, Analyst..."
 							value={name}
 							onChange={(e) => setName(e.target.value)}
 							disabled={isSubmitting}
-							className="bg-muted/40 border-border/80 focus:border-primary"
+							className="bg-muted/40 border-border/80 focus:border-primary text-xs sm:text-sm"
 							maxLength={60}
 							required
 						/>
@@ -223,15 +170,15 @@ export const PersonaModal: FC<PersonaModalProps> = ({
 							htmlFor="persona-description"
 							className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block"
 						>
-							Kısa Açıklama (Opsiyonel)
+							Short Description (Optional)
 						</label>
 						<Input
 							id="persona-description"
-							placeholder="Örn: Kod hatalarına tatlı-sert iğnelemeler yapan yazılımcı"
+							placeholder="e.g. Solution-oriented technical developer"
 							value={description}
 							onChange={(e) => setDescription(e.target.value)}
 							disabled={isSubmitting}
-							className="bg-muted/40 border-border/80 focus:border-primary"
+							className="bg-muted/40 border-border/80 focus:border-primary text-xs sm:text-sm"
 							maxLength={120}
 						/>
 					</div>
@@ -243,15 +190,15 @@ export const PersonaModal: FC<PersonaModalProps> = ({
 								htmlFor="persona-prompt"
 								className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block"
 							>
-								Kişilik Talimatı (System Prompt) *
+								System Prompt Instruction *
 							</label>
 							<span className="text-[10px] text-muted-foreground font-mono">
-								{prompt.length} karakter
+								{prompt.length} characters
 							</span>
 						</div>
 						<Textarea
 							id="persona-prompt"
-							placeholder="Botun bu kişilikteyken takınacağı tavır, konuşma tarzı, jargonu ve kurallarını buraya yazın..."
+							placeholder="Write the personality, tone, jargon, and rules the bot should follow when this persona is active..."
 							value={prompt}
 							onChange={(e) => setPrompt(e.target.value)}
 							disabled={isSubmitting}
@@ -266,7 +213,7 @@ export const PersonaModal: FC<PersonaModalProps> = ({
 						<div className="space-y-2 pt-1">
 							<div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
 								<Wand2 className="w-3.5 h-3.5 text-primary" />
-								<span>Hızlı İlham Şablonları:</span>
+								<span>Quick Inspiration Templates:</span>
 							</div>
 							<div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
 								{INSPIRATION_TEMPLATES.map((tpl) => (
@@ -274,13 +221,13 @@ export const PersonaModal: FC<PersonaModalProps> = ({
 										key={tpl.title}
 										type="button"
 										onClick={() => applyTemplate(tpl)}
-										className="p-2 text-left rounded-xl border border-border/60 bg-muted/20 hover:bg-muted/60 hover:border-primary/40 transition-all group"
+										className="p-2.5 text-left rounded-xl border border-border/60 bg-muted/20 hover:bg-muted/60 hover:border-primary/40 transition-all group"
 									>
-										<div className="flex items-center gap-1 text-xs font-medium text-foreground group-hover:text-primary">
-											<span>{tpl.emoji}</span>
+										<div className="flex items-center gap-1.5 text-xs font-medium text-foreground group-hover:text-primary">
+											<Bot className="w-3.5 h-3.5 text-primary" />
 											<span className="truncate">{tpl.title}</span>
 										</div>
-										<p className="text-[10px] text-muted-foreground line-clamp-1 mt-0.5">
+										<p className="text-[10px] text-muted-foreground line-clamp-2 mt-1 leading-normal">
 											{tpl.desc}
 										</p>
 									</button>
@@ -296,7 +243,7 @@ export const PersonaModal: FC<PersonaModalProps> = ({
 							onClick={() => onOpenChange(false)}
 							disabled={isSubmitting}
 						>
-							İptal
+							Cancel
 						</Button>
 						<Button
 							type="submit"
@@ -311,7 +258,7 @@ export const PersonaModal: FC<PersonaModalProps> = ({
 								<PlusCircle className="w-4 h-4" />
 							)}
 							<span>
-								{isEdit ? "Değişiklikleri Kaydet" : "Personayı Oluştur"}
+								{isEdit ? "Save Changes" : "Create Persona"}
 							</span>
 						</Button>
 					</DialogFooter>

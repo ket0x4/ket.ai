@@ -5,9 +5,9 @@ import { getSystemInstruction } from "../src/services/gemini/utils";
 test("Default system persona ket-default is seeded", () => {
 	const defaultKet = Repository.getPersonaById("ket-default");
 	expect(defaultKet).not.toBeNull();
-	expect(defaultKet?.name).toBe("ket.ai Standart");
+	expect(defaultKet?.name).toBe("ket.ai Standard");
 	expect(defaultKet?.is_system).toBe(1);
-	expect(defaultKet?.emoji).toBe("🤖");
+	expect(defaultKet?.emoji).toBe("");
 });
 
 test("Custom persona lifecycle (create, update, delete)", () => {
@@ -19,7 +19,6 @@ test("Custom persona lifecycle (create, update, delete)", () => {
 		name: "Test Robot",
 		description: "A test robot persona",
 		prompt: "You are a test robot. Speak in binary.",
-		emoji: "🤖",
 		createdBy: 99999,
 	});
 
@@ -37,11 +36,9 @@ test("Custom persona lifecycle (create, update, delete)", () => {
 		name: "Updated Robot",
 		description: "Updated description",
 		prompt: "Updated prompt content",
-		emoji: "⚡",
 	});
 
 	expect(updated?.name).toBe("Updated Robot");
-	expect(updated?.emoji).toBe("⚡");
 	expect(updated?.prompt).toBe("Updated prompt content");
 
 	// 4. Delete
@@ -68,7 +65,6 @@ test("Chat active persona assignment and clearing on persona deletion", () => {
 		id: customId,
 		name: "Temporary Persona",
 		prompt: "Temporary prompt",
-		emoji: "🎭",
 	});
 
 	// Initially no persona
@@ -94,7 +90,7 @@ test("getSystemInstruction combines base prompt and persona prompt", () => {
 	const baseInstruction = getSystemInstruction();
 	expect(baseInstruction.length).toBeGreaterThan(0);
 
-	const personaPrompt = "Sen neşeli bir korsansın! Ahoy!";
+	const personaPrompt = "You are a cheerful pirate! Ahoy!";
 	const combined = getSystemInstruction(personaPrompt);
 
 	expect(combined).toContain(baseInstruction);

@@ -100,7 +100,7 @@ function runMigrations() {
       name TEXT NOT NULL,
       description TEXT,
       prompt TEXT NOT NULL,
-      emoji TEXT DEFAULT '🤖',
+      emoji TEXT DEFAULT '',
       is_system INTEGER DEFAULT 0,
       created_by INTEGER,
       created_at INTEGER NOT NULL,
@@ -197,10 +197,10 @@ function seedDefaultPersonas() {
 	try {
 		insertStmt.run(
 			"ket-default",
-			"ket.ai Standart",
-			"Varsayılan zeki, esprili ve dengeli ket.ai sohbet tarzı.",
-			"Samimi, zeki, esprili ve doğal bir sohbet arkadaşı ol. Türkçe konuşurken akıcı ve modern bir dil kullan, robotik veya yapay cümlelerden kaçın.",
-			"🤖",
+			"ket.ai Standard",
+			"Default smart, witty, and balanced ket.ai conversation style.",
+			"Be a friendly, smart, witty, and natural conversation partner. Use fluent, modern, and natural language, avoiding robotic or artificial phrases. Never use emojis in your responses.",
+			"",
 			now,
 			now,
 		);

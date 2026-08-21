@@ -44,23 +44,23 @@ export const Header: FC<HeaderProps> = ({ user, role, isOnline = true }) => {
 				</div>
 
 				{/* User Profile */}
-				<div className="flex items-center gap-2.5 sm:gap-3 bg-white/5 border border-white/10 rounded-full pl-3 pr-2 py-1 backdrop-blur-md">
-					<div className="flex flex-col items-end">
-						<span className="text-xs font-semibold text-foreground max-w-[120px] sm:max-w-[160px] truncate">
+				<div className="flex items-center gap-2 sm:gap-3 bg-white/5 border border-white/10 rounded-full pl-2.5 sm:pl-3 pr-2 py-1 backdrop-blur-md shrink-0">
+					<div className="flex flex-col items-end min-w-0">
+						<span className="text-xs font-semibold text-foreground max-w-[90px] sm:max-w-[160px] truncate">
 							{displayName}
 						</span>
 						{user?.username && (
-							<span className="text-[10px] text-muted-foreground font-mono">
+							<span className="text-[10px] text-muted-foreground font-mono max-w-[90px] sm:max-w-[160px] truncate">
 								@{user.username}
 							</span>
 						)}
 					</div>
 					<Badge
 						variant={roleMeta.badgeVariant}
-						className="flex items-center gap-1"
+						className="flex items-center gap-1 shrink-0 text-[10px] sm:text-xs"
 					>
 						<RoleIcon className={`w-3 h-3 ${roleMeta.iconColor}`} />
-						<span>{roleMeta.label}</span>
+						<span className="hidden xs:inline sm:inline">{roleMeta.label}</span>
 					</Badge>
 				</div>
 			</div>

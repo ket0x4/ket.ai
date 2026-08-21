@@ -86,7 +86,7 @@ function buildInputPayload(
 	}
 
 	const hasExplicitMemoryIntent =
-		/\b(?:bunu unutma|aklında tut|not et|hafızana yaz|kaydet|bunu hatırla)\b/i.test(
+		/\b(?:remember this|keep in mind|note this|save this|don'?t forget|bunu unutma|aklında tut|not et|hafızana yaz|kaydet|bunu hatırla)\b/i.test(
 			lastMessageText,
 		);
 	if (hasExplicitMemoryIntent) {

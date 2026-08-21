@@ -131,46 +131,46 @@ export default function App() {
 	}
 
 	return (
-		<div className="min-h-screen flex flex-col bg-background text-foreground selection:bg-primary/20">
+		<div className="min-h-[100dvh] flex flex-col bg-background text-foreground selection:bg-primary/20">
 			{/* Top Header */}
 			<Header user={currentUser} role={role} isOnline={true} />
 
 			{/* Main Container */}
-			<main className="flex-1 max-w-6xl w-full mx-auto p-4 sm:p-6 space-y-6">
+			<main className="flex-1 max-w-6xl w-full mx-auto px-3 sm:px-6 py-4 sm:py-6 space-y-5">
 				<Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
 					{/* Navigation Bar */}
-					<div className="overflow-x-auto pb-1 no-scrollbar">
-						<TabsList className="w-full justify-start sm:w-auto">
-							<TabsTrigger value="dashboard" className="gap-1.5">
-								<LayoutDashboard className="w-4 h-4" />
+					<div className="overflow-x-auto pb-1.5 no-scrollbar -mx-1 px-1 touch-pan-x">
+						<TabsList className="inline-flex w-max sm:w-auto p-1 bg-secondary/50 border border-border/60 rounded-xl gap-1">
+							<TabsTrigger value="dashboard" className="gap-1.5 text-xs shrink-0 whitespace-nowrap">
+								<LayoutDashboard className="w-3.5 h-3.5" />
 								<span>Dashboard</span>
 							</TabsTrigger>
 
-							<TabsTrigger value="memories" className="gap-1.5">
-								<Brain className="w-4 h-4" />
-								<span>{role === "user" ? "My Facts" : "Memories"}</span>
+							<TabsTrigger value="memories" className="gap-1.5 text-xs shrink-0 whitespace-nowrap">
+								<Brain className="w-3.5 h-3.5" />
+								<span>{role === "user" ? "Personal Memory" : "Group Memory"}</span>
 							</TabsTrigger>
 
-							<TabsTrigger value="personas" className="gap-1.5">
-								<Bot className="w-4 h-4" />
+							<TabsTrigger value="personas" className="gap-1.5 text-xs shrink-0 whitespace-nowrap">
+								<Bot className="w-3.5 h-3.5" />
 								<span>Personas</span>
 							</TabsTrigger>
 
-							<TabsTrigger value="groups" className="gap-1.5">
-								<Users className="w-4 h-4" />
+							<TabsTrigger value="groups" className="gap-1.5 text-xs shrink-0 whitespace-nowrap">
+								<Users className="w-3.5 h-3.5" />
 								<span>Groups</span>
 							</TabsTrigger>
 
 							{role === "owner" && (
 								<>
-									<TabsTrigger value="system" className="gap-1.5">
-										<Settings className="w-4 h-4" />
+									<TabsTrigger value="system" className="gap-1.5 text-xs shrink-0 whitespace-nowrap">
+										<Settings className="w-3.5 h-3.5" />
 										<span>Settings & Logs</span>
 									</TabsTrigger>
 
-									<TabsTrigger value="sandbox" className="gap-1.5">
-										<Sparkles className="w-4 h-4" />
-										<span>Sandbox</span>
+									<TabsTrigger value="sandbox" className="gap-1.5 text-xs shrink-0 whitespace-nowrap">
+										<Sparkles className="w-3.5 h-3.5" />
+										<span>AI Sandbox</span>
 									</TabsTrigger>
 								</>
 							)}

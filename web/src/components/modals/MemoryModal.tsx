@@ -118,10 +118,10 @@ export const MemoryModal: FC<MemoryModalProps> = ({
 
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
-			<DialogContent className="sm:max-w-md">
+			<DialogContent className="max-w-md w-[95vw] sm:w-full bg-card border-border shadow-2xl p-5 sm:p-6 rounded-2xl max-h-[85dvh] overflow-y-auto">
 				<form onSubmit={handleSubmit} className="space-y-4">
 					<DialogHeader>
-						<DialogTitle className="flex items-center gap-2 text-lg">
+						<DialogTitle className="flex items-center gap-2 text-lg font-bold">
 							{isEdit ? (
 								<>
 									<Edit3 className="w-5 h-5 text-primary" />
@@ -130,14 +130,14 @@ export const MemoryModal: FC<MemoryModalProps> = ({
 							) : (
 								<>
 									<PlusCircle className="w-5 h-5 text-primary" />
-									<span>Record New Fact / Memory</span>
+									<span>Add New Memory Fact</span>
 								</>
 							)}
 						</DialogTitle>
-						<DialogDescription className="text-xs">
+						<DialogDescription className="text-xs text-muted-foreground">
 							{isEdit
-								? "Update fact information. Embeddings will be refreshed automatically."
-								: "Add persistent context to Gemini memory graph with semantic embeddings."}
+								? "Update the memory fact. Vector embeddings will be recomputed automatically."
+								: "Add persistent contextual knowledge to the Gemini memory graph."}
 						</DialogDescription>
 					</DialogHeader>
 
@@ -148,23 +148,23 @@ export const MemoryModal: FC<MemoryModalProps> = ({
 									htmlFor="target-chat-select"
 									className="text-xs font-semibold text-foreground"
 								>
-									Target Destination
+									Target Chat / Group
 								</label>
 								<Select value={chatId} onValueChange={setChatId}>
-									<SelectTrigger id="target-chat-select" className="w-full">
-										<SelectValue placeholder="Select target..." />
+									<SelectTrigger id="target-chat-select" className="w-full text-xs">
+										<SelectValue placeholder="Select destination..." />
 									</SelectTrigger>
 									<SelectContent>
 										{currentUser && (
-											<SelectItem value={currentUser.id.toString()}>
-												Personal Profile (Me)
+											<SelectItem value={currentUser.id.toString()} className="text-xs">
+												Personal Profile (${currentUser.first_name || "Me"})
 											</SelectItem>
 										)}
 										{availableChats
 											.filter((c) => c.chat_id !== currentUser?.id.toString())
 											.map((c) => (
-												<SelectItem key={c.chat_id} value={c.chat_id}>
-													{c.title || `Group ${c.chat_id}`}
+												<SelectItem key={c.chat_id} value={c.chat_id} className="text-xs">
+													{c.title || `Group (${c.chat_id})`}
 												</SelectItem>
 											))}
 									</SelectContent>
@@ -183,12 +183,12 @@ export const MemoryModal: FC<MemoryModalProps> = ({
 								value={category}
 								onValueChange={(val) => setCategory(val as MemoryCategory)}
 							>
-								<SelectTrigger id="memory-category-select" className="w-full">
+								<SelectTrigger id="memory-category-select" className="w-full text-xs">
 									<SelectValue />
 								</SelectTrigger>
 								<SelectContent>
 									{MEMORY_CATEGORY_LIST.map((cat) => (
-										<SelectItem key={cat.value} value={cat.value}>
+										<SelectItem key={cat.value} value={cat.value} className="text-xs">
 											<span className={`font-medium ${cat.textColor}`}>
 												{cat.label}
 											</span>{" "}
@@ -204,20 +204,20 @@ export const MemoryModal: FC<MemoryModalProps> = ({
 								htmlFor="memory-text-input"
 								className="text-xs font-semibold text-foreground"
 							>
-								{isEdit ? "Memory Content" : "Memory Details"}
+								{isEdit ? "Memory Content" : "Fact Details"}
 							</label>
 							<Textarea
 								id="memory-text-input"
-								placeholder="e.g., User is a senior developer working with React..."
+								placeholder="e.g. User is a senior engineer working with Python and React..."
 								value={memoryText}
 								onChange={(e) => setMemoryText(e.target.value)}
 								rows={4}
-								className="resize-none"
+								className="resize-none text-xs sm:text-sm"
 							/>
 						</div>
 					</div>
 
-					<DialogFooter className="gap-2 sm:gap-0">
+					<DialogFooter className="gap-2 sm:gap-0 pt-2">
 						<Button
 							type="button"
 							variant="outline"
@@ -229,7 +229,7 @@ export const MemoryModal: FC<MemoryModalProps> = ({
 						<Button
 							type="submit"
 							disabled={isSubmitting}
-							className="flex items-center gap-2"
+							className="flex items-center gap-2 shadow-md shadow-primary/20"
 						>
 							<Sparkles className="w-4 h-4" />
 							<span>
@@ -239,7 +239,7 @@ export const MemoryModal: FC<MemoryModalProps> = ({
 										: "Saving..."
 									: isEdit
 										? "Update Record"
-										: "Save Memory"}
+										: "Save Fact"}
 							</span>
 						</Button>
 					</DialogFooter>

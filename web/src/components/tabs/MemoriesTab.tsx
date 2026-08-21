@@ -7,6 +7,8 @@ import {
 	Sparkles,
 	Trash2,
 	Upload,
+	User,
+	Users,
 } from "lucide-react";
 import { type ChangeEvent, type FC, useMemo, useRef, useState } from "react";
 import { CopyButton, EmptyState, LoadingState } from "@/components/common";
@@ -54,24 +56,37 @@ const MemoryCard: FC<MemoryCardProps> = ({
 	const catMeta =
 		MEMORY_CATEGORIES[memory.category] || MEMORY_CATEGORIES.PROFILE;
 
+	const userName = memory.user_first_name
+		? `${memory.user_first_name}${memory.user_username ? ` (@${memory.user_username})` : ""}`
+		: memory.user_username
+			? `@${memory.user_username}`
+			: null;
+
 	return (
 		<Card className="glass-card hover:border-primary/40 transition-all duration-200">
-			<div className="p-4 sm:p-5 space-y-3">
+			<div className="p-3.5 sm:p-4 space-y-2.5">
 				<div className="flex items-center justify-between gap-2 flex-wrap text-xs">
-					<div className="flex items-center gap-2 flex-wrap">
-						<Badge variant={catMeta.badgeVariant}>
+					<div className="flex items-center gap-1.5 flex-wrap min-w-0 max-w-full">
+						<Badge variant={catMeta.badgeVariant} className="text-[10px]">
 							{memory.category || "PROFILE"}
 						</Badge>
-						<span className="px-2 py-0.5 rounded-md bg-secondary text-muted-foreground text-[11px] font-medium truncate max-w-[200px]">
-							{chatLabel}
+						<span className="px-2 py-0.5 rounded-md bg-secondary/80 text-muted-foreground text-[11px] font-medium truncate max-w-[200px] sm:max-w-[280px] flex items-center gap-1">
+							<Users className="w-3 h-3 shrink-0" />
+							<span className="truncate">{chatLabel}</span>
 						</span>
+						{userName && (
+							<span className="px-2 py-0.5 rounded-md bg-primary/10 text-primary border border-primary/20 text-[11px] font-medium truncate max-w-[160px] flex items-center gap-1">
+								<User className="w-3 h-3 shrink-0" />
+								<span className="truncate">{userName}</span>
+							</span>
+						)}
 					</div>
-					<span className="text-[11px] text-muted-foreground font-mono">
+					<span className="text-[11px] text-muted-foreground font-mono shrink-0">
 						{formatDate(memory.created_at)}
 					</span>
 				</div>
 
-				<p className="text-xs sm:text-sm text-foreground leading-relaxed break-words font-sans">
+				<p className="text-xs sm:text-sm text-foreground/90 leading-relaxed break-words font-sans">
 					{memory.memory_text}
 				</p>
 
@@ -267,12 +282,13 @@ export const MemoriesTab: FC<MemoriesTabProps> = ({
 		if (fileInputRef.current) fileInputRef.current.value = "";
 	};
 
-	const getChatLabel = (chatId: string) => {
-		if (currentUser && chatId === currentUser.id.toString()) {
-			return "Personal Profile";
+	const getChatLabel = (m: Memory) => {
+		if (m.chat_title) return m.chat_title;
+		if (currentUser && m.chat_id === currentUser.id.toString()) {
+			return `Personal Profile (${currentUser.first_name || "Me"})`;
 		}
-		const found = chats.find((c) => c.chat_id === chatId);
-		return found?.title || `Chat ${chatId}`;
+		const found = chats.find((c) => c.chat_id === m.chat_id);
+		return found?.title || `Group (${m.chat_id})`;
 	};
 
 	return (
@@ -281,10 +297,10 @@ export const MemoriesTab: FC<MemoriesTabProps> = ({
 				<div className="relative flex-1">
 					<Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
 					<Input
-						placeholder="Search semantic memories & facts..."
+						placeholder="Search facts and knowledge in memory..."
 						value={searchQuery}
 						onChange={(e) => setSearchQuery(e.target.value)}
-						className="pl-9 bg-card/60"
+						className="pl-9 bg-card/60 text-xs sm:text-sm h-9"
 					/>
 				</div>
 
@@ -326,7 +342,7 @@ export const MemoriesTab: FC<MemoriesTabProps> = ({
 								className="flex items-center gap-1.5 text-xs h-9 text-amber-400 hover:text-amber-300"
 							>
 								<Trash2 className="w-3.5 h-3.5" />
-								<span>{isPruning ? "Pruning..." : "Prune"}</span>
+								<span>{isPruning ? "Pruning..." : "Prune Expired"}</span>
 							</Button>
 						</>
 					)}
@@ -337,44 +353,44 @@ export const MemoriesTab: FC<MemoriesTabProps> = ({
 						className="flex items-center gap-1.5 text-xs h-9 shadow-md shadow-primary/20"
 					>
 						<Plus className="w-4 h-4" />
-						<span>New Fact</span>
+						<span>Add New Fact</span>
 					</Button>
 				</div>
 			</div>
 
 			<div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
 				<Select value={scopeFilter} onValueChange={setScopeFilter}>
-					<SelectTrigger className="w-full bg-card/60">
+					<SelectTrigger className="w-full bg-card/60 text-xs h-9">
 						<SelectValue placeholder="Scope" />
 					</SelectTrigger>
 					<SelectContent>
-						<SelectItem value="mine">My Personal Facts</SelectItem>
-						<SelectItem value="all">All Accessible Memories</SelectItem>
+						<SelectItem value="mine" className="text-xs">My Saved Facts</SelectItem>
+						<SelectItem value="all" className="text-xs">All Accessible Memories</SelectItem>
 					</SelectContent>
 				</Select>
 
 				<Select value={chatFilter} onValueChange={setChatFilter}>
-					<SelectTrigger className="w-full bg-card/60">
+					<SelectTrigger className="w-full bg-card/60 text-xs h-9">
 						<SelectValue placeholder="All Groups" />
 					</SelectTrigger>
 					<SelectContent>
-						<SelectItem value="all">All Groups / Contexts</SelectItem>
+						<SelectItem value="all" className="text-xs">All Groups & Chats</SelectItem>
 						{chats.map((c) => (
-							<SelectItem key={c.chat_id} value={c.chat_id}>
-								{c.title || `Chat ${c.chat_id}`}
+							<SelectItem key={c.chat_id} value={c.chat_id} className="text-xs">
+								{c.title || `Group (${c.chat_id})`}
 							</SelectItem>
 						))}
 					</SelectContent>
 				</Select>
 
 				<Select value={categoryFilter} onValueChange={setCategoryFilter}>
-					<SelectTrigger className="w-full bg-card/60">
+					<SelectTrigger className="w-full bg-card/60 text-xs h-9">
 						<SelectValue placeholder="All Categories" />
 					</SelectTrigger>
 					<SelectContent>
-						<SelectItem value="all">All Categories</SelectItem>
+						<SelectItem value="all" className="text-xs">All Categories</SelectItem>
 						{MEMORY_CATEGORY_LIST.map((cat) => (
-							<SelectItem key={cat.value} value={cat.value}>
+							<SelectItem key={cat.value} value={cat.value} className="text-xs">
 								{cat.label}
 							</SelectItem>
 						))}
@@ -386,7 +402,7 @@ export const MemoriesTab: FC<MemoriesTabProps> = ({
 				{isLoading && memories.length === 0 ? (
 					<LoadingState
 						icon={Sparkles}
-						text="Loading semantic facts..."
+						text="Loading memory records..."
 						iconClassName="w-6 h-6 animate-pulse text-primary"
 					/>
 				) : filteredMemories.length > 0 ? (
@@ -397,7 +413,7 @@ export const MemoriesTab: FC<MemoriesTabProps> = ({
 							role={role}
 							adminChatIds={adminChatIds}
 							currentUser={currentUser}
-							chatLabel={getChatLabel(m.chat_id)}
+							chatLabel={getChatLabel(m)}
 							onEdit={onOpenEditModal}
 							onDelete={handleDelete}
 						/>
@@ -406,7 +422,7 @@ export const MemoriesTab: FC<MemoriesTabProps> = ({
 					<EmptyState
 						icon={Inbox}
 						title="No memory records found"
-						description="No facts match your search filters. You can record a new fact anytime."
+						description="No saved memories matched your filters. You can add a new fact to get started."
 						action={
 							<Button size="sm" onClick={onOpenAddModal} className="text-xs">
 								<Plus className="w-3.5 h-3.5 mr-1" />

@@ -28,11 +28,15 @@ function loadSystemPrompt(): string {
 // Load once at module initialization
 cachedSystemPrompt = loadSystemPrompt();
 
+const NO_EMOJI_RULE =
+	"\n\n### FORMATTING RULE ###\nNever use emojis or emoticons in your responses. Always respond in clean, modern, natural, plain text format.";
+
 export function getSystemInstruction(personaPrompt?: string): string {
+	const base = `${cachedSystemPrompt}${NO_EMOJI_RULE}`;
 	if (!personaPrompt?.trim()) {
-		return cachedSystemPrompt;
+		return base;
 	}
-	return `${cachedSystemPrompt}\n\n### ACTIVE PERSONA INSTRUCTION ###\n${personaPrompt.trim()}\nStrictly adhere to this persona's tone, character, style, and rules in all replies.`;
+	return `${base}\n\n### ACTIVE PERSONA INSTRUCTION ###\n${personaPrompt.trim()}\nStrictly adhere to this persona's tone, character, style, and rules in all replies. Never use emojis in your responses.`;
 }
 
 function parseDetailsDelay(error: unknown): number | null {

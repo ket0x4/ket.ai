@@ -64,17 +64,17 @@ const PersonaCard: FC<PersonaCardProps> = ({
 						className="bg-primary text-primary-foreground text-[10px] gap-1 shadow-sm px-2 py-0.5"
 					>
 						<Check className="w-3 h-3" />
-						<span>Aktif</span>
+						<span>Active</span>
 					</Badge>
 				</div>
 			)}
 
-			<CardContent className="p-5 space-y-4">
+			<CardContent className="p-4 sm:p-5 space-y-3.5">
 				<div className="flex items-start gap-3 pr-14">
-					<div className="w-12 h-12 rounded-2xl bg-muted/60 border border-border/80 flex items-center justify-center text-2xl shrink-0 shadow-inner">
-						{persona.emoji || "🤖"}
+					<div className="w-10 h-10 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shrink-0 shadow-inner">
+						<Bot className="w-5 h-5" />
 					</div>
-					<div className="space-y-1 min-w-0">
+					<div className="space-y-1 min-w-0 flex-1">
 						<div className="flex items-center gap-1.5 flex-wrap">
 							<h4 className="text-sm font-bold text-foreground truncate">
 								{persona.name}
@@ -84,24 +84,24 @@ const PersonaCard: FC<PersonaCardProps> = ({
 									variant="secondary"
 									className="text-[9px] px-1.5 py-0 h-4 bg-muted text-muted-foreground font-normal"
 								>
-									Sistem
+									System
 								</Badge>
 							) : (
 								<Badge
 									variant="outline"
 									className="text-[9px] px-1.5 py-0 h-4 border-primary/30 text-primary font-normal"
 								>
-									Özel
+									Custom
 								</Badge>
 							)}
 						</div>
 						<p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed">
-							{persona.description || "Açıklama belirtilmemiş."}
+							{persona.description || "No description provided."}
 						</p>
 					</div>
 				</div>
 
-				<div className="p-2.5 rounded-xl bg-muted/30 border border-border/60 text-[11px] font-mono text-muted-foreground line-clamp-3 leading-relaxed">
+				<div className="p-2.5 rounded-xl bg-muted/30 border border-border/60 text-[11px] font-mono text-muted-foreground line-clamp-3 leading-relaxed break-words">
 					<span className="text-primary font-semibold font-sans mr-1">
 						Prompt:
 					</span>
@@ -119,12 +119,12 @@ const PersonaCard: FC<PersonaCardProps> = ({
 						{isActive ? (
 							<>
 								<CheckCircle2 className="w-3.5 h-3.5 text-primary" />
-								<span>Bu Sohbette Aktif</span>
+								<span>Active in this Chat</span>
 							</>
 						) : (
 							<>
 								<Sparkles className="w-3.5 h-3.5" />
-								<span>Seçili Sohbette Kullan</span>
+								<span>Use in Selected Chat</span>
 							</>
 						)}
 					</Button>
@@ -136,7 +136,7 @@ const PersonaCard: FC<PersonaCardProps> = ({
 								variant="ghost"
 								className="h-8 w-8 text-muted-foreground hover:text-foreground"
 								onClick={() => onEdit(persona)}
-								title="Düzenle"
+								title="Edit"
 							>
 								<Edit3 className="w-3.5 h-3.5" />
 							</Button>
@@ -145,7 +145,7 @@ const PersonaCard: FC<PersonaCardProps> = ({
 								variant="ghost"
 								className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
 								onClick={() => onDelete(persona)}
-								title="Sil"
+								title="Delete"
 							>
 								<Trash2 className="w-3.5 h-3.5" />
 							</Button>
@@ -192,7 +192,7 @@ export const PersonasTab: FC<PersonasTabProps> = ({
 		if (currentUser) {
 			result.push({
 				id: currentUser.id.toString(),
-				title: `Özel Sohbet (${currentUser.first_name})`,
+				title: `Private Chat (${currentUser.first_name})`,
 				isDM: true,
 			});
 		}
@@ -203,7 +203,7 @@ export const PersonasTab: FC<PersonasTabProps> = ({
 			if (canManage) {
 				result.push({
 					id: c.chat_id,
-					title: c.title || `Grup (${c.chat_id})`,
+					title: c.title || `Group (${c.chat_id})`,
 					isDM: false,
 				});
 			}
@@ -223,7 +223,7 @@ export const PersonasTab: FC<PersonasTabProps> = ({
 			setPersonas(res.personas || []);
 			setActivePersonas(res.activePersonas || {});
 		} catch (err) {
-			const msg = err instanceof Error ? err.message : "Personalar yüklenemedi";
+			const msg = err instanceof Error ? err.message : "Failed to load personas";
 			toast.error(msg);
 		}
 	}, []);
@@ -243,7 +243,7 @@ export const PersonasTab: FC<PersonasTabProps> = ({
 
 	const handleSelectPersona = async (personaId: string | null) => {
 		if (!selectedChatId) {
-			toast.error("Lütfen önce bir grup veya sohbet seçin");
+			toast.error("Please select a group or chat first");
 			return;
 		}
 
@@ -261,14 +261,14 @@ export const PersonasTab: FC<PersonasTabProps> = ({
 
 			if (personaId) {
 				const p = personas.find((item) => item.id === personaId);
-				toast.success(`"${p?.name || "Persona"}" bu sohbet için aktif edildi!`);
+				toast.success(`"${p?.name || "Persona"}" activated for this chat!`);
 			} else {
-				toast.success("Varsayılan ket.ai kişiliğine dönüldü.");
+				toast.success("Reset to default ket.ai persona.");
 			}
 			onRefresh();
 		} catch (err) {
 			const msg =
-				err instanceof Error ? err.message : "Persona seçilirken hata oluştu";
+				err instanceof Error ? err.message : "Error selecting persona";
 			toast.error(msg);
 		} finally {
 			setIsSelectingPersona(false);
@@ -277,23 +277,23 @@ export const PersonasTab: FC<PersonasTabProps> = ({
 
 	const handleDeletePersona = async (persona: Persona) => {
 		if (persona.is_system === 1) {
-			toast.error("Hazır sistem personaları silinemez.");
+			toast.error("Built-in system personas cannot be deleted.");
 			return;
 		}
 
 		const confirmDelete = window.confirm(
-			`"${persona.name}" personasını silmek istediğinize emin misiniz?`,
+			`Are you sure you want to delete the "${persona.name}" persona?`,
 		);
 		if (!confirmDelete) return;
 
 		await executeDelete(
 			async () => {
 				await api.personas.delete(persona.id);
-				toast.success("Persona başarıyla silindi");
+				toast.success("Persona deleted successfully");
 				await loadPersonas();
 				onRefresh();
 			},
-			{ errorMessage: "Persona silinirken hata oluştu" },
+			{ errorMessage: "Error deleting persona" },
 		);
 	};
 
@@ -309,7 +309,7 @@ export const PersonasTab: FC<PersonasTabProps> = ({
 	}, [personas, searchQuery]);
 
 	const selectedChatTitle =
-		manageableChats.find((c) => c.id === selectedChatId)?.title || "Sohbet";
+		manageableChats.find((c) => c.id === selectedChatId)?.title || "Chat";
 
 	return (
 		<div className="space-y-6">
@@ -317,14 +317,16 @@ export const PersonasTab: FC<PersonasTabProps> = ({
 			<div className="p-4 sm:p-5 rounded-2xl bg-card border border-border/80 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
 				<div className="space-y-1">
 					<div className="flex items-center gap-2">
-						<span className="text-2xl">🎭</span>
+						<div className="p-1.5 rounded-lg bg-primary/10 text-primary">
+							<Bot className="w-5 h-5" />
+						</div>
 						<h2 className="text-lg font-bold tracking-tight">
-							Persona (Kişilik) Yönetimi
+							Persona (Personality) Management
 						</h2>
 					</div>
 					<p className="text-xs text-muted-foreground">
-						Botun grupta veya özel sohbette takınacağı karakteri ve tavrı
-						belirleyin.
+						Define the character, tone, and style the bot adopts in groups or
+						private chats.
 					</p>
 				</div>
 
@@ -334,7 +336,7 @@ export const PersonasTab: FC<PersonasTabProps> = ({
 							<Users className="w-4 h-4 text-muted-foreground shrink-0" />
 							<Select value={selectedChatId} onValueChange={setSelectedChatId}>
 								<SelectTrigger className="w-full bg-muted/40 border-border/80 text-xs">
-									<SelectValue placeholder="Sohbet Seçin" />
+									<SelectValue placeholder="Select Chat" />
 								</SelectTrigger>
 								<SelectContent>
 									{manageableChats.map((c) => (
@@ -353,7 +355,7 @@ export const PersonasTab: FC<PersonasTabProps> = ({
 						className="gap-1.5 shadow-sm shadow-primary/20 shrink-0"
 					>
 						<Plus className="w-4 h-4" />
-						<span>Yeni Persona</span>
+						<span>New Persona</span>
 					</Button>
 				</div>
 			</div>
@@ -361,23 +363,23 @@ export const PersonasTab: FC<PersonasTabProps> = ({
 			{/* Active Persona Banner for Selected Chat */}
 			<div className="p-4 rounded-2xl bg-gradient-to-r from-primary/10 via-primary/5 to-transparent border border-primary/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
 				<div className="flex items-center gap-3">
-					<div className="w-12 h-12 rounded-2xl bg-background border border-primary/30 flex items-center justify-center text-2xl shadow-sm shrink-0">
-						{currentActivePersona ? currentActivePersona.emoji : "🤖"}
+					<div className="w-11 h-11 rounded-xl bg-primary/10 border border-primary/30 flex items-center justify-center text-primary shadow-sm shrink-0">
+						<Sparkles className="w-5 h-5" />
 					</div>
 					<div>
 						<div className="flex items-center gap-2">
-							<span className="text-xs font-semibold uppercase tracking-wider text-primary">
-								Aktif Kişilik — {selectedChatTitle}
+							<span className="text-[11px] font-semibold uppercase tracking-wider text-primary">
+								Active Persona — {selectedChatTitle}
 							</span>
 						</div>
 						<div className="text-base font-bold text-foreground">
 							{currentActivePersona
 								? currentActivePersona.name
-								: "ket.ai Standart (Varsayılan)"}
+								: "ket.ai Standard (Default)"}
 						</div>
 						<p className="text-xs text-muted-foreground line-clamp-1">
 							{currentActivePersona?.description ||
-								"Varsayılan dengeli, zeki ve doğal sohbet tarzı."}
+								"Default balanced, smart, and natural conversation style."}
 						</p>
 					</div>
 				</div>
@@ -390,7 +392,7 @@ export const PersonasTab: FC<PersonasTabProps> = ({
 						disabled={isSelectingPersona}
 						className="text-xs shrink-0 self-start sm:self-center hover:bg-destructive/10 hover:text-destructive hover:border-destructive/30"
 					>
-						Varsayılana Sıfırla
+						Reset to Default
 					</Button>
 				)}
 			</div>
@@ -400,14 +402,14 @@ export const PersonasTab: FC<PersonasTabProps> = ({
 				<div className="relative flex-1 max-w-md">
 					<Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
 					<Input
-						placeholder="Persona ara (isim, açıklama, prompt)..."
+						placeholder="Search personas (name, description, prompt)..."
 						value={searchQuery}
 						onChange={(e) => setSearchQuery(e.target.value)}
 						className="pl-9 bg-card border-border/80 text-xs"
 					/>
 				</div>
 				<div className="text-xs text-muted-foreground font-medium shrink-0">
-					Toplam {filteredPersonas.length} Kişilik
+					Total {filteredPersonas.length} Personas
 				</div>
 			</div>
 
@@ -416,12 +418,12 @@ export const PersonasTab: FC<PersonasTabProps> = ({
 				<div className="text-center py-12 border border-dashed border-border rounded-2xl p-6 bg-card/40">
 					<Bot className="w-10 h-10 text-muted-foreground/40 mx-auto mb-3" />
 					<h3 className="text-sm font-semibold text-foreground">
-						Persona Bulunamadı
+						No Personas Found
 					</h3>
 					<p className="text-xs text-muted-foreground mt-1 max-w-sm mx-auto">
 						{searchQuery
-							? "Arama kriterine uygun persona bulunamadı."
-							: "Henüz özel bir persona oluşturulmadı. Yeni bir tane ekleyerek başlayabilirsiniz."}
+							? "No personas found matching your search criteria."
+							: "No custom personas created yet. Get started by adding a new one."}
 					</p>
 				</div>
 			) : (

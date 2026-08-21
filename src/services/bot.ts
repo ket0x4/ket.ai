@@ -247,16 +247,28 @@ async function initBot() {
 	// 1. Seed initially allowed chats from config/env
 	Repository.initSeedAllowedChats(CONFIG.ALLOWED_CHAT_IDS);
 
-	// 2. Middleware: Whitelist Checker
+	// 2. Middleware: Whitelist Checker & Title Syncer
 	bot.use(async (ctx, next) => {
 		const chat = ctx.chat;
 		if (!chat) return await next();
 
 		const chatIdStr = chat.id.toString();
+		const from = ctx.from;
+
+		// Calculate friendly title
+		const chatTitle =
+			chat.type === "private"
+				? from?.first_name
+					? `${from.first_name}${from.last_name ? ` ${from.last_name}` : ""}${from.username ? ` (@${from.username})` : ""}`
+					: "Private Chat"
+				: chat.title || `Group (${chatIdStr})`;
 
 		if (chat.type === "private") {
 			const allowed = await handlePrivateChatAuth(ctx, chatIdStr);
-			if (allowed) return await next();
+			if (allowed) {
+				Repository.upsertChat(chatIdStr, chatTitle, true);
+				return await next();
+			}
 			return;
 		}
 
@@ -266,6 +278,11 @@ async function initBot() {
 		if (!isAllowed) {
 			await handleUnauthorizedGroup(ctx, chatIdStr, chat.title);
 			return;
+		}
+
+		// Update title in db if available
+		if (chat.title) {
+			Repository.upsertChat(chatIdStr, chat.title, isAllowed);
 		}
 
 		await next();

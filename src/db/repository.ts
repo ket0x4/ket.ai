@@ -254,6 +254,32 @@ export const Repository = {
 	},
 
 	/**
+	 * Creates or updates a chat entry.
+	 */
+	upsertChat(
+		chatId: string,
+		title: string = "",
+		isAllowed?: boolean,
+	): ChatRow {
+		const existing = this.getChat(chatId);
+		const now = Math.floor(Date.now() / 1000);
+		const defaultProb = CONFIG.DEFAULT_REPLY_PROBABILITY;
+
+		if (!existing) {
+			const isAllowedInt = isAllowed ? 1 : 0;
+			stmts.insertChat.run(chatId, title, defaultProb, isAllowedInt, now);
+		} else if (title && title !== existing.title) {
+			this.updateChatSettings(chatId, { title });
+		}
+
+		if (isAllowed !== undefined && existing && existing.is_allowed !== (isAllowed ? 1 : 0)) {
+			this.setChatAllowed(chatId, isAllowed);
+		}
+
+		return this.getChat(chatId)!;
+	},
+
+	/**
 	 * Creates a new chat entry if it doesn't already exist.
 	 */
 	createChat(
@@ -261,19 +287,7 @@ export const Repository = {
 		title: string = "",
 		isAllowed: boolean = false,
 	): ChatRow {
-		const existing = this.getChat(chatId);
-		if (existing) return existing;
-
-		const now = Math.floor(Date.now() / 1000);
-		const isAllowedInt = isAllowed ? 1 : 0;
-		const defaultProb = CONFIG.DEFAULT_REPLY_PROBABILITY;
-
-		stmts.insertChat.run(chatId, title, defaultProb, isAllowedInt, now);
-		const created = this.getChat(chatId);
-		if (!created) {
-			throw new Error(`Failed to create or retrieve chat '${chatId}'`);
-		}
-		return created;
+		return this.upsertChat(chatId, title, isAllowed);
 	},
 
 	/**
@@ -726,7 +740,7 @@ export const Repository = {
 			`custom_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
 		const now = Math.floor(Date.now() / 1000);
 		const isSys = params.isSystem ? 1 : 0;
-		const emoji = params.emoji || "🤖";
+		const emoji = params.emoji || "";
 		const description = params.description || null;
 		const createdBy = params.createdBy ?? null;
 
