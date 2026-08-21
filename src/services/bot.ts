@@ -7,6 +7,7 @@ import { registerCommandHandlers } from "../modules/commands";
 import { registerImageHandlers } from "../modules/image";
 import { registerVoiceHandlers } from "../modules/voice";
 import logger from "../utils/logger";
+import { extractPhotoFileId } from "../utils/mediaDownloader";
 import { extractTelegramChatTitle } from "../utils/message";
 
 export const bot = new GrammyBot(CONFIG.TELEGRAM_BOT_TOKEN);
@@ -196,13 +197,6 @@ async function handleUnauthorizedGroup(
 	setTimeout(() => leavingChats.delete(chatIdStr), 60000);
 }
 
-function extractPhotoFileId(
-	photo?: NonNullable<Context["message"]>["photo"],
-): string | undefined {
-	if (!photo || photo.length === 0) return undefined;
-	return photo[photo.length - 1].file_id;
-}
-
 function triggerPeriodicRetentionCleanup(chatIdStr: string): void {
 	const retentionCount = Repository.getMessageCount(chatIdStr);
 	if (retentionCount <= 0 || retentionCount % 100 !== 0) return;
@@ -370,9 +364,11 @@ async function initBot() {
 
 			if (!chat || !msg || !from) return await next();
 
-			const chatIdStr = chat.id.toString();
-			const textContent = msg.text || msg.caption || null;
-			const photoFileId = extractPhotoFileId(msg.photo);
+			const photoFileId =
+				extractPhotoFileId(msg.photo) ||
+				(msg.document?.mime_type?.startsWith("image/")
+					? msg.document.file_id
+					: undefined);
 			const isSelf = from.is_bot && from.username === botUsername;
 
 			Repository.saveMessage({

@@ -17,15 +17,20 @@ interface DownloadError {
 type DownloadResult = DownloadedMedia | DownloadError;
 
 /**
- * Downloads a media file (photo, voice, etc.) from Telegram servers.
- * Returns the file buffer and metadata, or an error object.
+ * Extracts the highest resolution photo file ID from a Telegram photo array.
  */
-export async function downloadTelegramFile(
-	ctx: Context,
-	mediaType: string = "file",
-): Promise<DownloadResult> {
-	const fileDetails = await ctx.getFile();
+export function extractPhotoFileId(
+	photo?: Array<{ file_id: string }>,
+): string | undefined {
+	if (!photo || photo.length === 0) return undefined;
+	return photo[photo.length - 1].file_id;
+}
 
+async function fetchAndProcessTelegramFile(
+	fileDetails: { file_path?: string; file_size?: number },
+	mediaType: string,
+	identifier?: string,
+): Promise<DownloadResult> {
 	if (!fileDetails.file_path) {
 		return {
 			error: `Could not retrieve ${mediaType} file path from Telegram.`,
@@ -48,8 +53,9 @@ export async function downloadTelegramFile(
 	const arrayBuffer = await response.arrayBuffer();
 	const buffer = Buffer.from(arrayBuffer);
 
+	const contextStr = identifier ? ` by ${identifier}` : "";
 	logger.info(
-		`[MediaDownloader] Downloaded ${mediaType} (${buffer.length} bytes) from ${fileDetails.file_path}`,
+		`[MediaDownloader] Downloaded ${mediaType} (${buffer.length} bytes)${contextStr} from ${fileDetails.file_path}`,
 	);
 
 	return {
@@ -57,6 +63,54 @@ export async function downloadTelegramFile(
 		filePath: fileDetails.file_path,
 		fileSize: fileDetails.file_size,
 	};
+}
+
+/**
+ * Downloads a Telegram file by its file_id string.
+ */
+export async function downloadTelegramFileById(
+	ctx: Context,
+	fileId: string,
+	mediaType: string = "file",
+): Promise<DownloadResult> {
+	try {
+		const fileDetails = await ctx.api.getFile(fileId);
+		return await fetchAndProcessTelegramFile(
+			fileDetails,
+			mediaType,
+			`file_id ${fileId}`,
+		);
+	} catch (err) {
+		logger.error(
+			`[MediaDownloader] Error downloading ${mediaType} with file_id ${fileId}:`,
+			err,
+		);
+		return {
+			error: `Failed to download ${mediaType} from Telegram.`,
+		};
+	}
+}
+
+/**
+ * Downloads a media file (photo, voice, etc.) from Telegram servers using ctx.getFile().
+ * Returns the file buffer and metadata, or an error object.
+ */
+export async function downloadTelegramFile(
+	ctx: Context,
+	mediaType: string = "file",
+): Promise<DownloadResult> {
+	try {
+		const fileDetails = await ctx.getFile();
+		return await fetchAndProcessTelegramFile(fileDetails, mediaType);
+	} catch (err) {
+		logger.error(
+			`[MediaDownloader] Error downloading ${mediaType} from message:`,
+			err,
+		);
+		return {
+			error: `Failed to download ${mediaType} from Telegram.`,
+		};
+	}
 }
 
 /**

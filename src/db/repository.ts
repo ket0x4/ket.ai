@@ -98,6 +98,9 @@ const stmts = {
      LEFT JOIN users u ON m.user_id = u.user_id
      ORDER BY m.sent_at ASC, m.id ASC`,
 	),
+	getMessage: db.prepare(
+		"SELECT * FROM messages WHERE chat_id = ? AND message_id = ?",
+	),
 	getMessageCount: db.prepare(
 		"SELECT COUNT(*) as count FROM messages WHERE chat_id = ?",
 	),
@@ -402,6 +405,13 @@ export const Repository = {
 	 */
 	getRecentMessages(chatId: string, limit: number = 15): MessageRow[] {
 		return stmts.getRecentMessages.all(chatId, limit) as MessageRow[];
+	},
+
+	/**
+	 * Retrieves a single message by chatId and messageId.
+	 */
+	getMessage(chatId: string, messageId: number): MessageRow | null {
+		return (stmts.getMessage.get(chatId, messageId) as MessageRow) || null;
 	},
 
 	/**

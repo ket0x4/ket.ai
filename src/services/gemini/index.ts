@@ -75,16 +75,16 @@ function buildInputPayload(
 
 	if (options.instruction) {
 		inputPayload.instruction = options.instruction;
+	}
+
+	if (options.isSpontaneous) {
+		inputPayload.interaction_type = "spontaneous_comment";
 	} else {
-		inputPayload.interaction_type = options.isSpontaneous
-			? "spontaneous_comment"
-			: "direct_reply";
-		inputPayload.current_message_to_reply = options.isSpontaneous
-			? undefined
-			: {
-					sender: resolveSenderDescription(lastMsg),
-					text: lastMessageText,
-				};
+		inputPayload.interaction_type = "direct_reply";
+		inputPayload.current_message_to_reply = {
+			sender: resolveSenderDescription(lastMsg),
+			text: lastMessageText,
+		};
 	}
 
 	const hasExplicitMemoryIntent =
@@ -551,15 +551,25 @@ export const GeminiService = {
 		isSpontaneous: boolean = false,
 		onToolCall?: ToolCallCallback,
 		chatId?: string,
+		media?: { buffer: Buffer; mimeType: string },
 	): Promise<string> {
 		return this._generateResponse(history, topicSummary, {
 			chatId,
 			isSpontaneous,
-			replyDescription:
-				"The reply you will write to the chat. A short (1-2 sentences).",
-			fallbackEmpty: CONFIG.MESSAGES.gemini_empty_reply_fallback,
-			fallbackError: CONFIG.MESSAGES.gemini_error_reply_fallback,
-			mediaFallbackText: "[Media]",
+			media,
+			instruction: media
+				? "The user is referring to or asking about the attached photo. Analyze the photo and answer their message/question, or make a natural, fitting comment about the photo in the context of the conversation."
+				: undefined,
+			replyDescription: media
+				? "The reply you will write to the photo and the user's message/question in the flow of the conversation."
+				: "The reply you will write to the chat. A short (1-2 sentences).",
+			fallbackEmpty: media
+				? CONFIG.MESSAGES.gemini_empty_image_fallback
+				: CONFIG.MESSAGES.gemini_empty_reply_fallback,
+			fallbackError: media
+				? CONFIG.MESSAGES.gemini_error_image_fallback
+				: CONFIG.MESSAGES.gemini_error_reply_fallback,
+			mediaFallbackText: media ? "[Photo]" : "[Media]",
 			onToolCall,
 		});
 	},
@@ -662,7 +672,7 @@ export const GeminiService = {
 			topicSummary,
 			{
 				instruction:
-					"Analyze the photo and make a comment suitable for this photo.",
+					"Analyze the photo and respond to the user's message/question, or make a natural, fitting comment about the photo in the context of the conversation.",
 				replyDescription:
 					"The reply you will write to the photo and the flow of the conversation.",
 				fallbackEmpty: CONFIG.MESSAGES.gemini_empty_image_fallback,

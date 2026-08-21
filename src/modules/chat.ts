@@ -6,9 +6,108 @@ import { GeminiService } from "../services/gemini/index";
 import { checkAndRunBackgroundMemoryExtraction } from "../services/gemini/memoryWorker";
 import { isConversationFollowUp } from "../utils/conversation";
 import logger from "../utils/logger";
+import {
+	downloadTelegramFileById,
+	extractPhotoFileId,
+	isDownloadError,
+} from "../utils/mediaDownloader";
 import { sendLongMessage } from "../utils/message";
 
 const COOLDOWN_SECONDS = 300; // 5 minutes cooldown between random replies
+
+async function resolveRepliedPhoto(
+	ctx: Context,
+	chatIdStr: string,
+): Promise<{ buffer: Buffer; mimeType: string } | undefined> {
+	const replyToMsg = ctx.message?.reply_to_message;
+	if (!replyToMsg) return undefined;
+
+	let photoFileId = extractPhotoFileId(replyToMsg.photo);
+	if (!photoFileId && replyToMsg.document?.mime_type?.startsWith("image/")) {
+		photoFileId = replyToMsg.document.file_id;
+	}
+	if (!photoFileId && replyToMsg.message_id) {
+		const dbMsg = Repository.getMessage(chatIdStr, replyToMsg.message_id);
+		if (dbMsg?.photo_file_id) {
+			photoFileId = dbMsg.photo_file_id;
+		}
+	}
+
+	if (!photoFileId) return undefined;
+
+	logger.info(
+		`[Chat] Reply to photo message detected (file_id: ${photoFileId}). Downloading image...`,
+	);
+	try {
+		const downloadResult = await downloadTelegramFileById(
+			ctx,
+			photoFileId,
+			"photo",
+		);
+		if (!isDownloadError(downloadResult)) {
+			logger.info(
+				`[Chat] Successfully downloaded replied photo (${downloadResult.buffer.length} bytes)`,
+			);
+			return {
+				buffer: downloadResult.buffer,
+				mimeType: "image/jpeg",
+			};
+		}
+		logger.warn(
+			`[Chat] Failed to download replied photo: ${downloadResult.error}`,
+		);
+	} catch (err) {
+		logger.error("[Chat] Error downloading replied photo:", err);
+	}
+	return undefined;
+}
+
+function createToolNotifier(
+	ctx: Context,
+	replyToMessageId?: number,
+	logPrefix: string = "[Chat]",
+) {
+	let statusMessageId: number | undefined;
+
+	return {
+		onToolCall: async (toolName: string) => {
+			if (statusMessageId) return;
+
+			const statusMsgText =
+				toolName === "web_search"
+					? CONFIG.MESSAGES.tool_status_web_search ||
+						`Spawning Subagent for (${toolName})...`
+					: `Spawning Subagent for (${toolName})...`;
+
+			logger.info(
+				`${logPrefix} Sending tool status notification: "${statusMsgText}"`,
+			);
+
+			const sentMsg = await ctx
+				.reply(
+					statusMsgText,
+					replyToMessageId
+						? { reply_to_message_id: replyToMessageId }
+						: undefined,
+				)
+				.catch((e) => {
+					logger.warn(`${logPrefix} Failed to send status message:`, e);
+					return null;
+				});
+
+			if (sentMsg) {
+				statusMessageId = sentMsg.message_id;
+			}
+		},
+		cleanup: async () => {
+			if (statusMessageId && ctx.chat) {
+				await ctx.api.deleteMessage(ctx.chat.id, statusMessageId).catch((e) => {
+					logger.warn(`${logPrefix} Failed to delete status message:`, e);
+				});
+			}
+		},
+	};
+}
 
 async function generateAndSendReply(
 	ctx: Context,
@@ -19,51 +118,25 @@ async function generateAndSendReply(
 	const chatSettings = Repository.getChat(chatIdStr);
 	if (!chatSettings) return;
 
-	// Concurrency: fetch active topic, history, and active persona in parallel
-	const [activeTopic, history] = await Promise.all([
+	// Concurrency: fetch active topic, history, and replied photo in parallel
+	const [activeTopic, history, mediaPayload] = await Promise.all([
 		GeminiService.ensureTopicSummary(chatIdStr, chatSettings.current_topic),
 		Promise.resolve(
 			Repository.getRecentMessages(chatIdStr, CONFIG.CHAT_HISTORY_LIMIT),
 		),
+		resolveRepliedPhoto(ctx, chatIdStr),
 	]);
 
-	let statusMessageId: number | undefined;
 	const logPrefix = isSpontaneous ? "[Spontaneous]" : "[Chat]";
+	const notifier = createToolNotifier(ctx, replyToMessageId, logPrefix);
 
 	const reply = await GeminiService.generateReply(
 		history,
 		activeTopic,
 		isSpontaneous,
-		async (toolName) => {
-			if (!statusMessageId) {
-				const statusMsgText =
-					toolName === "web_search"
-						? CONFIG.MESSAGES.tool_status_web_search ||
-							`Spawning Subagent for (${toolName})...`
-						: `Spawning Subagent for (${toolName})...`;
-
-				logger.info(
-					`${logPrefix} Sending tool status notification: "${statusMsgText}"`,
-				);
-
-				const sentMsg = await ctx
-					.reply(
-						statusMsgText,
-						replyToMessageId
-							? { reply_to_message_id: replyToMessageId }
-							: undefined,
-					)
-					.catch((e) => {
-						logger.warn(`${logPrefix} Failed to send status message:`, e);
-						return null;
-					});
-
-				if (sentMsg) {
-					statusMessageId = sentMsg.message_id;
-				}
-			}
-		},
+		notifier.onToolCall,
 		chatIdStr,
+		mediaPayload,
 	);
 
 	// Send final reply
@@ -74,11 +147,7 @@ async function generateAndSendReply(
 	);
 
 	// Delete the temporary status message after final answer is sent
-	if (statusMessageId && ctx.chat) {
-		await ctx.api.deleteMessage(ctx.chat.id, statusMessageId).catch((e) => {
-			logger.warn(`${logPrefix} Failed to delete status message:`, e);
-		});
-	}
+	await notifier.cleanup();
 }
 
 function checkDirectInteraction(

@@ -963,7 +963,6 @@ function getRecentUserFallback(chatId: string): string {
 	return chatId.startsWith("-") ? `Group (${chatId})` : `User (${chatId})`;
 }
 
-
 async function resolveChatDisplayTitle(
 	chatId: string,
 	currentTitle: string | null | undefined,
@@ -1672,7 +1671,10 @@ export function startServer(): ReturnType<typeof Bun.serve> {
 					url.pathname !== "/api/auth/verify" &&
 					(!auth.valid || !auth.user)
 				) {
-					return errorResponse("[API] Unauthorized: Invalid Telegram initData", 401);
+					return errorResponse(
+						"[API] Unauthorized: Invalid Telegram initData",
+						401,
+					);
 				}
 				return handleApiRequest(req, url, auth);
 			}
@@ -1681,9 +1683,7 @@ export function startServer(): ReturnType<typeof Bun.serve> {
 		},
 	});
 
-	logger.info(
-		`[Server] HTTP server running at http://localhost:${port}`,
-	);
+	logger.info(`[Server] HTTP server running at http://localhost:${port}`);
 	return serverInstance;
 }
 

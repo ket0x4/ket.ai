@@ -324,4 +324,187 @@ describe("ThinkingConfig and Reply Parsing", () => {
 			ai.models.generateContent = originalGenerateContent;
 		}
 	});
+
+	test("GeminiService handles image reply with media buffer and custom question", async () => {
+		const originalGenerateContent = ai.models.generateContent;
+		// biome-ignore lint/suspicious/noExplicitAny: Mocking SDK content capture
+		let capturedContents: any = null;
+
+		// biome-ignore lint/suspicious/noExplicitAny: Mocking SDK method for unit test
+		(ai.models as any).generateContent = async (params: any) => {
+			capturedContents = params.contents;
+			return {
+				text: JSON.stringify({
+					reply: "Bu bir kedi fotoğrafı.",
+					new_memory_updates: [],
+				}),
+			};
+		};
+
+		try {
+			const dummyHistory = [
+				{
+					id: 1,
+					chat_id: "12345",
+					message_id: 10,
+					user_id: 100,
+					username: "testuser",
+					first_name: "Test",
+					text: null,
+					is_bot_reply: 0,
+					reply_to_message_id: null,
+					photo_file_id: "file_photo_123",
+					sent_at: 1000,
+				},
+				{
+					id: 2,
+					chat_id: "12345",
+					message_id: 11,
+					user_id: 101,
+					username: "replier",
+					first_name: "Replier",
+					text: "ket bu nedir",
+					is_bot_reply: 0,
+					reply_to_message_id: 10,
+					photo_file_id: null,
+					sent_at: 1010,
+				},
+			];
+
+			const dummyMedia = {
+				buffer: Buffer.from("fake_image_bytes"),
+				mimeType: "image/jpeg",
+			};
+
+			const reply = await GeminiService.generateReply(
+				// biome-ignore lint/suspicious/noExplicitAny: Dummy test history rows
+				dummyHistory as any,
+				null,
+				false,
+				undefined,
+				"12345",
+				dummyMedia,
+			);
+
+			expect(reply).toBe("Bu bir kedi fotoğrafı.");
+			expect(capturedContents).toBeDefined();
+			expect(capturedContents.length).toBe(1);
+			expect(capturedContents[0].role).toBe("user");
+			expect(capturedContents[0].parts.length).toBe(2);
+
+			const payloadPart = JSON.parse(capturedContents[0].parts[0].text);
+			expect(payloadPart.instruction).toContain("attached photo");
+			expect(payloadPart.current_message_to_reply.text).toBe("bu nedir");
+
+			const mediaPart = capturedContents[0].parts[1].inlineData;
+			expect(mediaPart.mimeType).toBe("image/jpeg");
+			expect(mediaPart.data).toBe(
+				Buffer.from("fake_image_bytes").toString("base64"),
+			);
+		} finally {
+			ai.models.generateContent = originalGenerateContent;
+		}
+	});
+
+	test("GeminiService handles image reply when user just says 'ket'", async () => {
+		const originalGenerateContent = ai.models.generateContent;
+		// biome-ignore lint/suspicious/noExplicitAny: Mocking SDK content capture
+		let capturedContents: any = null;
+
+		// biome-ignore lint/suspicious/noExplicitAny: Mocking SDK method for unit test
+		(ai.models as any).generateContent = async (params: any) => {
+			capturedContents = params.contents;
+			return {
+				text: JSON.stringify({
+					reply: "Harika bir manzara.",
+					new_memory_updates: [],
+				}),
+			};
+		};
+
+		try {
+			const dummyHistory = [
+				{
+					id: 1,
+					chat_id: "12345",
+					message_id: 10,
+					user_id: 100,
+					username: "testuser",
+					first_name: "Test",
+					text: null,
+					is_bot_reply: 0,
+					reply_to_message_id: null,
+					photo_file_id: "file_photo_123",
+					sent_at: 1000,
+				},
+				{
+					id: 2,
+					chat_id: "12345",
+					message_id: 11,
+					user_id: 101,
+					username: "replier",
+					first_name: "Replier",
+					text: "ket",
+					is_bot_reply: 0,
+					reply_to_message_id: 10,
+					photo_file_id: null,
+					sent_at: 1010,
+				},
+			];
+
+			const dummyMedia = {
+				buffer: Buffer.from("fake_image_bytes"),
+				mimeType: "image/jpeg",
+			};
+
+			const reply = await GeminiService.generateReply(
+				// biome-ignore lint/suspicious/noExplicitAny: Dummy test history rows
+				dummyHistory as any,
+				null,
+				false,
+				undefined,
+				"12345",
+				dummyMedia,
+			);
+
+			expect(reply).toBe("Harika bir manzara.");
+			const payloadPart = JSON.parse(capturedContents[0].parts[0].text);
+			expect(payloadPart.instruction).toContain("attached photo");
+			expect(payloadPart.current_message_to_reply.text).toBe("[Photo]");
+		} finally {
+			ai.models.generateContent = originalGenerateContent;
+		}
+	});
+
+	test("extractPhotoFileId and Repository.getMessage work correctly", () => {
+		const { extractPhotoFileId } = require("../src/utils/mediaDownloader");
+		const { Repository } = require("../src/db/repository");
+
+		expect(extractPhotoFileId(undefined)).toBeUndefined();
+		expect(extractPhotoFileId([])).toBeUndefined();
+		expect(
+			extractPhotoFileId([
+				{ file_id: "small_123" },
+				{ file_id: "medium_456" },
+				{ file_id: "large_789" },
+			]),
+		).toBe("large_789");
+
+		Repository.createChat("test_chat_media_999", "Test Chat", true);
+		Repository.saveMessage({
+			chatId: "test_chat_media_999",
+			messageId: 9991,
+			userId: 1234,
+			username: "photoman",
+			firstName: "Photo Man",
+			text: "check this out",
+			photoFileId: "photo_large_abc",
+			sentAt: Math.floor(Date.now() / 1000),
+		});
+
+		const retrieved = Repository.getMessage("test_chat_media_999", 9991);
+		expect(retrieved).not.toBeNull();
+		expect(retrieved?.photo_file_id).toBe("photo_large_abc");
+		expect(retrieved?.text).toBe("check this out");
+	});
 });
