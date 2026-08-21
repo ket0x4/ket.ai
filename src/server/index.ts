@@ -119,7 +119,7 @@ function verifyTelegramInitData(
 
 		return { valid: Boolean(user), user };
 	} catch (error) {
-		logger.error("[Server Auth] Error validating initData:", error);
+		logger.error("[Auth] Error validating initData:", error);
 		return { valid: false };
 	}
 }
@@ -436,7 +436,7 @@ function handleStats(auth: AuthContext): Response {
 		}
 		return errorResponse("User context missing", 400);
 	} catch (e) {
-		logger.error("[Server Stats] Error fetching stats:", e);
+		logger.error("[Server] Error fetching stats:", e);
 		return errorResponse("Failed to fetch stats", 500);
 	}
 }
@@ -487,7 +487,7 @@ async function handleSettings(
 				},
 			});
 		} catch (e) {
-			logger.error("[Server Settings PATCH] Error updating settings:", e);
+			logger.error("[Server] Error updating settings:", e);
 			return errorResponse("Failed to update settings", 500);
 		}
 	}
@@ -711,7 +711,7 @@ async function handleMemoriesPost(
 			message: "Memory created successfully",
 		});
 	} catch (e) {
-		logger.error("[Server Memory POST] Error adding memory:", e);
+		logger.error("[Server] Error adding memory:", e);
 		return errorResponse("Failed to create memory", 500);
 	}
 }
@@ -746,7 +746,7 @@ async function handleMemoryPatch(
 			message: `Memory ${id} updated`,
 		});
 	} catch (e) {
-		logger.error("[Server Memory PATCH] Error updating memory:", e);
+		logger.error("[Server] Error updating memory:", e);
 		return errorResponse("Failed to update memory", 500);
 	}
 }
@@ -792,7 +792,7 @@ async function handleMemoriesPrune(
 
 		return jsonResponse({ success: true, prunedCount: changes });
 	} catch (e) {
-		logger.error("[Server Prune] Error pruning expired memories:", e);
+		logger.error("[Server] Error pruning expired memories:", e);
 		return errorResponse("Failed to prune memories", 500);
 	}
 }
@@ -821,7 +821,7 @@ function handleMemoriesExport(auth: AuthContext): Response {
 			memories: rows,
 		});
 	} catch (e) {
-		logger.error("[Server Export] Error exporting memories:", e);
+		logger.error("[Server] Error exporting memories:", e);
 		return errorResponse("Failed to export memories", 500);
 	}
 }
@@ -869,7 +869,7 @@ async function handleMemoriesImport(
 
 		return jsonResponse({ success: true, importedCount: count });
 	} catch (e) {
-		logger.error("[Server Import] Error importing memories:", e);
+		logger.error("[Server] Error importing memories:", e);
 		return errorResponse("Failed to import memories", 500);
 	}
 }
@@ -915,7 +915,7 @@ async function handleSandbox(
 			model: CONFIG.GEMINI_MODEL,
 		});
 	} catch (e) {
-		logger.error("[Server Sandbox] Error generating sandbox response:", e);
+		logger.error("[Server] Error generating sandbox response:", e);
 		return errorResponse(
 			"Failed to generate response: " +
 				(e instanceof Error ? e.message : String(e)),
@@ -963,11 +963,7 @@ function getRecentUserFallback(chatId: string): string {
 	return chatId.startsWith("-") ? `Group (${chatId})` : `User (${chatId})`;
 }
 
-/**
- * Resolves a friendly, accurate, and up-to-date title for a Telegram chat.
- * Fetches official info via Telegram Bot API when missing or set to a placeholder,
- * and falls back gracefully to recent active participants.
- */
+
 async function resolveChatDisplayTitle(
 	chatId: string,
 	currentTitle: string | null | undefined,
@@ -1049,7 +1045,7 @@ async function handleChatsGet(auth: AuthContext): Promise<Response> {
 
 		return jsonResponse(result);
 	} catch (e) {
-		logger.error("[Server Chats GET] Error fetching chats:", e);
+		logger.error("[Server] Error fetching chats:", e);
 		return errorResponse("Failed to fetch chats", 500);
 	}
 }
@@ -1097,7 +1093,7 @@ async function handleChatPatch(
 			message: `Chat ${chatId} updated`,
 		});
 	} catch (e) {
-		logger.error("[Server Chat PATCH] Error updating chat:", e);
+		logger.error("[Server] Error updating chat:", e);
 		return errorResponse("Failed to update chat", 500);
 	}
 }
@@ -1137,7 +1133,7 @@ function handlePersonasGet(auth: AuthContext): Response {
 			activePersonas,
 		});
 	} catch (e) {
-		logger.error("[Server Personas GET] Error fetching personas:", e);
+		logger.error("[Server] Error fetching personas:", e);
 		return errorResponse("Failed to fetch personas", 500);
 	}
 }
@@ -1231,7 +1227,7 @@ async function handlePersonaCreate(
 
 		return jsonResponse({ success: true, persona });
 	} catch (e) {
-		logger.error("[Server Persona POST] Error creating persona:", e);
+		logger.error("[Server] Error creating persona:", e);
 		return errorResponse("Failed to create persona", 500);
 	}
 }
@@ -1262,7 +1258,7 @@ async function handlePersonaPatch(
 			persona: updated,
 		});
 	} catch (e) {
-		logger.error("[Server Persona PATCH] Error updating persona:", e);
+		logger.error("[Server] Error updating persona:", e);
 		return errorResponse("Failed to update persona", 500);
 	}
 }
@@ -1323,7 +1319,7 @@ async function handlePersonaSelect(
 			personaId: personaId || null,
 		});
 	} catch (e) {
-		logger.error("[Server Persona SELECT] Error selecting persona:", e);
+		logger.error("[Server] Error selecting persona:", e);
 		return errorResponse("Failed to select persona", 500);
 	}
 }
@@ -1409,7 +1405,7 @@ function handleLogsGet(url: URL, auth: AuthContext): Response {
 
 		return jsonResponse({ logs: parsedLogs });
 	} catch (e) {
-		logger.error("[Server Logs GET] Error reading log file:", e);
+		logger.error("[Server] Error reading log file:", e);
 		return errorResponse("Failed to read logs", 500);
 	}
 }
@@ -1676,7 +1672,7 @@ export function startServer(): ReturnType<typeof Bun.serve> {
 					url.pathname !== "/api/auth/verify" &&
 					(!auth.valid || !auth.user)
 				) {
-					return errorResponse("Unauthorized: Invalid Telegram initData", 401);
+					return errorResponse("[API] Unauthorized: Invalid Telegram initData", 401);
 				}
 				return handleApiRequest(req, url, auth);
 			}
@@ -1686,7 +1682,7 @@ export function startServer(): ReturnType<typeof Bun.serve> {
 	});
 
 	logger.info(
-		`[Server] Telegram Mini App HTTP server running at http://localhost:${port}`,
+		`[Server] HTTP server running at http://localhost:${port}`,
 	);
 	return serverInstance;
 }
