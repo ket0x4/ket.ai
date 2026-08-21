@@ -3,6 +3,11 @@ import { ToolRegistry as RegistryClass } from "../src/agent/registry";
 import { webSearchTool } from "../src/agent/tools/webSearch";
 import type { AgentTool } from "../src/agent/types";
 import { ai } from "../src/services/gemini/client";
+import {
+	extractRetryDelayMs,
+	GeminiRateLimiter,
+	runWithRetry,
+} from "../src/services/gemini/utils";
 
 describe("ToolRegistry", () => {
 	let registry: RegistryClass;
@@ -155,5 +160,67 @@ describe("WebSearchTool", () => {
 		} finally {
 			ai.models.generateContent = originalGenerateContent;
 		}
+	});
+});
+
+describe("SmartRetry", () => {
+	test("should extract retryDelay from RetryInfo details object", () => {
+		const error = {
+			error: {
+				code: 429,
+				message: "Resource exhausted",
+				details: [
+					{
+						"@type": "type.googleapis.com/google.rpc.RetryInfo",
+						retryDelay: "12s",
+					},
+				],
+			},
+		};
+
+		const delay = extractRetryDelayMs(error);
+		expect(delay).toBe(12500); // 12000ms + 500ms safety buffer
+	});
+
+	test("should extract retry delay from text message string", () => {
+		const error = new Error(
+			"Quota exceeded for metric: limit 5. Please retry in 8.5s.",
+		);
+		const delay = extractRetryDelayMs(error);
+		expect(delay).toBe(9000); // 8500ms + 500ms
+	});
+
+	test("should return null when no retry info is present", () => {
+		expect(extractRetryDelayMs(new Error("Generic 500 error"))).toBeNull();
+		expect(extractRetryDelayMs(null)).toBeNull();
+	});
+
+	test("should retry transient errors with runWithRetry", async () => {
+		let attempts = 0;
+		const result = await runWithRetry(
+			async () => {
+				attempts++;
+				if (attempts < 2) {
+					throw new Error("429 RESOURCE_EXHAUSTED");
+				}
+				return "success";
+			},
+			3,
+			10,
+		);
+
+		expect(result).toBe("success");
+		expect(attempts).toBe(2);
+	});
+
+	test("GeminiRateLimiter should enforce pacing interval between calls", async () => {
+		const limiter = new GeminiRateLimiter(50);
+		const start = Date.now();
+		const t1 = limiter.schedule(async () => 1, 50);
+		const t2 = limiter.schedule(async () => 2, 50);
+		const results = await Promise.all([t1, t2]);
+
+		expect(results).toEqual([1, 2]);
+		expect(Date.now() - start).toBeGreaterThanOrEqual(45);
 	});
 });

@@ -7,7 +7,8 @@ import { Repository } from "../db/repository";
 import { bot } from "../services/bot";
 import { ai } from "../services/gemini/client";
 import { generateEmbedding, processNewMemory } from "../services/gemini/memory";
-import { getSystemInstruction } from "../services/gemini/utils";
+import { getSystemInstruction, runWithRetry } from "../services/gemini/utils";
+
 import logger from "../utils/logger";
 import { ToolTraceLogger } from "../utils/toolTrace";
 
@@ -819,15 +820,17 @@ async function handleSandbox(
 		const startTime = Date.now();
 		const systemPrompt = body.systemInstruction || getSystemInstruction();
 
-		const response = await ai.models.generateContent({
-			model: CONFIG.GEMINI_MODEL,
-			contents: [{ role: "user", parts: [{ text: body.prompt }] }],
-			config: {
-				systemInstruction: systemPrompt,
-				temperature: 0.8,
-				maxOutputTokens: 500,
-			},
-		});
+		const response = await runWithRetry(() =>
+			ai.models.generateContent({
+				model: CONFIG.GEMINI_MODEL,
+				contents: [{ role: "user", parts: [{ text: body.prompt }] }],
+				config: {
+					systemInstruction: systemPrompt,
+					temperature: 0.8,
+					maxOutputTokens: 500,
+				},
+			}),
+		);
 
 		const durationMs = Date.now() - startTime;
 		const replyText = response.text || "Empty response";

@@ -326,6 +326,54 @@ async function runAgentStepLoop(
 	return responseText;
 }
 
+function buildGenConfig(
+	options: GenerateResponseOptions,
+	toolsConfig?: Array<Record<string, unknown>>,
+): Record<string, unknown> {
+	const genConfig: Record<string, unknown> = {
+		systemInstruction: getSystemInstruction(),
+		temperature: options.media ? 0.8 : 0.85,
+		maxOutputTokens: 350,
+		tools: toolsConfig,
+	};
+
+	if (!toolsConfig) {
+		genConfig.responseMimeType = "application/json";
+		genConfig.responseSchema = {
+			type: "OBJECT",
+			properties: buildResponseSchemaProperties(options.replyDescription),
+			required: ["reply"],
+		};
+	}
+
+	return genConfig;
+}
+
+async function parseAndProcessReply(
+	responseText: string,
+	chatIdStr: string,
+	lastMsg?: MessageRow,
+): Promise<string> {
+	try {
+		const cleanedText = responseText
+			.replace(/^```(?:json)?\n?|\n?```$/g, "")
+			.trim();
+		const parsed = JSON.parse(cleanedText);
+
+		const senderUserId =
+			lastMsg && !lastMsg.is_bot_reply ? lastMsg.user_id : undefined;
+		await processExtractedMemories(
+			chatIdStr,
+			parsed.new_memory_updates,
+			senderUserId,
+		);
+
+		return parsed.reply || responseText;
+	} catch {
+		return responseText;
+	}
+}
+
 export const GeminiService = {
 	async _generateResponse(
 		history: MessageRow[],
@@ -374,18 +422,7 @@ export const GeminiService = {
 						]
 					: undefined;
 
-			const genConfig: Record<string, unknown> = {
-				systemInstruction: getSystemInstruction(),
-				temperature: options.media ? 0.8 : 0.85,
-				maxOutputTokens: 350,
-				tools: toolsConfig,
-				responseMimeType: "application/json",
-				responseSchema: {
-					type: "OBJECT",
-					properties: buildResponseSchemaProperties(options.replyDescription),
-					required: ["reply"],
-				},
-			};
+			const genConfig = buildGenConfig(options, toolsConfig);
 
 			const responseText = await runAgentStepLoop(
 				contents,
@@ -394,24 +431,12 @@ export const GeminiService = {
 				options.onToolCall,
 			);
 
-			try {
-				const cleanedText = responseText
-					.replace(/^```(?:json)?\n?|\n?```$/g, "")
-					.trim();
-				const parsed = JSON.parse(cleanedText);
-
-				const senderUserId =
-					lastMsg && !lastMsg.is_bot_reply ? lastMsg.user_id : undefined;
-				await processExtractedMemories(
-					chatIdStr,
-					parsed.new_memory_updates,
-					senderUserId,
-				);
-
-				return parsed.reply || options.fallbackEmpty;
-			} catch {
-				return responseText || options.fallbackEmpty;
-			}
+			const reply = await parseAndProcessReply(
+				responseText,
+				chatIdStr,
+				lastMsg,
+			);
+			return reply || options.fallbackEmpty;
 		} catch (error) {
 			logger.error("Error in Gemini _generateResponse:", error);
 			return options.fallbackError;

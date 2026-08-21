@@ -12,7 +12,9 @@ interface ConfigJson {
 	allowed_chat_ids?: (number | string)[];
 	enable_web_search?: boolean;
 	max_agent_steps?: number;
+	gemini_min_request_interval_ms?: number;
 	log_level?: string;
+
 	log_dir?: string;
 	log_max_size_mb?: number;
 	log_retention_days?: number;
@@ -74,6 +76,12 @@ export const CONFIG = {
 			: process.env.MAX_AGENT_STEPS
 				? parseInt(process.env.MAX_AGENT_STEPS, 10)
 				: 3,
+	GEMINI_MIN_REQUEST_INTERVAL_MS:
+		typeof configJson.gemini_min_request_interval_ms === "number"
+			? configJson.gemini_min_request_interval_ms
+			: process.env.GEMINI_MIN_REQUEST_INTERVAL_MS
+				? parseInt(process.env.GEMINI_MIN_REQUEST_INTERVAL_MS, 10)
+				: 3500,
 	LOG_LEVEL: (
 		configJson.log_level ||
 		process.env.LOG_LEVEL ||
@@ -177,6 +185,7 @@ export function updateBotSettings(settings: {
 	chat_history_limit?: number;
 	enable_web_search?: boolean;
 	max_agent_steps?: number;
+	gemini_min_request_interval_ms?: number;
 	log_level?: "debug" | "info" | "warn" | "error";
 }): void {
 	const { writeFileSync } = require("node:fs");
@@ -200,6 +209,12 @@ export function updateBotSettings(settings: {
 	if (settings.max_agent_steps !== undefined) {
 		CONFIG.MAX_AGENT_STEPS = settings.max_agent_steps;
 		configJson.max_agent_steps = settings.max_agent_steps;
+	}
+	if (settings.gemini_min_request_interval_ms !== undefined) {
+		CONFIG.GEMINI_MIN_REQUEST_INTERVAL_MS =
+			settings.gemini_min_request_interval_ms;
+		configJson.gemini_min_request_interval_ms =
+			settings.gemini_min_request_interval_ms;
 	}
 	if (settings.log_level !== undefined) {
 		CONFIG.LOG_LEVEL = settings.log_level;
