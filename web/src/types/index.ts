@@ -117,3 +117,14 @@ export interface SandboxResponse {
 	executionTimeMs: number;
 	model: string;
 }
+
+export interface BaseTabProps<T = unknown> {
+	chats: Chat[];
+	currentUser: TelegramUser | null;
+	role: UserRole;
+	adminChatIds: string[];
+	isLoading?: boolean;
+	onOpenAddModal: () => void;
+	onOpenEditModal: (item: T) => void;
+	onRefresh: () => void | Promise<void>;
+}

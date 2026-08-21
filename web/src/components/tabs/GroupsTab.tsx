@@ -7,10 +7,15 @@ import {
 	Users,
 } from "lucide-react";
 import { type FC, useState } from "react";
-import { EmptyState, LoadingState, SectionHeader } from "@/components/common";
+import {
+	EmptyState,
+	LoadingState,
+	RefreshButton,
+	SectionHeader,
+	StatBox,
+} from "@/components/common";
 import {
 	Badge,
-	Button,
 	Card,
 	CardContent,
 	CardHeader,
@@ -104,20 +109,15 @@ const GroupCard: FC<GroupCardProps> = ({ chat, role, onToggleAllowed }) => {
 
 			<CardContent className="p-4 pt-2 space-y-3.5 text-xs">
 				<div className="grid grid-cols-3 gap-2 p-2 rounded-lg bg-background/50 border border-border/40 text-center">
-					{groupStats.map((stat) => {
-						const Icon = stat.icon;
-						return (
-							<div key={stat.label}>
-								<div className="text-[10px] text-muted-foreground uppercase flex items-center justify-center gap-1">
-									<Icon className="w-3 h-3" />
-									<span>{stat.label}</span>
-								</div>
-								<div className="font-semibold font-mono text-foreground mt-0.5">
-									{stat.value}
-								</div>
-							</div>
-						);
-					})}
+					{groupStats.map((stat) => (
+						<StatBox
+							key={stat.label}
+							icon={stat.icon}
+							label={stat.label}
+							value={stat.value}
+							layout="vertical"
+						/>
+					))}
 				</div>
 
 				{isAdmin ? (
@@ -192,17 +192,7 @@ export const GroupsTab: FC<GroupsTabProps> = ({
 						? "Manage all Telegram groups the bot participates in, approval status, and reply probabilities."
 						: "Review status and parameters of Telegram groups you manage."
 				}
-				actions={
-					<Button
-						variant="outline"
-						size="sm"
-						onClick={onRefresh}
-						className="h-8 text-xs flex items-center gap-1.5"
-					>
-						<RefreshCw className="w-3.5 h-3.5" />
-						<span>Refresh</span>
-					</Button>
-				}
+				actions={<RefreshButton onClick={onRefresh} isLoading={isLoading} />}
 			/>
 
 			<div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 pt-1">

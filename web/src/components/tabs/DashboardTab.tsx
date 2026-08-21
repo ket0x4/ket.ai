@@ -17,6 +17,8 @@ import {
 	LoadingState,
 	MetricCard,
 	type MetricCardProps,
+	RefreshButton,
+	StatBox,
 } from "@/components/common";
 import { Button } from "@/components/ui/button";
 import {
@@ -189,14 +191,11 @@ const MemoryDistributionCard: FC<{
 						Classification of active memory vectors in the vector graph.
 					</CardDescription>
 				</div>
-				<Button
+				<RefreshButton
 					variant="ghost"
-					size="sm"
 					onClick={onRefresh}
 					className="h-8 text-xs"
-				>
-					Refresh
-				</Button>
+				/>
 			</CardHeader>
 			<CardContent className="space-y-4">
 				<div className="h-3 w-full rounded-full bg-zinc-800 flex overflow-hidden p-0.5 gap-0.5">
@@ -242,28 +241,16 @@ const MemoryDistributionCard: FC<{
 
 				{role === "owner" && (
 					<div className="pt-3 border-t border-border/60 grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
-						{systemMetrics.map((item) => {
-							const Icon = item.icon;
-							return (
-								<div
-									key={item.label}
-									className="flex items-center gap-2.5 p-2 rounded-lg bg-background/50 border border-border/40 min-w-0"
-								>
-									<Icon className={`w-4 h-4 shrink-0 ${item.iconColor}`} />
-									<div className="min-w-0">
-										<div className="text-[10px] text-muted-foreground uppercase font-medium truncate">
-											{item.label}
-										</div>
-										<div
-											className="font-semibold font-mono text-foreground truncate max-w-[110px]"
-											title={item.title}
-										>
-											{item.value}
-										</div>
-									</div>
-								</div>
-							);
-						})}
+						{systemMetrics.map((item) => (
+							<StatBox
+								key={item.label}
+								icon={item.icon}
+								iconColor={item.iconColor}
+								label={item.label}
+								value={item.value}
+								title={item.title}
+							/>
+						))}
 					</div>
 				)}
 			</CardContent>

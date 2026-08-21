@@ -1,12 +1,11 @@
-import { Edit3, PlusCircle, Sparkles } from "lucide-react";
+import { Edit3, PlusCircle } from "lucide-react";
 import { type FC, type FormEvent, useEffect, useState } from "react";
 import { toast } from "sonner";
+import { ModalFooter } from "@/components/common";
 import {
-	Button,
 	Dialog,
 	DialogContent,
 	DialogDescription,
-	DialogFooter,
 	DialogHeader,
 	DialogTitle,
 	Select,
@@ -235,32 +234,12 @@ export const MemoryModal: FC<MemoryModalProps> = ({
 						</div>
 					</div>
 
-					<DialogFooter className="gap-2 sm:gap-0 pt-2">
-						<Button
-							type="button"
-							variant="outline"
-							onClick={() => onOpenChange(false)}
-							disabled={isSubmitting}
-						>
-							Cancel
-						</Button>
-						<Button
-							type="submit"
-							disabled={isSubmitting}
-							className="flex items-center gap-2 shadow-md shadow-primary/20"
-						>
-							<Sparkles className="w-4 h-4" />
-							<span>
-								{isSubmitting
-									? isEdit
-										? "Updating..."
-										: "Saving..."
-									: isEdit
-										? "Update Record"
-										: "Save Fact"}
-							</span>
-						</Button>
-					</DialogFooter>
+					<ModalFooter
+						onCancel={() => onOpenChange(false)}
+						isSubmitting={isSubmitting}
+						submitText={isEdit ? "Update Record" : "Save Fact"}
+						submittingText={isEdit ? "Updating..." : "Saving..."}
+					/>
 				</form>
 			</DialogContent>
 		</Dialog>

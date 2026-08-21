@@ -25,7 +25,7 @@ import {
 import { useAsyncAction } from "@/hooks/useAsyncAction";
 import { api } from "@/lib/api";
 import { getChatDisplayName } from "@/lib/utils";
-import type { Chat, Persona, TelegramUser, UserRole } from "@/types";
+import type { BaseTabProps, Persona } from "@/types";
 
 interface PersonaCardProps {
 	persona: Persona;
@@ -158,17 +158,9 @@ const PersonaCard: FC<PersonaCardProps> = ({
 	);
 };
 
-interface PersonasTabProps {
-	chats: Chat[];
-	currentUser: TelegramUser | null;
-	role: UserRole;
-	adminChatIds: string[];
+interface PersonasTabProps extends BaseTabProps<Persona> {
 	personas: Persona[];
 	activePersonas: Record<string, string | null>;
-	isLoading?: boolean;
-	onOpenAddModal: () => void;
-	onOpenEditModal: (persona: Persona) => void;
-	onRefresh: () => void | Promise<void>;
 }
 
 export const PersonasTab: FC<PersonasTabProps> = ({

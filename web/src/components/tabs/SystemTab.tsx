@@ -2,7 +2,6 @@ import {
 	Cpu,
 	FileText,
 	Globe,
-	RefreshCw,
 	Search,
 	Settings,
 	Sliders,
@@ -11,8 +10,15 @@ import {
 	Trash2,
 	Wrench,
 } from "lucide-react";
-import { type FC, useCallback, useEffect, useState } from "react";
+import {
+	type ElementType,
+	type FC,
+	useCallback,
+	useEffect,
+	useState,
+} from "react";
 import { toast } from "sonner";
+import { RefreshButton } from "@/components/common";
 import { Button } from "@/components/ui/button";
 import {
 	Card,
@@ -36,6 +42,16 @@ import { api } from "@/lib/api";
 import type { BotSettings, LogEntry, ToolTrace } from "@/types";
 
 const LOG_LEVELS = ["ALL", "INFO", "WARN", "ERROR"] as const;
+
+const SettingGroupHeader: FC<{ icon: ElementType; title: string }> = ({
+	icon: Icon,
+	title,
+}) => (
+	<div className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+		<Icon className="w-3.5 h-3.5 text-primary" />
+		<span>{title}</span>
+	</div>
+);
 
 // Subcomponent 1: Bot Settings Card
 const BotSettingsCard: FC = () => {
@@ -113,10 +129,7 @@ const BotSettingsCard: FC = () => {
 
 			<CardContent className="space-y-5">
 				<div className="space-y-3">
-					<div className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-						<Cpu className="w-3.5 h-3.5 text-primary" />
-						<span>AI Engine & Grounding</span>
-					</div>
+					<SettingGroupHeader icon={Cpu} title="AI Engine & Grounding" />
 
 					<div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
 						<div className="space-y-1.5">
@@ -200,10 +213,10 @@ const BotSettingsCard: FC = () => {
 				</div>
 
 				<div className="space-y-3 pt-2 border-t border-border/40">
-					<div className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-						<Sliders className="w-3.5 h-3.5 text-primary" />
-						<span>Behavior & Context Parameters</span>
-					</div>
+					<SettingGroupHeader
+						icon={Sliders}
+						title="Behavior & Context Parameters"
+					/>
 
 					<div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
 						<div className="space-y-2">
@@ -255,10 +268,7 @@ const BotSettingsCard: FC = () => {
 				</div>
 
 				<div className="space-y-3 pt-2 border-t border-border/40">
-					<div className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-						<FileText className="w-3.5 h-3.5 text-primary" />
-						<span>Diagnostic Logging</span>
-					</div>
+					<SettingGroupHeader icon={FileText} title="Diagnostic Logging" />
 
 					<div className="space-y-1.5 max-w-xs">
 						<label
@@ -345,18 +355,7 @@ const LiveLogsCard: FC = () => {
 						Real-time structured logs from application and error handlers.
 					</CardDescription>
 				</div>
-				<Button
-					variant="outline"
-					size="sm"
-					onClick={loadLogs}
-					disabled={isLoading}
-					className="h-8 text-xs flex items-center gap-1.5"
-				>
-					<RefreshCw
-						className={`w-3.5 h-3.5 ${isLoading ? "animate-spin" : ""}`}
-					/>
-					<span>Refresh</span>
-				</Button>
+				<RefreshButton onClick={loadLogs} isLoading={isLoading} />
 			</CardHeader>
 
 			<CardContent className="space-y-3">
@@ -484,18 +483,7 @@ const ToolTracesCard: FC = () => {
 						results.
 					</CardDescription>
 				</div>
-				<Button
-					variant="outline"
-					size="sm"
-					onClick={loadTraces}
-					disabled={isLoading}
-					className="h-8 text-xs flex items-center gap-1.5"
-				>
-					<RefreshCw
-						className={`w-3.5 h-3.5 ${isLoading ? "animate-spin" : ""}`}
-					/>
-					<span>Refresh</span>
-				</Button>
+				<RefreshButton onClick={loadTraces} isLoading={isLoading} />
 			</CardHeader>
 
 			<CardContent>

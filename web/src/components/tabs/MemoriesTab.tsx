@@ -27,7 +27,7 @@ import { useAsyncAction } from "@/hooks/useAsyncAction";
 import { api } from "@/lib/api";
 import { MEMORY_CATEGORIES, MEMORY_CATEGORY_LIST } from "@/lib/constants";
 import { formatDate, getChatDisplayName } from "@/lib/utils";
-import type { Chat, Memory, TelegramUser, UserRole } from "@/types";
+import type { BaseTabProps, Memory, TelegramUser, UserRole } from "@/types";
 
 interface MemoryCardProps {
 	memory: Memory;
@@ -124,16 +124,8 @@ const MemoryCard: FC<MemoryCardProps> = ({
 	);
 };
 
-interface MemoriesTabProps {
+interface MemoriesTabProps extends BaseTabProps<Memory> {
 	memories: Memory[];
-	chats: Chat[];
-	currentUser: TelegramUser | null;
-	role: UserRole;
-	adminChatIds: string[];
-	isLoading: boolean;
-	onOpenAddModal: () => void;
-	onOpenEditModal: (m: Memory) => void;
-	onRefresh: () => void;
 }
 
 function matchesFilter(

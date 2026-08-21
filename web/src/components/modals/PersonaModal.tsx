@@ -1,12 +1,11 @@
-import { Bot, Edit3, PlusCircle, Sparkles, Wand2 } from "lucide-react";
+import { Bot, Edit3, PlusCircle, Wand2 } from "lucide-react";
 import { type FC, type FormEvent, useEffect, useState } from "react";
 import { toast } from "sonner";
+import { ModalFooter } from "@/components/common";
 import {
-	Button,
 	Dialog,
 	DialogContent,
 	DialogDescription,
-	DialogFooter,
 	DialogHeader,
 	DialogTitle,
 	Input,
@@ -236,30 +235,12 @@ export const PersonaModal: FC<PersonaModalProps> = ({
 						</div>
 					)}
 
-					<DialogFooter className="pt-3 gap-2 sm:gap-0">
-						<Button
-							type="button"
-							variant="outline"
-							onClick={() => onOpenChange(false)}
-							disabled={isSubmitting}
-						>
-							Cancel
-						</Button>
-						<Button
-							type="submit"
-							disabled={isSubmitting}
-							className="gap-1.5 shadow-md shadow-primary/20"
-						>
-							{isSubmitting ? (
-								<Sparkles className="w-4 h-4 animate-spin" />
-							) : isEdit ? (
-								<Edit3 className="w-4 h-4" />
-							) : (
-								<PlusCircle className="w-4 h-4" />
-							)}
-							<span>{isEdit ? "Save Changes" : "Create Persona"}</span>
-						</Button>
-					</DialogFooter>
+					<ModalFooter
+						onCancel={() => onOpenChange(false)}
+						isSubmitting={isSubmitting}
+						submitText={isEdit ? "Save Changes" : "Create Persona"}
+						submitIcon={isEdit ? Edit3 : PlusCircle}
+					/>
 				</form>
 			</DialogContent>
 		</Dialog>

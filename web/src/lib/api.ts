@@ -1,18 +1,24 @@
+import type {
+	AuthContext,
+	BotSettings,
+	Chat,
+	LogEntry,
+	Memory,
+	MemoryCategory,
+	Persona,
+	SandboxResponse,
+	StatsResponse,
+	TelegramUser,
+	ToolTrace,
+} from "@/types";
+
 declare global {
 	interface Window {
 		Telegram?: {
 			WebApp?: {
 				initData: string;
 				initDataUnsafe?: {
-					user?: {
-						id: number;
-						first_name: string;
-						last_name?: string;
-						username?: string;
-						language_code?: string;
-						is_premium?: boolean;
-						photo_url?: string;
-					};
+					user?: TelegramUser;
 				};
 				ready: () => void;
 				expand: () => void;
@@ -95,19 +101,6 @@ async function apiFetch<T>(
 
 	return (await res.json()) as T;
 }
-
-import type {
-	AuthContext,
-	BotSettings,
-	Chat,
-	LogEntry,
-	Memory,
-	MemoryCategory,
-	Persona,
-	SandboxResponse,
-	StatsResponse,
-	ToolTrace,
-} from "@/types";
 
 export const api = {
 	auth: {

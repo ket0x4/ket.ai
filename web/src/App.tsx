@@ -63,13 +63,17 @@ export default function App() {
 	const [isLoadingData, setIsLoadingData] = useState(false);
 
 	// Modals state
-	const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-	const [editingMemory, setEditingMemory] = useState<Memory | null>(null);
-	const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+	const [memoryModal, setMemoryModal] = useState<{
+		open: boolean;
+		mode: "add" | "edit";
+		memory?: Memory | null;
+	}>({ open: false, mode: "add", memory: null });
 
-	const [isAddPersonaModalOpen, setIsAddPersonaModalOpen] = useState(false);
-	const [editingPersona, setEditingPersona] = useState<Persona | null>(null);
-	const [isEditPersonaModalOpen, setIsEditPersonaModalOpen] = useState(false);
+	const [personaModal, setPersonaModal] = useState<{
+		open: boolean;
+		mode: "add" | "edit";
+		persona?: Persona | null;
+	}>({ open: false, mode: "add", persona: null });
 
 	// Authenticate session
 	const authenticate = useCallback(async () => {
@@ -141,6 +145,23 @@ export default function App() {
 		return <AccessDenied onRetry={authenticate} />;
 	}
 
+	const navTabs = [
+		{ value: "dashboard", icon: LayoutDashboard, label: "Dashboard" },
+		{
+			value: "memories",
+			icon: Brain,
+			label: role === "user" ? "Personal Memory" : "Group Memory",
+		},
+		{ value: "personas", icon: Bot, label: "Personas" },
+		{ value: "groups", icon: Users, label: "Groups" },
+		...(role === "owner"
+			? [
+					{ value: "system", icon: Settings, label: "Settings & Logs" },
+					{ value: "sandbox", icon: Sparkles, label: "AI Sandbox" },
+				]
+			: []),
+	];
+
 	return (
 		<div className="min-h-[100dvh] flex flex-col bg-background text-foreground selection:bg-primary/20">
 			{/* Top Header */}
@@ -152,59 +173,19 @@ export default function App() {
 					{/* Navigation Bar */}
 					<div className="overflow-x-auto pb-1.5 no-scrollbar -mx-1 px-1 touch-pan-x">
 						<TabsList className="inline-flex w-max sm:w-auto p-1 bg-secondary/50 border border-border/60 rounded-xl gap-1">
-							<TabsTrigger
-								value="dashboard"
-								className="gap-1.5 text-xs shrink-0 whitespace-nowrap"
-							>
-								<LayoutDashboard className="w-3.5 h-3.5" />
-								<span>Dashboard</span>
-							</TabsTrigger>
-
-							<TabsTrigger
-								value="memories"
-								className="gap-1.5 text-xs shrink-0 whitespace-nowrap"
-							>
-								<Brain className="w-3.5 h-3.5" />
-								<span>
-									{role === "user" ? "Personal Memory" : "Group Memory"}
-								</span>
-							</TabsTrigger>
-
-							<TabsTrigger
-								value="personas"
-								className="gap-1.5 text-xs shrink-0 whitespace-nowrap"
-							>
-								<Bot className="w-3.5 h-3.5" />
-								<span>Personas</span>
-							</TabsTrigger>
-
-							<TabsTrigger
-								value="groups"
-								className="gap-1.5 text-xs shrink-0 whitespace-nowrap"
-							>
-								<Users className="w-3.5 h-3.5" />
-								<span>Groups</span>
-							</TabsTrigger>
-
-							{role === "owner" && (
-								<>
+							{navTabs.map((t) => {
+								const Icon = t.icon;
+								return (
 									<TabsTrigger
-										value="system"
+										key={t.value}
+										value={t.value}
 										className="gap-1.5 text-xs shrink-0 whitespace-nowrap"
 									>
-										<Settings className="w-3.5 h-3.5" />
-										<span>Settings & Logs</span>
+										<Icon className="w-3.5 h-3.5" />
+										<span>{t.label}</span>
 									</TabsTrigger>
-
-									<TabsTrigger
-										value="sandbox"
-										className="gap-1.5 text-xs shrink-0 whitespace-nowrap"
-									>
-										<Sparkles className="w-3.5 h-3.5" />
-										<span>AI Sandbox</span>
-									</TabsTrigger>
-								</>
-							)}
+								);
+							})}
 						</TabsList>
 					</div>
 
@@ -228,11 +209,12 @@ export default function App() {
 							role={role}
 							adminChatIds={adminChatIds}
 							isLoading={isLoadingData}
-							onOpenAddModal={() => setIsAddModalOpen(true)}
-							onOpenEditModal={(m) => {
-								setEditingMemory(m);
-								setIsEditModalOpen(true);
-							}}
+							onOpenAddModal={() =>
+								setMemoryModal({ open: true, mode: "add", memory: null })
+							}
+							onOpenEditModal={(m) =>
+								setMemoryModal({ open: true, mode: "edit", memory: m })
+							}
 							onRefresh={loadAppData}
 						/>
 					</TabsContent>
@@ -247,11 +229,12 @@ export default function App() {
 							personas={personas}
 							activePersonas={activePersonas}
 							isLoading={isLoadingData}
-							onOpenAddModal={() => setIsAddPersonaModalOpen(true)}
-							onOpenEditModal={(p) => {
-								setEditingPersona(p);
-								setIsEditPersonaModalOpen(true);
-							}}
+							onOpenAddModal={() =>
+								setPersonaModal({ open: true, mode: "add", persona: null })
+							}
+							onOpenEditModal={(p) =>
+								setPersonaModal({ open: true, mode: "edit", persona: p })
+							}
 							onRefresh={loadAppData}
 						/>
 					</TabsContent>
@@ -282,11 +265,12 @@ export default function App() {
 				</Tabs>
 			</main>
 
-			{/* Memory Modals */}
+			{/* Memory Modal */}
 			<MemoryModal
-				mode="add"
-				open={isAddModalOpen}
-				onOpenChange={setIsAddModalOpen}
+				mode={memoryModal.mode}
+				memory={memoryModal.memory}
+				open={memoryModal.open}
+				onOpenChange={(open) => setMemoryModal((prev) => ({ ...prev, open }))}
 				currentUser={currentUser}
 				chats={chats}
 				role={role}
@@ -295,28 +279,12 @@ export default function App() {
 				onSuccess={loadAppData}
 			/>
 
-			<MemoryModal
-				mode="edit"
-				memory={editingMemory}
-				open={isEditModalOpen}
-				onOpenChange={setIsEditModalOpen}
-				currentUser={currentUser}
-				onSuccess={loadAppData}
-			/>
-
-			{/* Persona Modals */}
+			{/* Persona Modal */}
 			<PersonaModal
-				mode="add"
-				open={isAddPersonaModalOpen}
-				onOpenChange={setIsAddPersonaModalOpen}
-				onSuccess={loadAppData}
-			/>
-
-			<PersonaModal
-				mode="edit"
-				persona={editingPersona}
-				open={isEditPersonaModalOpen}
-				onOpenChange={setIsEditPersonaModalOpen}
+				mode={personaModal.mode}
+				persona={personaModal.persona}
+				open={personaModal.open}
+				onOpenChange={(open) => setPersonaModal((prev) => ({ ...prev, open }))}
 				onSuccess={loadAppData}
 			/>
 
