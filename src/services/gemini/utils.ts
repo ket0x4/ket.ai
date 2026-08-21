@@ -39,6 +39,34 @@ export function getSystemInstruction(personaPrompt?: string): string {
 	return `${base}\n\n### ACTIVE PERSONA INSTRUCTION ###\n${personaPrompt.trim()}\nStrictly adhere to this persona's tone, character, style, and rules in all replies. Never use emojis in your responses.`;
 }
 
+/**
+ * Returns thinkingConfig to minimize or turn off reasoning tokens for models,
+ * preventing thinking tokens from consuming latency and maxOutputTokens budget.
+ */
+export function getThinkingConfig(
+	modelName: string = CONFIG.GEMINI_MODEL,
+): Record<string, unknown> | undefined {
+	const lower = (modelName || "").toLowerCase();
+
+	// Gemini 2.5 Pro requires a minimum thinking budget of 128 (0 throws an error)
+	if (lower.includes("2.5") && lower.includes("pro")) {
+		return { thinkingBudget: 128 };
+	}
+
+	// Gemini 3 Pro
+	if (lower.includes("3") && lower.includes("pro")) {
+		return { thinkingLevel: "LOW" };
+	}
+
+	// Gemini 3 Flash / Lite
+	if (lower.includes("3") || lower.includes("gemini-3")) {
+		return { thinkingLevel: "MINIMAL" };
+	}
+
+	// For Gemini 2.5 Flash, 2.0 Flash, etc., turn thinking OFF (budget: 0)
+	return { thinkingBudget: 0 };
+}
+
 function parseDetailsDelay(error: unknown): number | null {
 	// biome-ignore lint/suspicious/noExplicitAny: error details can be nested
 	const errorObj: any = error;

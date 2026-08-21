@@ -3,7 +3,7 @@ import { Repository } from "../../db/repository";
 import logger from "../../utils/logger";
 import { cosineSimilarity } from "../../utils/vector";
 import { ai } from "./client";
-import { runWithRetry } from "./utils";
+import { getThinkingConfig, runWithRetry } from "./utils";
 
 const newMemoriesCount = new Map<string, number>();
 const MAX_TRACKED_CHATS = 200;
@@ -191,6 +191,8 @@ ${memoryListText}`;
 					systemInstruction:
 						"You are an automated data maintenance service. Analyze stored memories and identify redundant or contradictory memory IDs for deletion. Return strictly JSON.",
 					temperature: 0.1,
+					maxOutputTokens: 2048,
+					thinkingConfig: getThinkingConfig(CONFIG.GEMINI_MODEL),
 					responseMimeType: "application/json",
 					responseSchema: {
 						type: "ARRAY",

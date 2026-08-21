@@ -224,3 +224,104 @@ describe("SmartRetry", () => {
 		expect(Date.now() - start).toBeGreaterThanOrEqual(45);
 	});
 });
+
+describe("ThinkingConfig and Reply Parsing", () => {
+	const { getThinkingConfig } = require("../src/services/gemini/utils");
+	const { GeminiService } = require("../src/services/gemini/index");
+
+	test("getThinkingConfig returns proper budget per model", () => {
+		expect(getThinkingConfig("gemini-2.5-pro")).toEqual({
+			thinkingBudget: 128,
+		});
+		expect(getThinkingConfig("gemini-2.5-flash")).toEqual({
+			thinkingBudget: 0,
+		});
+		expect(getThinkingConfig("gemini-3.5-pro")).toEqual({
+			thinkingLevel: "LOW",
+		});
+		expect(getThinkingConfig("gemini-3.5-flash-lite")).toEqual({
+			thinkingLevel: "MINIMAL",
+		});
+	});
+
+	test("GeminiService suppresses reply on broken JSON or stray bracket", async () => {
+		const originalGenerateContent = ai.models.generateContent;
+		// Mock model returning a single stray brace
+		// biome-ignore lint/suspicious/noExplicitAny: Mocking SDK method for unit test
+		(ai.models as any).generateContent = async () => ({
+			text: "{",
+		});
+
+		try {
+			const dummyHistory = [
+				{
+					id: 1,
+					chat_id: 12345,
+					message_id: 10,
+					user_id: 100,
+					username: "testuser",
+					first_name: "Test",
+					text: "Selam",
+					is_bot_reply: false,
+					reply_to_message_id: null,
+					photo_file_id: null,
+					voice_file_id: null,
+					created_at: 1000,
+				},
+			];
+
+			const reply = await GeminiService.generateReply(
+				dummyHistory,
+				null,
+				false,
+				undefined,
+				"12345",
+			);
+			// Should return empty string and suppress sending message
+			expect(reply).toBe("");
+		} finally {
+			ai.models.generateContent = originalGenerateContent;
+		}
+	});
+
+	test("GeminiService returns valid reply from JSON response", async () => {
+		const originalGenerateContent = ai.models.generateContent;
+		// biome-ignore lint/suspicious/noExplicitAny: Mocking SDK method for unit test
+		(ai.models as any).generateContent = async () => ({
+			text: JSON.stringify({
+				reply: "Aleykum selam, nasılsın?",
+				new_memory_updates: [],
+			}),
+		});
+
+		try {
+			const dummyHistory = [
+				{
+					id: 1,
+					chat_id: 12345,
+					message_id: 10,
+					user_id: 100,
+					username: "testuser",
+					first_name: "Test",
+					text: "Selam",
+					is_bot_reply: false,
+					reply_to_message_id: null,
+					photo_file_id: null,
+					voice_file_id: null,
+					created_at: 1000,
+				},
+			];
+
+			const reply = await GeminiService.generateReply(
+				dummyHistory,
+				null,
+				false,
+				undefined,
+				"12345",
+			);
+			expect(reply).toBe("Aleykum selam, nasılsın?");
+		} finally {
+			ai.models.generateContent = originalGenerateContent;
+		}
+	});
+});

@@ -1,6 +1,6 @@
 import { CONFIG } from "../../config";
 import { ai } from "../../services/gemini/client";
-import { runWithRetry } from "../../services/gemini/utils";
+import { getThinkingConfig, runWithRetry } from "../../services/gemini/utils";
 import logger from "../../utils/logger";
 import type { AgentTool } from "../types";
 
@@ -71,6 +71,8 @@ async function performWebSearch(query: string): Promise<WebSearchOutput> {
 				config: {
 					tools: [{ googleSearch: {} }],
 					temperature: 0.2,
+					maxOutputTokens: 2048,
+					thinkingConfig: getThinkingConfig(CONFIG.GEMINI_MODEL),
 				},
 			}),
 		);

@@ -10,6 +10,7 @@ import {
 	buildHistoryList,
 	cleanUserText,
 	getSystemInstruction,
+	getThinkingConfig,
 	runWithRetry,
 } from "./utils";
 
@@ -347,7 +348,8 @@ function buildGenConfig(
 	const genConfig: Record<string, unknown> = {
 		systemInstruction: getSystemInstruction(options.personaPrompt),
 		temperature: options.media ? 0.8 : 0.85,
-		maxOutputTokens: 350,
+		maxOutputTokens: 2048,
+		thinkingConfig: getThinkingConfig(CONFIG.GEMINI_MODEL),
 		tools: toolsConfig,
 	};
 
@@ -369,27 +371,57 @@ async function parseAndProcessReply(
 	fsm: AgentStateMachine,
 	lastMsg?: MessageRow,
 ): Promise<string> {
-	try {
-		const cleanedText = responseText
-			.replace(/^```(?:json)?\n?|\n?```$/g, "")
-			.trim();
-		const parsed = JSON.parse(cleanedText);
-
-		fsm.transition("PERSISTING_DATA");
-		const senderUserId =
-			lastMsg && !lastMsg.is_bot_reply ? lastMsg.user_id : undefined;
-		await processExtractedMemories(
-			chatIdStr,
-			parsed.new_memory_updates,
-			senderUserId,
-		);
-
+	if (!responseText?.trim()) {
 		fsm.transition("COMPLETED");
-		return parsed.reply || responseText;
-	} catch {
-		fsm.transition("COMPLETED");
-		return responseText;
+		return "";
 	}
+
+	const cleanedText = responseText
+		.replace(/^```(?:json)?\n?|\n?```$/g, "")
+		.trim();
+
+	// If response is an isolated brace/bracket, suppress it
+	if (
+		cleanedText === "}" ||
+		cleanedText === "{" ||
+		cleanedText === "[]" ||
+		cleanedText === "{}"
+	) {
+		logger.warn(
+			`[Gemini:${fsm.getTraceId()}] Model returned stray bracket/empty payload: "${cleanedText}". Suppressing reply.`,
+		);
+		fsm.transition("COMPLETED");
+		return "";
+	}
+
+	// If response starts like a JSON structure
+	if (cleanedText.startsWith("{") || cleanedText.startsWith("[")) {
+		try {
+			const parsed = JSON.parse(cleanedText);
+
+			fsm.transition("PERSISTING_DATA");
+			const senderUserId =
+				lastMsg && !lastMsg.is_bot_reply ? lastMsg.user_id : undefined;
+			await processExtractedMemories(
+				chatIdStr,
+				parsed.new_memory_updates,
+				senderUserId,
+			);
+
+			fsm.transition("COMPLETED");
+			return typeof parsed.reply === "string" ? parsed.reply.trim() : "";
+		} catch {
+			logger.warn(
+				`[Gemini:${fsm.getTraceId()}] Parse error on model JSON response. Suppressing reply. Raw text: "${responseText}"`,
+			);
+			fsm.transition("COMPLETED");
+			return "";
+		}
+	}
+
+	// Plain text response (e.g. from tool execution or unstructured output)
+	fsm.transition("COMPLETED");
+	return cleanedText;
 }
 
 export const GeminiService = {
@@ -469,7 +501,8 @@ export const GeminiService = {
 				fsm,
 				lastMsg,
 			);
-			return reply || options.fallbackEmpty;
+			// If reply is empty (e.g. suppressed due to parse error), do not send fallback message
+			return reply;
 		} catch (error) {
 			fsm.fail(error);
 			logger.error(
@@ -556,7 +589,8 @@ export const GeminiService = {
 						systemInstruction:
 							"You are an analysis expert. You summarize group chats in just 1-2 sentences.",
 						temperature: 0.3,
-						maxOutputTokens: 100,
+						maxOutputTokens: 1024,
+						thinkingConfig: getThinkingConfig(CONFIG.GEMINI_MODEL),
 						responseMimeType: "application/json",
 						responseSchema: {
 							type: "OBJECT",
@@ -574,11 +608,19 @@ export const GeminiService = {
 			);
 
 			const responseText = response.text?.trim() || "";
+			if (!responseText) return "";
+
 			try {
-				const parsed = JSON.parse(responseText);
-				return parsed.summary || "";
+				const cleaned = responseText
+					.replace(/^```(?:json)?\n?|\n?```$/g, "")
+					.trim();
+				const parsed = JSON.parse(cleaned);
+				return typeof parsed.summary === "string" ? parsed.summary.trim() : "";
 			} catch {
-				return responseText;
+				logger.warn(
+					`[Summarizer] Failed to parse summary JSON. Raw text: "${responseText}"`,
+				);
+				return "";
 			}
 		} catch (error) {
 			logger.error("Error in Gemini summarizeTopic:", error);

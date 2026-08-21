@@ -7,7 +7,11 @@ import { Repository } from "../db/repository";
 import { bot } from "../services/bot";
 import { ai } from "../services/gemini/client";
 import { generateEmbedding, processNewMemory } from "../services/gemini/memory";
-import { getSystemInstruction, runWithRetry } from "../services/gemini/utils";
+import {
+	getSystemInstruction,
+	getThinkingConfig,
+	runWithRetry,
+} from "../services/gemini/utils";
 
 import logger from "../utils/logger";
 import { extractTelegramChatTitle } from "../utils/message";
@@ -896,7 +900,8 @@ async function handleSandbox(
 				config: {
 					systemInstruction: systemPrompt,
 					temperature: 0.8,
-					maxOutputTokens: 500,
+					maxOutputTokens: 2048,
+					thinkingConfig: getThinkingConfig(CONFIG.GEMINI_MODEL),
 				},
 			}),
 		);

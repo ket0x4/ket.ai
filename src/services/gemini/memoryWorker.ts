@@ -4,7 +4,7 @@ import { Repository } from "../../db/repository";
 import logger from "../../utils/logger";
 import { ai } from "./client";
 import { processNewMemory } from "./memory";
-import { runWithRetry } from "./utils";
+import { getThinkingConfig, runWithRetry } from "./utils";
 
 const backgroundCounter = new Map<string, number>();
 const MAX_TRACKED_CHATS = 200;
@@ -146,6 +146,8 @@ async function runBackgroundMemoryExtraction(chatIdStr: string): Promise<void> {
 					systemInstruction:
 						"You are a quiet background memory analyzer for a Telegram group bot. Extract factual details about users. Output strictly JSON.",
 					temperature: 0.2,
+					maxOutputTokens: 2048,
+					thinkingConfig: getThinkingConfig(CONFIG.GEMINI_MODEL),
 					responseMimeType: "application/json",
 					// biome-ignore lint/suspicious/noExplicitAny: SDK schema typing
 					responseSchema: getExtractionSchema() as any,
