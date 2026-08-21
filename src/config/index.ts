@@ -169,14 +169,6 @@ if (
 }
 
 /**
- * Updates the active Gemini model at runtime.
- */
-export function updateModel(modelName: string): void {
-	CONFIG.GEMINI_MODEL = modelName;
-	configJson.gemini_model = modelName;
-}
-
-/**
  * Updates bot configuration settings and persists changes to config.json.
  */
 export function updateBotSettings(settings: {

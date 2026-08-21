@@ -1,5 +1,5 @@
 import { type Bot, type Context, InlineKeyboard } from "grammy";
-import { CONFIG, updateModel } from "../config/index";
+import { CONFIG } from "../config/index";
 import { Repository } from "../db/repository";
 import { processNewMemory } from "../services/gemini/memory";
 import logger from "../utils/logger";
@@ -88,8 +88,7 @@ export function registerCommandHandlers(bot: Bot) {
 				"• `/app` or `/admin` — Open Web Mini App Dashboard\n" +
 				"• `/remember <fact>` — Save a new fact to memory\n" +
 				"• `/prob [0-100]` — Set random reply probability (Admin)\n" +
-				"• `/reset` — Clear chat history and memory (Admin)\n" +
-				"• `/model [model]` — Switch AI model (Owner)",
+				"• `/reset` — Clear chat history and memory (Admin)",
 			{ parse_mode: "Markdown" },
 		);
 	});
@@ -293,44 +292,7 @@ export function registerCommandHandlers(bot: Bot) {
 		);
 	});
 
-	// 7. /model command — switch Gemini model per chat (Owner only)
-	bot.command("model", async (ctx) => {
-		if (!CONFIG.BOT_OWNER_ID || ctx.from?.id !== CONFIG.BOT_OWNER_ID) {
-			logger.warn(
-				`[Commands:model] Unauthorized /model attempt by user ${ctx.from?.id} (${ctx.from?.first_name})`,
-			);
-			return;
-		}
-
-		const modelName = ctx.match?.trim();
-
-		if (!modelName) {
-			logger.info(
-				`[Commands:model] Owner ${ctx.from?.id} queried current model (${CONFIG.GEMINI_MODEL})`,
-			);
-			await ctx.reply(
-				`**Current model**: \`${CONFIG.GEMINI_MODEL}\`\n\n` +
-					`To change:\n` +
-					`\`/model gemini-3.6-flash\`\n` +
-					`\`/model gemini-3.1-pro\`\n` +
-					`\`/model gemini-3.5-flash-lite\`\n` +
-					`\`/model gemini-3.1-flash-lite\``,
-				{ parse_mode: "Markdown" },
-			);
-			return;
-		}
-
-		updateModel(modelName);
-		logger.info(
-			`[Commands:model] Gemini model changed to "${modelName}" by owner ${ctx.from?.id}`,
-		);
-		await ctx.reply(
-			`[OK] Model changed to \`${modelName}\`! New responses will be generated with this model.`,
-			{ parse_mode: "Markdown" },
-		);
-	});
-
-	// 8. /remember command — explicitly save a fact to memory
+	// 7. /remember command — explicitly save a fact to memory
 	bot.command("remember", async (ctx) => {
 		if (!ctx.chat || !ctx.from) return;
 		const chatIdStr = ctx.chat.id.toString();
