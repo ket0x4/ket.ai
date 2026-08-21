@@ -63,6 +63,7 @@ async function generateAndSendReply(
 				}
 			}
 		},
+		chatIdStr,
 	);
 
 	// Send final reply

@@ -23,6 +23,7 @@ const lastSummarizedCount = new Map<string, number>();
 const MAX_TRACKED_CHATS = 200;
 
 interface GenerateResponseOptions {
+	chatId?: string;
 	isSpontaneous?: boolean;
 	instruction?: string;
 	personaPrompt?: string;
@@ -406,7 +407,7 @@ export const GeminiService = {
 				return options.fallbackEmpty;
 			}
 			fsm.transition("INITIALIZING");
-			const chatIdStr = history[0]?.chat_id.toString() || "";
+			const chatIdStr = options.chatId || history[0]?.chat_id?.toString() || "";
 			const lastMsg = history[history.length - 1];
 			const lastMessageText = resolveLastMessageText(
 				lastMsg,
@@ -516,8 +517,10 @@ export const GeminiService = {
 		topicSummary: string | null,
 		isSpontaneous: boolean = false,
 		onToolCall?: ToolCallCallback,
+		chatId?: string,
 	): Promise<string> {
 		return this._generateResponse(history, topicSummary, {
+			chatId,
 			isSpontaneous,
 			replyDescription:
 				"The reply you will write to the chat. A short (1-2 sentences).",
@@ -583,24 +586,50 @@ export const GeminiService = {
 		}
 	},
 
+	async generateMediaReply(
+		media: { buffer: Buffer; mimeType: string },
+		history: MessageRow[],
+		topicSummary: string | null,
+		options: {
+			instruction: string;
+			replyDescription: string;
+			fallbackEmpty: string;
+			fallbackError: string;
+			mediaFallbackText: string;
+			onToolCall?: ToolCallCallback;
+			chatId?: string;
+		},
+	): Promise<string> {
+		return this._generateResponse(history, topicSummary, {
+			media,
+			...options,
+		});
+	},
+
 	async generateImageReply(
 		imageBuffer: Buffer,
 		mimeType: string,
 		history: MessageRow[],
 		topicSummary: string | null,
 		onToolCall?: ToolCallCallback,
+		chatId?: string,
 	): Promise<string> {
-		return this._generateResponse(history, topicSummary, {
-			instruction:
-				"Analyze the photo and make a comment suitable for this photo.",
-			media: { buffer: imageBuffer, mimeType },
-			replyDescription:
-				"The reply you will write to the photo and the flow of the conversation.",
-			fallbackEmpty: CONFIG.MESSAGES.gemini_empty_image_fallback,
-			fallbackError: CONFIG.MESSAGES.gemini_error_image_fallback,
-			mediaFallbackText: "[Photo]",
-			onToolCall,
-		});
+		return this.generateMediaReply(
+			{ buffer: imageBuffer, mimeType },
+			history,
+			topicSummary,
+			{
+				instruction:
+					"Analyze the photo and make a comment suitable for this photo.",
+				replyDescription:
+					"The reply you will write to the photo and the flow of the conversation.",
+				fallbackEmpty: CONFIG.MESSAGES.gemini_empty_image_fallback,
+				fallbackError: CONFIG.MESSAGES.gemini_error_image_fallback,
+				mediaFallbackText: "[Photo]",
+				onToolCall,
+				chatId,
+			},
+		);
 	},
 
 	async generateVoiceReply(
@@ -609,18 +638,24 @@ export const GeminiService = {
 		history: MessageRow[],
 		topicSummary: string | null,
 		onToolCall?: ToolCallCallback,
+		chatId?: string,
 	): Promise<string> {
-		return this._generateResponse(history, topicSummary, {
-			instruction:
-				"The user sent a voice message. Listen, understand what is being said, and answer in a friendly way suitable for the conversation.",
-			media: { buffer: audioBuffer, mimeType },
-			replyDescription:
-				"The reply you will write to the voice message and the flow of the conversation.",
-			fallbackEmpty: "I heard the voice message but didn't know what to say.",
-			fallbackError:
-				"I got confused while listening to the voice message, can you try again?",
-			mediaFallbackText: "[Voice]",
-			onToolCall,
-		});
+		return this.generateMediaReply(
+			{ buffer: audioBuffer, mimeType },
+			history,
+			topicSummary,
+			{
+				instruction:
+					"The user sent a voice message. Listen, understand what is being said, and answer in a friendly way suitable for the conversation.",
+				replyDescription:
+					"The reply you will write to the voice message and the flow of the conversation.",
+				fallbackEmpty: "I heard the voice message but didn't know what to say.",
+				fallbackError:
+					"I got confused while listening to the voice message, can you try again?",
+				mediaFallbackText: "[Voice]",
+				onToolCall,
+				chatId,
+			},
+		);
 	},
 };

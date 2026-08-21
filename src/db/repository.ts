@@ -285,12 +285,20 @@ export const Repository = {
 
 	/**
 	 * Creates a new chat entry if it doesn't already exist.
+	 * If the chat already exists, it preserves existing permissions and settings.
 	 */
 	createChat(
 		chatId: string,
 		title: string = "",
 		isAllowed: boolean = false,
 	): ChatRow {
+		const existing = this.getChat(chatId);
+		if (existing) {
+			if (title && title !== existing.title) {
+				this.updateChatSettings(chatId, { title });
+			}
+			return this.getChat(chatId) || existing;
+		}
 		return this.upsertChat(chatId, title, isAllowed);
 	},
 

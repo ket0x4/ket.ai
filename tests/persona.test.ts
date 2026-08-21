@@ -86,6 +86,41 @@ test("Chat active persona assignment and clearing on persona deletion", () => {
 	expect(activeAfterDelete).toBeNull();
 });
 
+test("Setting persona, createChat, or adding memory preserves chat allowed status", () => {
+	const testChatId = `test_chat_allowed_${Date.now()}`;
+	Repository.upsertChat(testChatId, "Allowed Group", true);
+
+	const chatBefore = Repository.getChat(testChatId);
+	expect(chatBefore?.is_allowed).toBe(1);
+
+	// 1. Setting active persona must not revoke group permission
+	const customPersonaId = `test_p_${Date.now()}`;
+	Repository.createPersona({
+		id: customPersonaId,
+		name: "Special Persona",
+		prompt: "Special prompt",
+	});
+	const setResult = Repository.setActivePersonaForChat(
+		testChatId,
+		customPersonaId,
+	);
+	expect(setResult).toBe(true);
+
+	const chatAfterPersona = Repository.getChat(testChatId);
+	expect(chatAfterPersona?.is_allowed).toBe(1);
+	expect(chatAfterPersona?.active_persona_id).toBe(customPersonaId);
+
+	// 2. Calling createChat on existing chat must not revoke group permission
+	Repository.createChat(testChatId, "");
+	const chatAfterCreate = Repository.getChat(testChatId);
+	expect(chatAfterCreate?.is_allowed).toBe(1);
+
+	// 3. Adding memory to chat must not revoke group permission
+	Repository.addMemory(testChatId, "Alice likes coffee", [0.1, 0.2, 0.3]);
+	const chatAfterMemory = Repository.getChat(testChatId);
+	expect(chatAfterMemory?.is_allowed).toBe(1);
+});
+
 test("getSystemInstruction combines base prompt and persona prompt", () => {
 	const baseInstruction = getSystemInstruction();
 	expect(baseInstruction.length).toBeGreaterThan(0);

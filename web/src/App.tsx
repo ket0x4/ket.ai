@@ -31,6 +31,16 @@ import type {
 	UserRole,
 } from "@/types";
 
+async function fetchAllAppData() {
+	const [stats, chats, memories, personas] = await Promise.all([
+		api.stats.get().catch(() => null),
+		api.chats.list().catch(() => []),
+		api.memories.list({ scope: "all" }).catch(() => []),
+		api.personas.list().catch(() => ({ personas: [], activePersonas: {} })),
+	]);
+	return { stats, chats, memories, personas };
+}
+
 export default function App() {
 	const [authChecked, setAuthChecked] = useState(false);
 	const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -46,6 +56,10 @@ export default function App() {
 	const [stats, setStats] = useState<StatsResponse | null>(null);
 	const [chats, setChats] = useState<Chat[]>([]);
 	const [memories, setMemories] = useState<Memory[]>([]);
+	const [personas, setPersonas] = useState<Persona[]>([]);
+	const [activePersonas, setActivePersonas] = useState<
+		Record<string, string | null>
+	>({});
 	const [isLoadingData, setIsLoadingData] = useState(false);
 
 	// Modals state
@@ -82,21 +96,18 @@ export default function App() {
 		}
 	}, []);
 
-	// Fetch stats, chats, and memories
+	// Fetch stats, chats, memories, and personas
 	const loadAppData = useCallback(async () => {
 		if (!isAuthenticated) return;
 
 		try {
 			setIsLoadingData(true);
-			const [statsRes, chatsRes, memoriesRes] = await Promise.all([
-				api.stats.get().catch(() => null),
-				api.chats.list().catch(() => []),
-				api.memories.list({ scope: "all" }).catch(() => []),
-			]);
-
-			if (statsRes) setStats(statsRes);
-			setChats(chatsRes || []);
-			setMemories(memoriesRes || []);
+			const data = await fetchAllAppData();
+			if (data.stats) setStats(data.stats);
+			setChats(data.chats);
+			setMemories(data.memories);
+			setPersonas(data.personas.personas);
+			setActivePersonas(data.personas.activePersonas);
 		} catch (err: unknown) {
 			const msg = err instanceof Error ? err.message : "Error loading data";
 			toast.error(msg);
@@ -233,6 +244,8 @@ export default function App() {
 							currentUser={currentUser}
 							role={role}
 							adminChatIds={adminChatIds}
+							personas={personas}
+							activePersonas={activePersonas}
 							isLoading={isLoadingData}
 							onOpenAddModal={() => setIsAddPersonaModalOpen(true)}
 							onOpenEditModal={(p) => {

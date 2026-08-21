@@ -37,6 +37,8 @@ export function registerVoiceHandlers(bot: Bot) {
 					mimeType,
 					history,
 					activeTopic,
+					undefined,
+					ctx.chat?.id.toString(),
 				),
 			fallbackErrorMessage:
 				"Failed to process your voice message. Please try again later.",

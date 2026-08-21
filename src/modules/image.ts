@@ -33,6 +33,8 @@ export function registerImageHandlers(bot: Bot) {
 					mimeType,
 					history,
 					activeTopic,
+					undefined,
+					ctx.chat?.id.toString(),
 				),
 			fallbackErrorMessage: CONFIG.MESSAGES.image_processing_failed,
 		});

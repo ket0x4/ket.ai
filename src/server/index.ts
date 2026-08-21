@@ -1102,15 +1102,27 @@ function handlePersonasGet(auth: AuthContext): Response {
 		const personas = Repository.getAllPersonas();
 		const activePersonas: Record<string, string | null> = {};
 
-		const chatIdsToFetch = auth.isOwner
-			? (
-					db.prepare("SELECT chat_id FROM chats").all() as Array<{
-						chat_id: string;
-					}>
-				).map((c) => c.chat_id)
-			: Array.from(new Set([...auth.adminChatIds, ...auth.memberChatIds]));
+		const chatIdsSet = new Set<string>();
+		if (auth.user) {
+			chatIdsSet.add(auth.user.id.toString());
+		}
+		if (auth.isOwner) {
+			const allChats = db.prepare("SELECT chat_id FROM chats").all() as Array<{
+				chat_id: string;
+			}>;
+			for (const c of allChats) {
+				chatIdsSet.add(c.chat_id);
+			}
+		} else {
+			for (const id of auth.adminChatIds) {
+				chatIdsSet.add(id);
+			}
+			for (const id of auth.memberChatIds) {
+				chatIdsSet.add(id);
+			}
+		}
 
-		for (const chatId of chatIdsToFetch) {
+		for (const chatId of chatIdsSet) {
 			const active = Repository.getActivePersonaForChat(chatId);
 			activePersonas[chatId] = active ? active.id : null;
 		}

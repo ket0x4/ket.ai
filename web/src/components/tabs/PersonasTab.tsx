@@ -9,7 +9,7 @@ import {
 	Trash2,
 	Users,
 } from "lucide-react";
-import { type FC, useCallback, useEffect, useMemo, useState } from "react";
+import { type FC, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -163,10 +163,12 @@ interface PersonasTabProps {
 	currentUser: TelegramUser | null;
 	role: UserRole;
 	adminChatIds: string[];
+	personas: Persona[];
+	activePersonas: Record<string, string | null>;
 	isLoading?: boolean;
 	onOpenAddModal: () => void;
 	onOpenEditModal: (persona: Persona) => void;
-	onRefresh: () => void;
+	onRefresh: () => void | Promise<void>;
 }
 
 export const PersonasTab: FC<PersonasTabProps> = ({
@@ -174,14 +176,12 @@ export const PersonasTab: FC<PersonasTabProps> = ({
 	currentUser,
 	role,
 	adminChatIds,
+	personas,
+	activePersonas,
 	onOpenAddModal,
 	onOpenEditModal,
 	onRefresh,
 }) => {
-	const [personas, setPersonas] = useState<Persona[]>([]);
-	const [activePersonas, setActivePersonas] = useState<
-		Record<string, string | null>
-	>({});
 	const [searchQuery, setSearchQuery] = useState("");
 	const [selectedChatId, setSelectedChatId] = useState<string>("");
 	const [isSelectingPersona, setIsSelectingPersona] = useState(false);
@@ -218,22 +218,6 @@ export const PersonasTab: FC<PersonasTabProps> = ({
 		}
 	}, [manageableChats, selectedChatId]);
 
-	const loadPersonas = useCallback(async () => {
-		try {
-			const res = await api.personas.list();
-			setPersonas(res.personas || []);
-			setActivePersonas(res.activePersonas || {});
-		} catch (err) {
-			const msg =
-				err instanceof Error ? err.message : "Failed to load personas";
-			toast.error(msg);
-		}
-	}, []);
-
-	useEffect(() => {
-		loadPersonas();
-	}, [loadPersonas]);
-
 	const currentActivePersonaId = selectedChatId
 		? activePersonas[selectedChatId] || null
 		: null;
@@ -256,18 +240,13 @@ export const PersonasTab: FC<PersonasTabProps> = ({
 				personaId,
 			});
 
-			setActivePersonas((prev) => ({
-				...prev,
-				[selectedChatId]: personaId,
-			}));
-
 			if (personaId) {
 				const p = personas.find((item) => item.id === personaId);
 				toast.success(`"${p?.name || "Persona"}" activated for this chat!`);
 			} else {
 				toast.success("Reset to default ket.ai persona.");
 			}
-			onRefresh();
+			await onRefresh();
 		} catch (err) {
 			const msg =
 				err instanceof Error ? err.message : "Error selecting persona";
@@ -292,8 +271,7 @@ export const PersonasTab: FC<PersonasTabProps> = ({
 			async () => {
 				await api.personas.delete(persona.id);
 				toast.success("Persona deleted successfully");
-				await loadPersonas();
-				onRefresh();
+				await onRefresh();
 			},
 			{ errorMessage: "Error deleting persona" },
 		);
