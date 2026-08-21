@@ -28,8 +28,11 @@ function loadSystemPrompt(): string {
 // Load once at module initialization
 cachedSystemPrompt = loadSystemPrompt();
 
-export function getSystemInstruction(): string {
-	return cachedSystemPrompt;
+export function getSystemInstruction(personaPrompt?: string): string {
+	if (!personaPrompt?.trim()) {
+		return cachedSystemPrompt;
+	}
+	return `${cachedSystemPrompt}\n\n### ACTIVE PERSONA INSTRUCTION ###\n${personaPrompt.trim()}\nStrictly adhere to this persona's tone, character, style, and rules in all replies.`;
 }
 
 function parseDetailsDelay(error: unknown): number | null {

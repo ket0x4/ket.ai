@@ -103,6 +103,7 @@ import type {
 	LogEntry,
 	Memory,
 	MemoryCategory,
+	Persona,
 	SandboxResponse,
 	StatsResponse,
 	ToolTrace,
@@ -114,6 +115,49 @@ export const api = {
 	},
 	stats: {
 		get: () => apiFetch<StatsResponse>("/api/stats"),
+	},
+	personas: {
+		list: () =>
+			apiFetch<{
+				personas: Persona[];
+				activePersonas: Record<string, string | null>;
+			}>("/api/personas"),
+		create: (data: {
+			name: string;
+			description?: string;
+			prompt: string;
+			emoji?: string;
+		}) =>
+			apiFetch<{ success: boolean; persona: Persona }>("/api/personas", {
+				method: "POST",
+				body: JSON.stringify(data),
+			}),
+		update: (
+			id: string,
+			data: {
+				name?: string;
+				description?: string | null;
+				prompt?: string;
+				emoji?: string;
+			},
+		) =>
+			apiFetch<{ success: boolean; persona: Persona }>(`/api/personas/${id}`, {
+				method: "PATCH",
+				body: JSON.stringify(data),
+			}),
+		delete: (id: string) =>
+			apiFetch<{ success: boolean; message: string }>(`/api/personas/${id}`, {
+				method: "DELETE",
+			}),
+		select: (data: { chatId: string; personaId: string | null }) =>
+			apiFetch<{
+				success: boolean;
+				chatId: string;
+				personaId: string | null;
+			}>("/api/personas/select", {
+				method: "POST",
+				body: JSON.stringify(data),
+			}),
 	},
 	chats: {
 		list: () => apiFetch<Chat[]>("/api/chats"),

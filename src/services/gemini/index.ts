@@ -1,4 +1,4 @@
-import { toolRegistry } from "../../agent/index";
+import { AgentStateMachine, toolRegistry } from "../../agent/index";
 import { CONFIG } from "../../config";
 import type { MessageRow } from "../../db/repository";
 import { Repository } from "../../db/repository";
@@ -25,11 +25,13 @@ const MAX_TRACKED_CHATS = 200;
 interface GenerateResponseOptions {
 	isSpontaneous?: boolean;
 	instruction?: string;
+	personaPrompt?: string;
 	media?: { buffer: Buffer; mimeType: string };
 	replyDescription: string;
 	fallbackEmpty: string;
 	fallbackError: string;
 	mediaFallbackText: string;
+	traceId?: string;
 	onToolCall?: ToolCallCallback;
 }
 
@@ -176,11 +178,12 @@ async function executeSingleTool(
 	fc: { name?: string; args?: Record<string, unknown> },
 	chatIdStr: string,
 	step: number,
+	traceId: string,
 ): Promise<Record<string, unknown> | null> {
 	if (!fc?.name) return null;
 	const name = fc.name;
 	const args = fc.args || {};
-	logger.info(`[Agent] Executing tool '${name}'...`);
+	logger.info(`[Agent:${traceId}] Executing tool '${name}'...`);
 	const startTime = Date.now();
 	const result = await toolRegistry.executeTool(name, args);
 	const durationMs = Date.now() - startTime;
@@ -191,6 +194,7 @@ async function executeSingleTool(
 			: JSON.stringify(result).substring(0, 300);
 	ToolTraceLogger.add({
 		chatId: chatIdStr,
+		traceId,
 		toolName: name,
 		args,
 		resultSnippet: snippet,
@@ -210,13 +214,14 @@ async function handleToolExecution(
 	functionCalls: Array<{ name?: string; args?: Record<string, unknown> }>,
 	chatIdStr: string,
 	step: number,
+	traceId: string,
 	onToolCall?: ToolCallCallback,
 ): Promise<Array<Record<string, unknown>>> {
 	await notifyToolCallbacks(functionCalls, step, onToolCall);
 
 	const toolResponseParts: Array<Record<string, unknown>> = [];
 	for (const fc of functionCalls) {
-		const part = await executeSingleTool(fc, chatIdStr, step);
+		const part = await executeSingleTool(fc, chatIdStr, step, traceId);
 		if (part) toolResponseParts.push(part);
 	}
 	return toolResponseParts;
@@ -258,13 +263,15 @@ async function runAgentStepLoop(
 	contents: Array<Record<string, unknown>>,
 	genConfig: Record<string, unknown>,
 	chatIdStr: string,
+	fsm: AgentStateMachine,
 	onToolCall?: ToolCallCallback,
 ): Promise<string> {
-	let step = 0;
 	let responseText = "";
 
-	while (step < CONFIG.MAX_AGENT_STEPS) {
-		step++;
+	while (fsm.getStep() < CONFIG.MAX_AGENT_STEPS) {
+		const step = fsm.incrementStep();
+		fsm.transition("CALLING_MODEL", { step });
+
 		const response = await runWithRetry(() =>
 			ai.models.generateContent({
 				model: CONFIG.GEMINI_MODEL,
@@ -296,8 +303,12 @@ async function runAgentStepLoop(
 		);
 
 		if (functionCalls.length > 0) {
+			fsm.transition("EXECUTING_TOOLS", {
+				step,
+				toolCount: functionCalls.length,
+			});
 			logger.info(
-				`[Agent] Gemini requested ${functionCalls.length} tool call(s) at step ${step}`,
+				`[Agent:${fsm.getTraceId()}] Gemini requested ${functionCalls.length} tool call(s) at step ${step}`,
 			);
 
 			const modelContent = response.candidates?.[0]?.content;
@@ -314,12 +325,14 @@ async function runAgentStepLoop(
 				functionCalls,
 				chatIdStr,
 				step,
+				fsm.getTraceId(),
 				onToolCall,
 			);
 			contents.push({ role: "user", parts: toolParts });
 			continue;
 		}
 
+		fsm.transition("PARSING_RESPONSE", { step });
 		responseText = response.text?.trim() || "";
 		break;
 	}
@@ -331,7 +344,7 @@ function buildGenConfig(
 	toolsConfig?: Array<Record<string, unknown>>,
 ): Record<string, unknown> {
 	const genConfig: Record<string, unknown> = {
-		systemInstruction: getSystemInstruction(),
+		systemInstruction: getSystemInstruction(options.personaPrompt),
 		temperature: options.media ? 0.8 : 0.85,
 		maxOutputTokens: 350,
 		tools: toolsConfig,
@@ -352,6 +365,7 @@ function buildGenConfig(
 async function parseAndProcessReply(
 	responseText: string,
 	chatIdStr: string,
+	fsm: AgentStateMachine,
 	lastMsg?: MessageRow,
 ): Promise<string> {
 	try {
@@ -360,6 +374,7 @@ async function parseAndProcessReply(
 			.trim();
 		const parsed = JSON.parse(cleanedText);
 
+		fsm.transition("PERSISTING_DATA");
 		const senderUserId =
 			lastMsg && !lastMsg.is_bot_reply ? lastMsg.user_id : undefined;
 		await processExtractedMemories(
@@ -368,8 +383,10 @@ async function parseAndProcessReply(
 			senderUserId,
 		);
 
+		fsm.transition("COMPLETED");
 		return parsed.reply || responseText;
 	} catch {
+		fsm.transition("COMPLETED");
 		return responseText;
 	}
 }
@@ -380,19 +397,28 @@ export const GeminiService = {
 		topicSummary: string | null,
 		options: GenerateResponseOptions,
 	): Promise<string> {
+		const fsm = new AgentStateMachine(options.traceId);
 		try {
 			if (history.length === 0) {
 				logger.warn(
-					"[Gemini] _generateResponse called with empty history. Returning fallback.",
+					`[Gemini:${fsm.getTraceId()}] _generateResponse called with empty history. Returning fallback.`,
 				);
 				return options.fallbackEmpty;
 			}
+			fsm.transition("INITIALIZING");
 			const chatIdStr = history[0]?.chat_id.toString() || "";
 			const lastMsg = history[history.length - 1];
 			const lastMessageText = resolveLastMessageText(
 				lastMsg,
 				options.mediaFallbackText,
 			);
+
+			// Resolve active persona for chat if not already supplied
+			let personaPrompt = options.personaPrompt;
+			if (personaPrompt === undefined && chatIdStr) {
+				const activePersona = Repository.getActivePersonaForChat(chatIdStr);
+				personaPrompt = activePersona?.prompt;
+			}
 
 			const queryForMemory = options.isSpontaneous
 				? topicSummary || "General chat"
@@ -422,23 +448,33 @@ export const GeminiService = {
 						]
 					: undefined;
 
-			const genConfig = buildGenConfig(options, toolsConfig);
+			const effectiveOptions: GenerateResponseOptions = {
+				...options,
+				personaPrompt,
+			};
+			const genConfig = buildGenConfig(effectiveOptions, toolsConfig);
 
 			const responseText = await runAgentStepLoop(
 				contents,
 				genConfig,
 				chatIdStr,
+				fsm,
 				options.onToolCall,
 			);
 
 			const reply = await parseAndProcessReply(
 				responseText,
 				chatIdStr,
+				fsm,
 				lastMsg,
 			);
 			return reply || options.fallbackEmpty;
 		} catch (error) {
-			logger.error("Error in Gemini _generateResponse:", error);
+			fsm.fail(error);
+			logger.error(
+				`Error in Gemini _generateResponse [${fsm.getTraceId()}]:`,
+				error,
+			);
 			return options.fallbackError;
 		}
 	},

@@ -64,11 +64,24 @@ interface ChatStats {
 	uniqueUsers: number;
 }
 
+export interface Persona {
+	id: string;
+	name: string;
+	description?: string | null;
+	prompt: string;
+	emoji: string;
+	is_system: number; // 0 or 1
+	created_by?: number | null;
+	created_at: number;
+	updated_at: number;
+}
+
 export interface Chat {
 	chat_id: string;
 	title?: string;
 	is_allowed: boolean;
 	reply_probability?: number;
+	active_persona_id?: string | null;
 	isAdmin?: boolean;
 	memoryCount?: number;
 	stats?: ChatStats;

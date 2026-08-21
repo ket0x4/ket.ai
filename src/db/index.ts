@@ -53,8 +53,64 @@ function runMigrations() {
       last_random_reply_at INTEGER DEFAULT 0,
       current_topic TEXT DEFAULT NULL,
       is_allowed INTEGER DEFAULT 0,
+      active_persona_id TEXT DEFAULT NULL,
       created_at INTEGER NOT NULL
     ) STRICT;
+  `);
+
+	// Ensure active_persona_id column exists for existing databases
+	try {
+		const chatColumns = db.prepare("PRAGMA table_info(chats)").all() as Array<{
+			name: string;
+		}>;
+		const hasActivePersona = chatColumns.some(
+			(col) => col.name === "active_persona_id",
+		);
+		if (!hasActivePersona) {
+			db.run(
+				"ALTER TABLE chats ADD COLUMN active_persona_id TEXT DEFAULT NULL",
+			);
+		}
+	} catch (e) {
+		logger.debug("[DB Migration] active_persona_id check/alter skipped:", e);
+	}
+
+	// Check if personas table has legacy schema (e.g. id INTEGER PRIMARY KEY)
+	try {
+		const personasTable = db
+			.prepare(
+				"SELECT sql FROM sqlite_master WHERE type='table' AND name='personas'",
+			)
+			.get() as { sql: string } | null;
+
+		if (personasTable?.sql?.includes("id INTEGER PRIMARY KEY")) {
+			logger.info(
+				"[DB Migration] Migrating legacy personas table to id TEXT schema...",
+			);
+			db.run("DROP TABLE IF EXISTS personas");
+		}
+	} catch (e) {
+		logger.debug("[DB Migration] personas schema migration check:", e);
+	}
+
+	// Table: personas
+	db.run(`
+    CREATE TABLE IF NOT EXISTS personas (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT,
+      prompt TEXT NOT NULL,
+      emoji TEXT DEFAULT '🤖',
+      is_system INTEGER DEFAULT 0,
+      created_by INTEGER,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    ) STRICT;
+  `);
+
+	db.run(`
+    CREATE INDEX IF NOT EXISTS idx_personas_created_by
+    ON personas(created_by);
   `);
 
 	// Table: messages
@@ -111,6 +167,46 @@ function runMigrations() {
     CREATE INDEX IF NOT EXISTS idx_memories_chat_expires
     ON memories(chat_id, expires_at);
   `);
+
+	seedDefaultPersonas();
+}
+
+function seedDefaultPersonas() {
+	const now = Math.floor(Date.now() / 1000);
+
+	// Remove any legacy system personas other than ket-default
+	try {
+		db.run("DELETE FROM personas WHERE is_system = 1 AND id != 'ket-default'");
+		db.run(
+			"UPDATE chats SET active_persona_id = NULL WHERE active_persona_id IS NOT NULL AND active_persona_id NOT IN (SELECT id FROM personas)",
+		);
+	} catch (e) {
+		logger.debug("[DB Seed] Clean legacy system personas skipped:", e);
+	}
+
+	const insertStmt = db.prepare(`
+    INSERT INTO personas (id, name, description, prompt, emoji, is_system, created_by, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, 1, NULL, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      name = excluded.name,
+      description = excluded.description,
+      prompt = excluded.prompt,
+      emoji = excluded.emoji
+  `);
+
+	try {
+		insertStmt.run(
+			"ket-default",
+			"ket.ai Standart",
+			"Varsayılan zeki, esprili ve dengeli ket.ai sohbet tarzı.",
+			"Samimi, zeki, esprili ve doğal bir sohbet arkadaşı ol. Türkçe konuşurken akıcı ve modern bir dil kullan, robotik veya yapay cümlelerden kaçın.",
+			"🤖",
+			now,
+			now,
+		);
+	} catch (err) {
+		logger.error("[DB Seed] Failed to seed default persona:", err);
+	}
 }
 
 // Execute migrations synchronously before any module prepares statements

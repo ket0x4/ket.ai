@@ -1,4 +1,5 @@
 import {
+	Bot,
 	Brain,
 	LayoutDashboard,
 	Loader2,
@@ -11,9 +12,11 @@ import { toast } from "sonner";
 import { AccessDenied } from "@/components/AccessDenied";
 import { Header } from "@/components/Header";
 import { MemoryModal } from "@/components/modals/MemoryModal";
+import { PersonaModal } from "@/components/modals/PersonaModal";
 import { DashboardTab } from "@/components/tabs/DashboardTab";
 import { GroupsTab } from "@/components/tabs/GroupsTab";
 import { MemoriesTab } from "@/components/tabs/MemoriesTab";
+import { PersonasTab } from "@/components/tabs/PersonasTab";
 import { SandboxTab } from "@/components/tabs/SandboxTab";
 import { SystemTab } from "@/components/tabs/SystemTab";
 import { Toaster } from "@/components/ui/sonner";
@@ -22,6 +25,7 @@ import { api, getTelegramWebApp } from "@/lib/api";
 import type {
 	Chat,
 	Memory,
+	Persona,
 	StatsResponse,
 	TelegramUser,
 	UserRole,
@@ -48,6 +52,10 @@ export default function App() {
 	const [isAddModalOpen, setIsAddModalOpen] = useState(false);
 	const [editingMemory, setEditingMemory] = useState<Memory | null>(null);
 	const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+
+	const [isAddPersonaModalOpen, setIsAddPersonaModalOpen] = useState(false);
+	const [editingPersona, setEditingPersona] = useState<Persona | null>(null);
+	const [isEditPersonaModalOpen, setIsEditPersonaModalOpen] = useState(false);
 
 	// Authenticate session
 	const authenticate = useCallback(async () => {
@@ -143,6 +151,11 @@ export default function App() {
 								<span>{role === "user" ? "My Facts" : "Memories"}</span>
 							</TabsTrigger>
 
+							<TabsTrigger value="personas" className="gap-1.5">
+								<Bot className="w-4 h-4" />
+								<span>Personas</span>
+							</TabsTrigger>
+
 							<TabsTrigger value="groups" className="gap-1.5">
 								<Users className="w-4 h-4" />
 								<span>Groups</span>
@@ -193,7 +206,24 @@ export default function App() {
 						/>
 					</TabsContent>
 
-					{/* Tab 3: Groups */}
+					{/* Tab 3: Personas */}
+					<TabsContent value="personas">
+						<PersonasTab
+							chats={chats}
+							currentUser={currentUser}
+							role={role}
+							adminChatIds={adminChatIds}
+							isLoading={isLoadingData}
+							onOpenAddModal={() => setIsAddPersonaModalOpen(true)}
+							onOpenEditModal={(p) => {
+								setEditingPersona(p);
+								setIsEditPersonaModalOpen(true);
+							}}
+							onRefresh={loadAppData}
+						/>
+					</TabsContent>
+
+					{/* Tab 4: Groups */}
 					<TabsContent value="groups">
 						<GroupsTab
 							chats={chats}
@@ -203,14 +233,14 @@ export default function App() {
 						/>
 					</TabsContent>
 
-					{/* Tab 4: System & Logs (Owner) */}
+					{/* Tab 5: System & Logs (Owner) */}
 					{role === "owner" && (
 						<TabsContent value="system">
 							<SystemTab />
 						</TabsContent>
 					)}
 
-					{/* Tab 5: AI Sandbox (Owner) */}
+					{/* Tab 6: AI Sandbox (Owner) */}
 					{role === "owner" && (
 						<TabsContent value="sandbox">
 							<SandboxTab />
@@ -219,7 +249,7 @@ export default function App() {
 				</Tabs>
 			</main>
 
-			{/* Modals */}
+			{/* Memory Modals */}
 			<MemoryModal
 				mode="add"
 				open={isAddModalOpen}
@@ -238,6 +268,22 @@ export default function App() {
 				open={isEditModalOpen}
 				onOpenChange={setIsEditModalOpen}
 				currentUser={currentUser}
+				onSuccess={loadAppData}
+			/>
+
+			{/* Persona Modals */}
+			<PersonaModal
+				mode="add"
+				open={isAddPersonaModalOpen}
+				onOpenChange={setIsAddPersonaModalOpen}
+				onSuccess={loadAppData}
+			/>
+
+			<PersonaModal
+				mode="edit"
+				persona={editingPersona}
+				open={isEditPersonaModalOpen}
+				onOpenChange={setIsEditPersonaModalOpen}
 				onSuccess={loadAppData}
 			/>
 

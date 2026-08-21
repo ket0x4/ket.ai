@@ -19,14 +19,13 @@ async function generateAndSendReply(
 	const chatSettings = Repository.getChat(chatIdStr);
 	if (!chatSettings) return;
 
-	const activeTopic = await GeminiService.ensureTopicSummary(
-		chatIdStr,
-		chatSettings.current_topic,
-	);
-	const history = Repository.getRecentMessages(
-		chatIdStr,
-		CONFIG.CHAT_HISTORY_LIMIT,
-	);
+	// Concurrency: fetch active topic, history, and active persona in parallel
+	const [activeTopic, history] = await Promise.all([
+		GeminiService.ensureTopicSummary(chatIdStr, chatSettings.current_topic),
+		Promise.resolve(
+			Repository.getRecentMessages(chatIdStr, CONFIG.CHAT_HISTORY_LIMIT),
+		),
+	]);
 
 	let statusMessageId: number | undefined;
 	const logPrefix = isSpontaneous ? "[Spontaneous]" : "[Chat]";

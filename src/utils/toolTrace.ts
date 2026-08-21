@@ -1,7 +1,6 @@
-import logger from "./logger";
-
 interface ToolTraceEntry {
 	id: string;
+	traceId?: string;
 	timestamp: string;
 	chatId?: string;
 	toolName: string;
@@ -31,8 +30,9 @@ export const ToolTraceLogger = {
 			traceBuffer.shift();
 		}
 
+		const tracePrefix = entry.traceId ? `[Trace:${entry.traceId}] ` : "";
 		logger.debug(
-			`[ToolTrace] Logged tool call: ${entry.toolName} (Step ${entry.step})`,
+			`${tracePrefix}[ToolTrace] Logged tool call: ${entry.toolName} (Step ${entry.step})`,
 		);
 	},
 

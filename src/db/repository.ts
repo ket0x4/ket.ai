@@ -9,7 +9,20 @@ interface ChatRow {
 	last_random_reply_at: number;
 	current_topic: string | null;
 	is_allowed: number; // 0 or 1
+	active_persona_id: string | null;
 	created_at: number;
+}
+
+interface PersonaRow {
+	id: string;
+	name: string;
+	description: string | null;
+	prompt: string;
+	emoji: string;
+	is_system: number; // 0 or 1
+	created_by: number | null;
+	created_at: number;
+	updated_at: number;
 }
 
 export interface MessageRow {
@@ -34,6 +47,33 @@ const stmts = {
 	),
 	setChatAllowed: db.prepare(
 		"UPDATE chats SET is_allowed = ? WHERE chat_id = ?",
+	),
+
+	// Persona statements
+	getAllPersonas: db.prepare(
+		"SELECT * FROM personas ORDER BY is_system DESC, created_at DESC",
+	),
+	getPersonaById: db.prepare("SELECT * FROM personas WHERE id = ?"),
+	insertPersona: db.prepare(
+		`INSERT INTO personas (id, name, description, prompt, emoji, is_system, created_by, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+	),
+	updatePersona: db.prepare(
+		`UPDATE personas SET name = ?, description = ?, prompt = ?, emoji = ?, updated_at = ? WHERE id = ?`,
+	),
+	deletePersona: db.prepare(
+		"DELETE FROM personas WHERE id = ? AND is_system = 0",
+	),
+	getChatActivePersona: db.prepare(
+		`SELECT p.* FROM personas p
+     JOIN chats c ON c.active_persona_id = p.id
+     WHERE c.chat_id = ?`,
+	),
+	setChatActivePersona: db.prepare(
+		"UPDATE chats SET active_persona_id = ? WHERE chat_id = ?",
+	),
+	clearChatActivePersonaIfMatches: db.prepare(
+		"UPDATE chats SET active_persona_id = NULL WHERE active_persona_id = ?",
 	),
 
 	insertUser: db.prepare(
@@ -653,5 +693,131 @@ export const Repository = {
 			totalMemories: res?.total_memories || 0,
 			totalGroups: res?.total_groups || 0,
 		};
+	},
+
+	/**
+	 * Retrieves all available personas (system presets + custom user-created).
+	 */
+	getAllPersonas(): PersonaRow[] {
+		return stmts.getAllPersonas.all() as PersonaRow[];
+	},
+
+	/**
+	 * Retrieves a specific persona by its unique ID.
+	 */
+	getPersonaById(id: string): PersonaRow | null {
+		return stmts.getPersonaById.get(id) as PersonaRow | null;
+	},
+
+	/**
+	 * Creates a new custom persona.
+	 */
+	createPersona(params: {
+		id?: string;
+		name: string;
+		description?: string | null;
+		prompt: string;
+		emoji?: string;
+		isSystem?: boolean;
+		createdBy?: number | null;
+	}): PersonaRow {
+		const id =
+			params.id ||
+			`custom_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
+		const now = Math.floor(Date.now() / 1000);
+		const isSys = params.isSystem ? 1 : 0;
+		const emoji = params.emoji || "🤖";
+		const description = params.description || null;
+		const createdBy = params.createdBy ?? null;
+
+		stmts.insertPersona.run(
+			id,
+			params.name.trim(),
+			description ? description.trim() : null,
+			params.prompt.trim(),
+			emoji,
+			isSys,
+			createdBy,
+			now,
+			now,
+		);
+
+		const created = this.getPersonaById(id);
+		if (!created) {
+			throw new Error(`Failed to create persona '${id}'`);
+		}
+		return created;
+	},
+
+	/**
+	 * Updates an existing custom persona.
+	 */
+	updatePersona(
+		id: string,
+		updates: {
+			name?: string;
+			description?: string | null;
+			prompt?: string;
+			emoji?: string;
+		},
+	): PersonaRow | null {
+		const existing = this.getPersonaById(id);
+		if (!existing) return null;
+
+		const name =
+			updates.name !== undefined ? updates.name.trim() : existing.name;
+		const description =
+			updates.description !== undefined
+				? updates.description
+					? updates.description.trim()
+					: null
+				: existing.description;
+		const prompt =
+			updates.prompt !== undefined ? updates.prompt.trim() : existing.prompt;
+		const emoji = updates.emoji !== undefined ? updates.emoji : existing.emoji;
+		const now = Math.floor(Date.now() / 1000);
+
+		stmts.updatePersona.run(name, description, prompt, emoji, now, id);
+		return this.getPersonaById(id);
+	},
+
+	/**
+	 * Deletes a custom persona and resets any chats that were actively using it.
+	 * System personas (is_system = 1) cannot be deleted.
+	 */
+	deletePersona(id: string): boolean {
+		const persona = this.getPersonaById(id);
+		if (!persona || persona.is_system === 1) return false;
+
+		const transaction = db.transaction(() => {
+			stmts.clearChatActivePersonaIfMatches.run(id);
+			stmts.deletePersona.run(id);
+		});
+
+		transaction();
+		return true;
+	},
+
+	/**
+	 * Retrieves the active persona for a specific chat.
+	 * Returns null if the chat uses default ket.ai settings.
+	 */
+	getActivePersonaForChat(chatId: string): PersonaRow | null {
+		return stmts.getChatActivePersona.get(chatId) as PersonaRow | null;
+	},
+
+	/**
+	 * Sets or clears the active persona for a chat.
+	 */
+	setActivePersonaForChat(chatId: string, personaId: string | null): boolean {
+		this.createChat(chatId, "");
+		if (personaId) {
+			const persona = this.getPersonaById(personaId);
+			if (!persona) return false;
+			stmts.setChatActivePersona.run(personaId, chatId);
+		} else {
+			stmts.setChatActivePersona.run(null, chatId);
+		}
+		return true;
 	},
 };
