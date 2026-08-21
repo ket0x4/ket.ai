@@ -1,3 +1,5 @@
+import logger from "./logger";
+
 interface ToolTraceEntry {
 	id: string;
 	traceId?: string;
