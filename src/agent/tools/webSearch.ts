@@ -1,3 +1,6 @@
+import { CONFIG } from "../../config";
+import { ai } from "../../services/gemini/client";
+import { runWithRetry } from "../../services/gemini/utils";
 import logger from "../../utils/logger";
 import type { AgentTool } from "../types";
 
@@ -7,182 +10,128 @@ interface SearchResult {
 	url?: string;
 }
 
-/**
- * Decodes basic HTML entities and removes HTML tags.
- */
-function cleanHtmlText(text: string): string {
-	if (!text) return "";
-	return text
-		.replace(/<[^>]+>/g, "") // strip HTML tags
-		.replace(/&amp;/g, "&")
-		.replace(/&lt;/g, "<")
-		.replace(/&gt;/g, ">")
-		.replace(/&quot;/g, '"')
-		.replace(/&#39;/g, "'")
-		.replace(/&nbsp;/g, " ")
-		.replace(/\s+/g, " ")
-		.trim();
+interface WebSearchOutput {
+	query: string;
+	summary?: string;
+	results: SearchResult[];
+	count: number;
+	search_queries?: string[];
+	system_note?: string;
 }
 
-function extractRedirectUrl(rawUrl: string): string {
-	const uddgMatch = rawUrl.match(/uddg=([^&]+)/);
-	if (!uddgMatch?.[1]) return rawUrl;
-	try {
-		return decodeURIComponent(uddgMatch[1]);
-	} catch {
-		return rawUrl;
-	}
-}
-
-function parseBlockResults(html: string, maxResults: number): SearchResult[] {
-	const results: SearchResult[] = [];
-	const resultBlockRegex =
-		/<a[^>]*class="result__a"[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?(?:<a[^>]*class="result__snippet"[^>]*>([\s\S]*?)<\/a>|<td[^>]*class="result-snippet"[^>]*>([\s\S]*?)<\/td>)/g;
-
-	let match = resultBlockRegex.exec(html);
-	while (match !== null && results.length < maxResults) {
-		const rawUrl = match[1] || "";
-		const title = cleanHtmlText(match[2] || "");
-		const snippet = cleanHtmlText(match[3] || match[4] || "");
-		const url = extractRedirectUrl(rawUrl);
-
-		if (title && snippet) {
-			results.push({
-				title,
-				snippet: snippet.length > 150 ? `${snippet.slice(0, 147)}...` : snippet,
-				url: url.startsWith("http") ? url : undefined,
-			});
-		}
-		match = resultBlockRegex.exec(html);
-	}
-	return results;
-}
-
-function parseFallbackResults(
-	html: string,
-	maxResults: number,
+function buildSearchResults(
+	chunks: Array<{ web?: { uri?: string; title?: string } }>,
+	summary: string,
 ): SearchResult[] {
 	const results: SearchResult[] = [];
-	const titleMatches = [
-		...html.matchAll(/<a[^>]*class="result__a"[^>]*>([\s\S]*?)<\/a>/g),
-	];
-	const snippetMatches = [
-		...html.matchAll(/<a[^>]*class="result__snippet"[^>]*>([\s\S]*?)<\/a>/g),
-	];
-
-	const limit = Math.min(
-		titleMatches.length,
-		snippetMatches.length,
-		maxResults,
-	);
-	for (let i = 0; i < limit; i++) {
-		const title = cleanHtmlText(titleMatches[i][1]);
-		const snippet = cleanHtmlText(snippetMatches[i][1]);
-		if (title && snippet) {
+	for (const chunk of chunks) {
+		if (chunk.web?.uri) {
 			results.push({
-				title,
-				snippet: snippet.length > 150 ? `${snippet.slice(0, 147)}...` : snippet,
+				title: chunk.web.title || "Web Source",
+				snippet: summary.length > 300 ? `${summary.slice(0, 297)}...` : summary,
+				url: chunk.web.uri,
 			});
 		}
 	}
+
+	if (results.length === 0 && summary) {
+		results.push({
+			title: "Google Search Result",
+			snippet: summary,
+		});
+	}
+
 	return results;
 }
 
 /**
- * Perform a web search using DuckDuckGo HTML.
- * Token-optimized: returns top results with trimmed snippets.
+ * Performs a web search using Gemini API with Google Search Grounding.
  */
-async function performWebSearch(
-	query: string,
-	maxResults = 4,
-): Promise<SearchResult[]> {
-	const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+async function performWebSearch(query: string): Promise<WebSearchOutput> {
+	const trimmedQuery = query.trim();
+	if (!trimmedQuery) {
+		return {
+			query: "",
+			summary: "",
+			results: [],
+			count: 0,
+			system_note: "Empty query provided.",
+		};
+	}
 
 	try {
-		const response = await fetch(searchUrl, {
-			method: "GET",
-			headers: {
-				"User-Agent":
-					"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-				Accept:
-					"text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-				"Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
-			},
-		});
+		logger.info(
+			`[WebSearchTool] Running Gemini Google Search for: "${trimmedQuery}"`,
+		);
 
-		if (!response.ok) {
-			logger.warn(`[WebSearch] DuckDuckGo HTTP status: ${response.status}`);
-			return [];
-		}
+		const response = await runWithRetry(() =>
+			ai.models.generateContent({
+				model: CONFIG.GEMINI_MODEL,
+				contents: `Search the web and provide accurate, up-to-date information for the following search query or URL. Include key facts, numbers, dates, or relevant details concisely:\n\nQuery: ${trimmedQuery}`,
+				config: {
+					tools: [{ googleSearch: {} }],
+					temperature: 0.2,
+				},
+			}),
+		);
 
-		const html = await response.text();
-		let results = parseBlockResults(html, maxResults);
+		const summary = response.text?.trim() || "";
+		const metadata = response.candidates?.[0]?.groundingMetadata;
+		const searchQueries =
+			metadata?.webSearchQueries || (trimmedQuery ? [trimmedQuery] : []);
+		const results = buildSearchResults(
+			metadata?.groundingChunks || [],
+			summary,
+		);
 
-		if (results.length === 0) {
-			results = parseFallbackResults(html, maxResults);
-		}
+		logger.info(
+			`[WebSearchTool] Gemini Search returned ${results.length} sources for query: "${trimmedQuery}"`,
+		);
 
-		if (results.length === 0) {
-			logger.warn(
-				`[WebSearch] 0 results found! HTTP Status: ${response.status}`,
-			);
-			logger.warn(`[WebSearch] HTML snippet: ${html.substring(0, 300)}`);
-		}
+		const noResultsNote =
+			results.length === 0 && !summary
+				? "Search returned 0 results. Tell the user politely that no relevant information was found."
+				: undefined;
 
-		return results;
+		return {
+			query: trimmedQuery,
+			summary,
+			results,
+			count: results.length,
+			search_queries: searchQueries,
+			...(noResultsNote && { system_note: noResultsNote }),
+		};
 	} catch (error) {
-		logger.error("[WebSearch] Failed to fetch or parse search results:", error);
-		return [];
+		logger.error(
+			"[WebSearchTool] Failed to execute Gemini Google Search:",
+			error,
+		);
+		return {
+			query: trimmedQuery,
+			summary: "",
+			results: [],
+			count: 0,
+			system_note:
+				"Search engine error. Tell the user politely that you couldn't access search results at the moment.",
+		};
 	}
 }
 
-export const webSearchTool: AgentTool<
-	{ query: string },
-	{
-		query: string;
-		results: SearchResult[];
-		count: number;
-		system_note?: string;
-	}
-> = {
+export const webSearchTool: AgentTool<{ query: string }, WebSearchOutput> = {
 	name: "web_search",
 	description:
-		"ONLY use this to search the internet when the user specifically asks for current information, news, weather, stock prices, or an instant event not in your training data. DO NOT USE it for general chat or when the answer is already in previous conversations.",
+		"Use this to search the internet or look up web URLs when current information, news, weather, stock prices, events, or webpage content are needed.",
 	parameters: {
 		type: "OBJECT",
 		properties: {
 			query: {
 				type: "STRING",
-				description: "The search query string",
+				description: "The search query string or URL to look up",
 			},
 		},
 		required: ["query"],
 	},
 	execute: async (args: { query: string }) => {
-		const query = args.query?.trim() || "";
-		if (!query) {
-			return {
-				query,
-				results: [],
-				count: 0,
-				system_note: "Empty query provided.",
-			};
-		}
-
-		logger.info(`[WebSearchTool] Running web search for query: "${query}"`);
-		const results = await performWebSearch(query);
-		logger.info(
-			`[WebSearchTool] Found ${results.length} results for query: "${query}"`,
-		);
-
-		return {
-			query,
-			results,
-			count: results.length,
-			...(results.length === 0 && {
-				system_note:
-					"Search engine returned 0 results (likely blocked by anti-bot protection). Tell the user politely that you couldn't access the internet right now.",
-			}),
-		};
+		return performWebSearch(args.query || "");
 	},
 };

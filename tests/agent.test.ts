@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import { ToolRegistry as RegistryClass } from "../src/agent/registry";
-import { urlSummarizerTool } from "../src/agent/tools/urlSummarizer";
 import { webSearchTool } from "../src/agent/tools/webSearch";
 import type { AgentTool } from "../src/agent/types";
+import { ai } from "../src/services/gemini/client";
 
 describe("ToolRegistry", () => {
 	let registry: RegistryClass;
@@ -69,33 +69,91 @@ describe("WebSearchTool", () => {
 		const res = await webSearchTool.execute({ query: "   " });
 		expect(res.count).toBe(0);
 		expect(res.results).toEqual([]);
+		expect(res.system_note).toBe("Empty query provided.");
 	});
 
-	test("should perform real search or return structured results", async () => {
-		const res = await webSearchTool.execute({ query: "dolar kac tl" });
-		expect(res).toHaveProperty("query");
-		expect(res).toHaveProperty("results");
-		expect(Array.isArray(res.results)).toBeTrue();
-	});
-});
+	test("should format grounding chunks into structured search results", async () => {
+		const originalGenerateContent = ai.models.generateContent;
+		// biome-ignore lint/suspicious/noExplicitAny: Mocking SDK method for unit test
+		(ai.models as any).generateContent = async () => ({
+			text: "The capital of France is Paris.",
+			candidates: [
+				{
+					groundingMetadata: {
+						webSearchQueries: ["capital of France"],
+						groundingChunks: [
+							{
+								web: {
+									uri: "https://en.wikipedia.org/wiki/Paris",
+									title: "Paris - Wikipedia",
+								},
+							},
+							{
+								web: {
+									uri: "https://www.france.fr/en/paris",
+									title: "Explore Paris",
+								},
+							},
+						],
+					},
+				},
+			],
+		});
 
-describe("UrlSummarizerTool", () => {
-	test("should have valid AgentTool metadata", () => {
-		expect(urlSummarizerTool.name).toBe("url_summarizer");
-		expect(urlSummarizerTool.description).toBeDefined();
-		expect(urlSummarizerTool.parameters.properties.url).toBeDefined();
+		try {
+			const res = await webSearchTool.execute({ query: "capital of France" });
+			expect(res.query).toBe("capital of France");
+			expect(res.summary).toBe("The capital of France is Paris.");
+			expect(res.count).toBe(2);
+			expect(res.results.length).toBe(2);
+			expect(res.results[0].title).toBe("Paris - Wikipedia");
+			expect(res.results[0].url).toBe("https://en.wikipedia.org/wiki/Paris");
+			expect(res.search_queries).toEqual(["capital of France"]);
+		} finally {
+			ai.models.generateContent = originalGenerateContent;
+		}
 	});
 
-	test("should handle invalid URL gracefully", async () => {
-		const res = await urlSummarizerTool.execute({ url: "not_a_valid_url" });
-		expect(res.error).toBeDefined();
+	test("should handle search with summary but no chunks", async () => {
+		const originalGenerateContent = ai.models.generateContent;
+		// biome-ignore lint/suspicious/noExplicitAny: Mocking SDK method for unit test
+		(ai.models as any).generateContent = async () => ({
+			text: "Current weather is 22C.",
+			candidates: [
+				{
+					groundingMetadata: {
+						webSearchQueries: ["weather"],
+						groundingChunks: [],
+					},
+				},
+			],
+		});
+
+		try {
+			const res = await webSearchTool.execute({ query: "weather" });
+			expect(res.query).toBe("weather");
+			expect(res.summary).toBe("Current weather is 22C.");
+			expect(res.count).toBe(1);
+			expect(res.results[0].title).toBe("Google Search Result");
+		} finally {
+			ai.models.generateContent = originalGenerateContent;
+		}
 	});
 
-	test("should fetch and extract text from a valid webpage URL", async () => {
-		const res = await urlSummarizerTool.execute({ url: "https://example.com" });
-		expect(res).toHaveProperty("url");
-		expect(res).toHaveProperty("content");
-		expect(typeof res.content).toBe("string");
-		expect(res.content.length).toBeGreaterThan(0);
+	test("should handle search errors gracefully", async () => {
+		const originalGenerateContent = ai.models.generateContent;
+		// biome-ignore lint/suspicious/noExplicitAny: Mocking SDK method for unit test
+		(ai.models as any).generateContent = async () => {
+			throw new Error("Network timeout");
+		};
+
+		try {
+			const res = await webSearchTool.execute({ query: "some query" });
+			expect(res.count).toBe(0);
+			expect(res.results).toEqual([]);
+			expect(res.system_note).toBeDefined();
+		} finally {
+			ai.models.generateContent = originalGenerateContent;
+		}
 	});
 });
