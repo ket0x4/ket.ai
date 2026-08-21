@@ -118,6 +118,9 @@ function getMemoriesPagePayload(chatId: string, page: number = 1) {
 async function handleMemMe(ctx: Context, chatId: string): Promise<void> {
 	if (!ctx.from) return;
 	const userMemories = Repository.getUserMemories(chatId, ctx.from.id);
+	logger.info(
+		`[Commands:mem] User ${ctx.from.id} (${ctx.from.first_name}) fetched personal profile memories in chat ${chatId} (${userMemories.length} found)`,
+	);
 	if (userMemories.length === 0) {
 		await ctx.reply(
 			`No specific profile facts saved for you (${ctx.from.first_name}) yet.`,
@@ -136,10 +139,16 @@ async function handleMemMe(ctx: Context, chatId: string): Promise<void> {
 
 async function handleMemClear(ctx: Context, chatId: string): Promise<void> {
 	if (!(await isOwnerOrCreator(ctx))) {
+		logger.warn(
+			`[Commands:mem] Unauthorized /mem clear attempt by user ${ctx.from?.id} (${ctx.from?.first_name}) in chat ${chatId}`,
+		);
 		await ctx.reply(CONFIG.MESSAGES.not_authorized_command);
 		return;
 	}
 	Repository.clearMemories(chatId);
+	logger.info(
+		`[Commands:mem] Cleared all memories for chat ${chatId} by user ${ctx.from?.id} (${ctx.from?.first_name})`,
+	);
 	await ctx.reply("All memories for this group have been cleared.");
 }
 
@@ -151,12 +160,18 @@ async function handleMemDelete(
 	const parts = lowerArg.split(" ");
 	const targetId = parseInt(parts[1], 10);
 	if (Number.isNaN(targetId)) {
+		logger.info(
+			`[Commands:mem] User ${ctx.from?.id} (${ctx.from?.first_name}) provided invalid memory ID for deletion: "${lowerArg}" in chat ${chatId}`,
+		);
 		await ctx.reply("Usage: `/mem del <id>` — e.g. `/mem del 42`", {
 			parse_mode: "Markdown",
 		});
 		return;
 	}
 	Repository.deleteMemoriesByIds([targetId], chatId);
+	logger.info(
+		`[Commands:mem] Deleted memory ID ${targetId} in chat ${chatId} by user ${ctx.from?.id} (${ctx.from?.first_name})`,
+	);
 	await ctx.reply(`[OK] Memory ID \`${targetId}\` has been deleted.`, {
 		parse_mode: "Markdown",
 	});
@@ -170,20 +185,69 @@ async function handleMemByIndex(
 	const index = indexNum - 1;
 	const memories = Repository.getMemories(chatId);
 	if (memories.length === 0) {
+		logger.info(
+			`[Commands:mem] User ${ctx.from?.id} (${ctx.from?.first_name}) queried memory #${indexNum} but chat ${chatId} has no memories`,
+		);
 		await ctx.reply("No saved memories for this group yet.");
 		return;
 	}
 	if (index < 0 || index >= memories.length) {
+		logger.info(
+			`[Commands:mem] User ${ctx.from?.id} (${ctx.from?.first_name}) queried out-of-range memory index ${indexNum} (total: ${memories.length}) in chat ${chatId}`,
+		);
 		await ctx.reply(
 			`Invalid number. Total memories: ${memories.length}. Enter 1 to ${memories.length}.`,
 		);
 		return;
 	}
 	const memory = memories[index];
+	logger.info(
+		`[Commands:mem] User ${ctx.from?.id} (${ctx.from?.first_name}) viewed memory #${indexNum} (ID: ${memory.id}) in chat ${chatId}`,
+	);
 	const header = `**Memory #${index + 1}** (of ${memories.length}) [ID:${memory.id}]:\n\n`;
 	await sendLongMessage(ctx, header + memory.text, {
 		parse_mode: "Markdown",
 	});
+}
+
+async function handleMemCommand(
+	ctx: Context,
+	chatId: string,
+	arg: string,
+): Promise<void> {
+	if (!arg) {
+		const payload = getMemDashboardPayload(chatId);
+		await ctx.reply(payload.text, {
+			parse_mode: "Markdown",
+			reply_markup: payload.keyboard,
+		});
+		return;
+	}
+
+	const lowerArg = arg.toLowerCase();
+	if (lowerArg === "me") {
+		return handleMemMe(ctx, chatId);
+	}
+	if (lowerArg === "clear") {
+		return handleMemClear(ctx, chatId);
+	}
+	if (lowerArg.startsWith("del ") || lowerArg.startsWith("forget ")) {
+		return handleMemDelete(ctx, chatId, lowerArg);
+	}
+
+	const parsedInt = parseInt(arg, 10);
+	if (!Number.isNaN(parsedInt)) {
+		return handleMemByIndex(ctx, chatId, parsedInt);
+	}
+
+	await ctx.reply(
+		"Usage:\n" +
+			"• `/mem` — Open memory dashboard\n" +
+			"• `/mem me` — View facts saved about you\n" +
+			"• `/mem del <id>` — Delete memory by ID\n" +
+			"• `/mem <number>` — View full text of memory #number",
+		{ parse_mode: "Markdown" },
+	);
 }
 
 function resolveRememberTarget(ctx: Context): {
@@ -224,6 +288,9 @@ async function sendOrEditCallback(
 export function registerCommandHandlers(bot: Bot) {
 	// 1. /start command
 	bot.command("start", async (ctx) => {
+		logger.info(
+			`[Commands:start] User ${ctx.from?.id} (${ctx.from?.first_name}) invoked /start in chat ${ctx.chat?.id}`,
+		);
 		await ctx.reply(
 			"Hi! I am an LLM-powered AI bot. I track group history, " +
 				"answer your questions, recognize photos, listen to voice messages, and participate in conversations.",
@@ -232,6 +299,9 @@ export function registerCommandHandlers(bot: Bot) {
 
 	// 2. /help command
 	bot.command("help", async (ctx) => {
+		logger.info(
+			`[Commands:help] User ${ctx.from?.id} (${ctx.from?.first_name}) invoked /help in chat ${ctx.chat?.id}`,
+		);
 		await ctx.reply(
 			"Available Commands & Capabilities:\n\n" +
 				"**Chat**: I respond if you reply to me directly or mention me in your message.\n" +
@@ -252,9 +322,16 @@ export function registerCommandHandlers(bot: Bot) {
 	bot.command(["app", "admin"], async (ctx) => {
 		try {
 			if (!(await isAuthorized(ctx))) {
+				logger.warn(
+					`[Commands:app] Unauthorized /app or /admin attempt by user ${ctx.from?.id} (${ctx.from?.first_name}) in chat ${ctx.chat?.id}`,
+				);
 				await ctx.reply(CONFIG.MESSAGES.not_authorized_command);
 				return;
 			}
+
+			logger.info(
+				`[Commands:app] User ${ctx.from?.id} (${ctx.from?.first_name}) opened Mini App dashboard button in chat ${ctx.chat?.id}`,
+			);
 
 			const appUrl =
 				CONFIG.WEB_APP_URL || `http://localhost:${CONFIG.WEB_PORT}`;
@@ -278,7 +355,7 @@ export function registerCommandHandlers(bot: Bot) {
 				{ reply_markup: keyboard },
 			);
 		} catch (error) {
-			logger.error("[Commands] Error handling /app or /admin:", error);
+			logger.error("[Commands:app] Error handling /app or /admin:", error);
 		}
 	});
 
@@ -287,12 +364,18 @@ export function registerCommandHandlers(bot: Bot) {
 		if (!ctx.chat) return;
 
 		if (!(await isOwnerOrCreator(ctx))) {
+			logger.warn(
+				`[Commands:reset] Unauthorized /reset attempt by user ${ctx.from?.id} (${ctx.from?.first_name}) in chat ${ctx.chat.id}`,
+			);
 			await ctx.reply(CONFIG.MESSAGES.not_authorized_command);
 			return;
 		}
 
 		const chatId = ctx.chat.id.toString();
 		Repository.clearChatHistory(chatId);
+		logger.info(
+			`[Commands:reset] Cleared chat history and memories for chat ${chatId} by user ${ctx.from?.id} (${ctx.from?.first_name})`,
+		);
 		await ctx.reply("Chat history and group memories cleared successfully.");
 	});
 
@@ -314,10 +397,18 @@ export function registerCommandHandlers(bot: Bot) {
 
 	// 4. Admin command: /allow <chatId> (Owner only)
 	bot.command("allow", async (ctx) => {
-		if (!CONFIG.BOT_OWNER_ID || ctx.from?.id !== CONFIG.BOT_OWNER_ID) return;
+		if (!CONFIG.BOT_OWNER_ID || ctx.from?.id !== CONFIG.BOT_OWNER_ID) {
+			logger.warn(
+				`[Commands:allow] Unauthorized /allow attempt by user ${ctx.from?.id} (${ctx.from?.first_name})`,
+			);
+			return;
+		}
 
 		const targetChatId = ctx.match?.trim();
 		if (!targetChatId) {
+			logger.info(
+				`[Commands:allow] Owner ${ctx.from?.id} invoked /allow with missing chat ID`,
+			);
 			await ctx.reply("Usage: /allow <chat_id>");
 			return;
 		}
@@ -336,6 +427,9 @@ export function registerCommandHandlers(bot: Bot) {
 		const chatLabel = title
 			? `"${title}" (\`${targetChatId}\`)`
 			: `group ID \`${targetChatId}\``;
+		logger.info(
+			`[Commands:allow] Chat permission granted to ${targetChatId} (${title || "No Title"}) by owner ${ctx.from?.id}`,
+		);
 		await ctx.reply(`[OK] Chat permission granted to ${chatLabel}.`, {
 			parse_mode: "Markdown",
 		});
@@ -343,15 +437,26 @@ export function registerCommandHandlers(bot: Bot) {
 
 	// 5. Admin command: /disallow <chatId> (Owner only)
 	bot.command("disallow", async (ctx) => {
-		if (!CONFIG.BOT_OWNER_ID || ctx.from?.id !== CONFIG.BOT_OWNER_ID) return;
+		if (!CONFIG.BOT_OWNER_ID || ctx.from?.id !== CONFIG.BOT_OWNER_ID) {
+			logger.warn(
+				`[Commands:disallow] Unauthorized /disallow attempt by user ${ctx.from?.id} (${ctx.from?.first_name})`,
+			);
+			return;
+		}
 
 		const targetChatId = ctx.match?.trim();
 		if (!targetChatId) {
+			logger.info(
+				`[Commands:disallow] Owner ${ctx.from?.id} invoked /disallow with missing chat ID`,
+			);
 			await ctx.reply("Usage: /disallow <chat_id>");
 			return;
 		}
 
 		Repository.setChatAllowed(targetChatId, false);
+		logger.info(
+			`[Commands:disallow] Chat permission revoked for group ID ${targetChatId} by owner ${ctx.from?.id}`,
+		);
 		await ctx.reply(
 			`[Denied] Chat permission revoked for group ID \`${targetChatId}\`.`,
 			{ parse_mode: "Markdown" },
@@ -363,6 +468,9 @@ export function registerCommandHandlers(bot: Bot) {
 		if (!ctx.chat) return;
 
 		if (!(await isAuthorized(ctx))) {
+			logger.warn(
+				`[Commands:prob] Unauthorized /prob attempt by user ${ctx.from?.id} (${ctx.from?.first_name}) in chat ${ctx.chat.id}`,
+			);
 			await ctx.reply(CONFIG.MESSAGES.not_authorized_command);
 			return;
 		}
@@ -374,6 +482,9 @@ export function registerCommandHandlers(bot: Bot) {
 			const chat = Repository.getChat(chatId);
 			const currentProbability = Math.round(
 				(chat?.reply_probability ?? 0.05) * 100,
+			);
+			logger.info(
+				`[Commands:prob] User ${ctx.from?.id} (${ctx.from?.first_name}) queried probability for chat ${chatId} (${currentProbability}%)`,
 			);
 			await ctx.reply(
 				`Random reply probability is currently ${currentProbability}%. To change it, type: \`/prob 10\` (for 10%).`,
@@ -388,6 +499,9 @@ export function registerCommandHandlers(bot: Bot) {
 			probabilityValue < 0 ||
 			probabilityValue > 100
 		) {
+			logger.info(
+				`[Commands:prob] User ${ctx.from?.id} (${ctx.from?.first_name}) entered invalid probability "${matchValue}" in chat ${chatId}`,
+			);
 			await ctx.reply("You must enter a percentage value between 0 and 100.");
 			return;
 		}
@@ -395,6 +509,9 @@ export function registerCommandHandlers(bot: Bot) {
 		Repository.updateChatSettings(chatId, {
 			reply_probability: probabilityValue / 100,
 		});
+		logger.info(
+			`[Commands:prob] Updated random reply probability to ${probabilityValue}% for chat ${chatId} by user ${ctx.from?.id} (${ctx.from?.first_name})`,
+		);
 		await ctx.reply(
 			`Random reply probability updated to ${probabilityValue}%.`,
 		);
@@ -406,39 +523,11 @@ export function registerCommandHandlers(bot: Bot) {
 		const chatId = ctx.chat.id.toString();
 		const arg = ctx.match?.trim() || "";
 
-		if (!arg) {
-			const payload = getMemDashboardPayload(chatId);
-			await ctx.reply(payload.text, {
-				parse_mode: "Markdown",
-				reply_markup: payload.keyboard,
-			});
-			return;
-		}
-
-		const lowerArg = arg.toLowerCase();
-		if (lowerArg === "me") {
-			return handleMemMe(ctx, chatId);
-		}
-		if (lowerArg === "clear") {
-			return handleMemClear(ctx, chatId);
-		}
-		if (lowerArg.startsWith("del ") || lowerArg.startsWith("forget ")) {
-			return handleMemDelete(ctx, chatId, lowerArg);
-		}
-
-		const parsedInt = parseInt(arg, 10);
-		if (!Number.isNaN(parsedInt)) {
-			return handleMemByIndex(ctx, chatId, parsedInt);
-		}
-
-		await ctx.reply(
-			"Usage:\n" +
-				"• `/mem` — Open memory dashboard\n" +
-				"• `/mem me` — View facts saved about you\n" +
-				"• `/mem del <id>` — Delete memory by ID\n" +
-				"• `/mem <number>` — View full text of memory #number",
-			{ parse_mode: "Markdown" },
+		logger.info(
+			`[Commands:mem] User ${ctx.from.id} (${ctx.from.first_name}) invoked /mem${arg ? ` "${arg}"` : ""} in chat ${chatId}`,
 		);
+
+		await handleMemCommand(ctx, chatId, arg);
 	});
 
 	const backToDashboardKeyboard = new InlineKeyboard().text(
@@ -450,6 +539,9 @@ export function registerCommandHandlers(bot: Bot) {
 	bot.callbackQuery("mem:dashboard", async (ctx) => {
 		if (!ctx.chat) return;
 		const chatId = ctx.chat.id.toString();
+		logger.info(
+			`[Callback:mem] User ${ctx.from?.id} (${ctx.from?.first_name}) navigated to dashboard in chat ${chatId}`,
+		);
 		await sendOrEditCallback(ctx, getMemDashboardPayload(chatId));
 	});
 
@@ -457,6 +549,9 @@ export function registerCommandHandlers(bot: Bot) {
 		if (!ctx.chat) return;
 		const chatId = ctx.chat.id.toString();
 		const targetPage = parseInt(ctx.match[1], 10);
+		logger.info(
+			`[Callback:mem] User ${ctx.from?.id} (${ctx.from?.first_name}) opened page ${targetPage} in chat ${chatId}`,
+		);
 		await sendOrEditCallback(ctx, getMemoriesPagePayload(chatId, targetPage));
 	});
 
@@ -464,6 +559,9 @@ export function registerCommandHandlers(bot: Bot) {
 		if (!ctx.chat || !ctx.from) return;
 		const chatId = ctx.chat.id.toString();
 		const userMemories = Repository.getUserMemories(chatId, ctx.from.id);
+		logger.info(
+			`[Callback:mem] User ${ctx.from.id} (${ctx.from.first_name}) viewed profile facts in chat ${chatId} (${userMemories.length} found)`,
+		);
 
 		let text = "";
 		if (userMemories.length === 0) {
@@ -482,6 +580,11 @@ export function registerCommandHandlers(bot: Bot) {
 	});
 
 	bot.callbackQuery("mem:help", async (ctx) => {
+		if (ctx.chat) {
+			logger.info(
+				`[Callback:mem] User ${ctx.from?.id} (${ctx.from?.first_name}) viewed memory help in chat ${ctx.chat.id}`,
+			);
+		}
 		const text =
 			"**How to Add Memories**\n\n" +
 			"1. Use command: `/remember <fact>`\n" +
@@ -503,11 +606,19 @@ export function registerCommandHandlers(bot: Bot) {
 
 	// 8. /model command — switch Gemini model per chat (Owner only)
 	bot.command("model", async (ctx) => {
-		if (!CONFIG.BOT_OWNER_ID || ctx.from?.id !== CONFIG.BOT_OWNER_ID) return;
+		if (!CONFIG.BOT_OWNER_ID || ctx.from?.id !== CONFIG.BOT_OWNER_ID) {
+			logger.warn(
+				`[Commands:model] Unauthorized /model attempt by user ${ctx.from?.id} (${ctx.from?.first_name})`,
+			);
+			return;
+		}
 
 		const modelName = ctx.match?.trim();
 
 		if (!modelName) {
+			logger.info(
+				`[Commands:model] Owner ${ctx.from?.id} queried current model (${CONFIG.GEMINI_MODEL})`,
+			);
 			await ctx.reply(
 				`**Current model**: \`${CONFIG.GEMINI_MODEL}\`\n\n` +
 					`To change:\n` +
@@ -521,6 +632,9 @@ export function registerCommandHandlers(bot: Bot) {
 		}
 
 		updateModel(modelName);
+		logger.info(
+			`[Commands:model] Gemini model changed to "${modelName}" by owner ${ctx.from?.id}`,
+		);
 		await ctx.reply(
 			`[OK] Model changed to \`${modelName}\`! New responses will be generated with this model.`,
 			{ parse_mode: "Markdown" },
@@ -534,6 +648,9 @@ export function registerCommandHandlers(bot: Bot) {
 
 		const { fact, userId, userName } = resolveRememberTarget(ctx);
 		if (!fact) {
+			logger.info(
+				`[Commands:remember] User ${ctx.from.id} (${ctx.from.first_name}) invoked /remember with empty fact in chat ${chatIdStr}`,
+			);
 			await ctx.reply(
 				"Usage: `/remember <fact>` or reply to a message with `/remember`.",
 				{ parse_mode: "Markdown" },
@@ -546,6 +663,10 @@ export function registerCommandHandlers(bot: Bot) {
 			userId,
 			category: "PROFILE",
 		});
+
+		logger.info(
+			`[Commands:remember] Saved memory for ${userName} (${userId}) in chat ${chatIdStr} by user ${ctx.from.id}: "${fact}"`,
+		);
 
 		await ctx.reply(`[OK] Saved memory for ${userName}: "${fact}"`, {
 			parse_mode: "Markdown",
