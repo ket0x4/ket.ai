@@ -4,13 +4,9 @@ import { bot, startBot } from "./services/bot";
 import logger from "./utils/logger";
 
 async function main() {
-	logger.info("-----------------------------------------");
-	logger.info("Starting ket.ai");
-	logger.info("-----------------------------------------");
-
+	logger.info("[Main] Starting ket.ai...");
 	// Start HTTP Web Server for Telegram Mini App
 	startServer();
-
 	// Start the bot client (long polling)
 	await startBot();
 }
@@ -18,24 +14,24 @@ async function main() {
 // Graceful shutdown handling
 const shutdown = () => {
 	logger.info(
-		"Received shutdown signal. Stopping bot, web server and closing database...",
+	"[Main] Received shutdown signal. Stopping bot, web server and closing database...",
 	);
 	try {
 		stopServer();
 	} catch (error) {
-		logger.error("Error stopping web server:", error);
+		logger.error("[Main] Error stopping web server:", error);
 	}
 	try {
 		bot.stop();
-		logger.info("Bot polling stopped.");
+		logger.info("[Main] Bot polling stopped.");
 	} catch (error) {
-		logger.error("Error stopping bot:", error);
+		logger.error("[Main] Error stopping bot:", error);
 	}
 	try {
 		db.close();
-		logger.info("Database closed successfully. Exiting.");
+		logger.info("[Main] Database closed successfully. Exiting.");
 	} catch (error) {
-		logger.error("Error closing database:", error);
+		logger.error("[Main] Error closing database:", error);
 	}
 	// Flush any buffered log lines before exiting
 	logger.shutdown();
@@ -46,6 +42,6 @@ process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
 
 main().catch((err) => {
-	logger.error("Fatal error during bot initialization:", err);
+	logger.error("[Main] Fatal error during bot initialization:", err);
 	process.exit(1);
 });
