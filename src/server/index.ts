@@ -56,7 +56,7 @@ async function checkIsChatAdmin(
 		const isAdmin = ["creator", "administrator"].includes(member.status);
 		adminStatusCache.set(cacheKey, { isAdmin, expiresAt: now + 5 * 60 * 1000 });
 		return isAdmin;
-	} catch (_err) {
+	} catch {
 		adminStatusCache.set(cacheKey, {
 			isAdmin: false,
 			expiresAt: now + 60 * 1000,
@@ -298,7 +298,7 @@ function getOwnerStats(): Response {
 		if (fs.existsSync(CONFIG.DB_PATH)) {
 			dbSizeBytes = fs.statSync(CONFIG.DB_PATH).size;
 		}
-	} catch (_e) {}
+	} catch {}
 
 	const topChats = db
 		.prepare(`
@@ -1083,7 +1083,7 @@ function serveStaticFile(pathname: string): Response {
 				"Cache-Control": "no-cache, no-store, must-revalidate",
 			},
 		});
-	} catch (_e) {
+	} catch {
 		return new Response("Internal Server Error", { status: 500 });
 	}
 }

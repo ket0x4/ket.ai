@@ -10,7 +10,7 @@ const dbDir = dirname(dbPath);
 if (dbDir && dbDir !== "." && !existsSync(dbDir)) {
 	try {
 		mkdirSync(dbDir, { recursive: true });
-	} catch (_err) {
+	} catch {
 		logger.warn(
 			`[DB] Could not create database directory at "${dbDir}". Falling back to "./data/bot.db"`,
 		);

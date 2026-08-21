@@ -27,7 +27,7 @@ async function checkMemberRole(
 	try {
 		const member = await ctx.getChatMember(ctx.from.id);
 		return allowedRoles.includes(member.status);
-	} catch (_error) {
+	} catch {
 		return false;
 	}
 }

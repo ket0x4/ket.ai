@@ -7,7 +7,7 @@ import {
 	Users,
 } from "lucide-react";
 import { type FC, useState } from "react";
-import { toast } from "sonner";
+import { EmptyState, LoadingState, SectionHeader } from "@/components/common";
 import {
 	Badge,
 	Button,
@@ -18,7 +18,8 @@ import {
 	Slider,
 	Switch,
 } from "@/components/ui";
-import { apiFetch } from "@/lib/api";
+import { useAsyncAction } from "@/hooks/useAsyncAction";
+import { api } from "@/lib/api";
 import type { Chat, UserRole } from "@/types";
 
 interface GroupCardProps {
@@ -32,20 +33,36 @@ const GroupCard: FC<GroupCardProps> = ({ chat, role, onToggleAllowed }) => {
 	const isAdmin = chat.isAdmin || isOwner;
 	const initialProb = Math.round((chat.reply_probability ?? 0.05) * 100);
 	const [probability, setProbability] = useState<number>(initialProb);
+	const { execute } = useAsyncAction();
 
 	const handleProbabilityCommit = async (val: number[]) => {
 		const probVal = val[0] / 100;
-		try {
-			await apiFetch<{ success: boolean }>(`/api/chats/${chat.chat_id}`, {
-				method: "PATCH",
-				body: JSON.stringify({ reply_probability: probVal }),
-			});
-			toast.success(`Reply probability updated to ${val[0]}%.`);
-		} catch (err: unknown) {
-			const msg = err instanceof Error ? err.message : "Update failed";
-			toast.error(msg);
-		}
+		await execute(
+			() => api.chats.update(chat.chat_id, { reply_probability: probVal }),
+			{
+				successMessage: `Reply probability updated to ${val[0]}%.`,
+				errorMessage: "Update failed",
+			},
+		);
 	};
+
+	const groupStats = [
+		{
+			icon: MessageSquare,
+			label: "Msgs",
+			value: chat.stats?.totalMessages ?? 0,
+		},
+		{
+			icon: Users,
+			label: "Users",
+			value: chat.stats?.uniqueUsers ?? 0,
+		},
+		{
+			icon: Brain,
+			label: "Facts",
+			value: chat.memoryCount ?? 0,
+		},
+	];
 
 	return (
 		<Card className="glass-card hover:border-primary/40 transition-all duration-200">
@@ -86,35 +103,20 @@ const GroupCard: FC<GroupCardProps> = ({ chat, role, onToggleAllowed }) => {
 
 			<CardContent className="p-4 pt-2 space-y-3.5 text-xs">
 				<div className="grid grid-cols-3 gap-2 p-2 rounded-lg bg-background/50 border border-border/40 text-center">
-					<div>
-						<div className="text-[10px] text-muted-foreground uppercase flex items-center justify-center gap-1">
-							<MessageSquare className="w-3 h-3" />
-							<span>Msgs</span>
-						</div>
-						<div className="font-semibold font-mono text-foreground mt-0.5">
-							{chat.stats?.totalMessages ?? 0}
-						</div>
-					</div>
-
-					<div>
-						<div className="text-[10px] text-muted-foreground uppercase flex items-center justify-center gap-1">
-							<Users className="w-3 h-3" />
-							<span>Users</span>
-						</div>
-						<div className="font-semibold font-mono text-foreground mt-0.5">
-							{chat.stats?.uniqueUsers ?? 0}
-						</div>
-					</div>
-
-					<div>
-						<div className="text-[10px] text-muted-foreground uppercase flex items-center justify-center gap-1">
-							<Brain className="w-3 h-3" />
-							<span>Facts</span>
-						</div>
-						<div className="font-semibold font-mono text-foreground mt-0.5">
-							{chat.memoryCount ?? 0}
-						</div>
-					</div>
+					{groupStats.map((stat) => {
+						const Icon = stat.icon;
+						return (
+							<div key={stat.label}>
+								<div className="text-[10px] text-muted-foreground uppercase flex items-center justify-center gap-1">
+									<Icon className="w-3 h-3" />
+									<span>{stat.label}</span>
+								</div>
+								<div className="font-semibold font-mono text-foreground mt-0.5">
+									{stat.value}
+								</div>
+							</div>
+						);
+					})}
 				</div>
 
 				{isAdmin ? (
@@ -163,57 +165,52 @@ export const GroupsTab: FC<GroupsTabProps> = ({
 	isLoading,
 	onRefresh,
 }) => {
+	const { execute } = useAsyncAction();
+
 	const handleToggleAllowed = async (
 		chatId: string,
 		currentAllowed: boolean,
 	) => {
 		const nextAllowed = !currentAllowed;
-		try {
-			await apiFetch<{ success: boolean }>(`/api/chats/${chatId}`, {
-				method: "PATCH",
-				body: JSON.stringify({ is_allowed: nextAllowed }),
-			});
-			toast.success(
-				nextAllowed ? "Group whitelisted!" : "Group removed from whitelist.",
-			);
-			onRefresh();
-		} catch (err: unknown) {
-			const msg = err instanceof Error ? err.message : "Update failed";
-			toast.error(msg);
-		}
+		await execute(() => api.chats.update(chatId, { is_allowed: nextAllowed }), {
+			successMessage: nextAllowed
+				? "Group whitelisted!"
+				: "Group removed from whitelist.",
+			errorMessage: "Update failed",
+			onSuccess: onRefresh,
+		});
 	};
 
 	return (
 		<div className="space-y-4 animate-in fade-in duration-200">
-			<div className="flex items-center justify-between">
-				<div>
-					<h3 className="text-base sm:text-lg font-bold text-foreground flex items-center gap-2">
-						<Users className="w-5 h-5 text-primary" />
-						<span>Groups & Channel Permissions</span>
-					</h3>
-					<p className="text-xs text-muted-foreground">
-						{role === "owner"
-							? "Manage bot whitelist permissions and random reply probabilities across all channels."
-							: "Overview and manage parameters for your assigned Telegram groups."}
-					</p>
-				</div>
-				<Button
-					variant="outline"
-					size="sm"
-					onClick={onRefresh}
-					className="h-8 text-xs flex items-center gap-1.5"
-				>
-					<RefreshCw className="w-3.5 h-3.5" />
-					<span>Refresh</span>
-				</Button>
-			</div>
+			<SectionHeader
+				icon={Users}
+				title="Groups & Channel Permissions"
+				description={
+					role === "owner"
+						? "Manage bot whitelist permissions and random reply probabilities across all channels."
+						: "Overview and manage parameters for your assigned Telegram groups."
+				}
+				actions={
+					<Button
+						variant="outline"
+						size="sm"
+						onClick={onRefresh}
+						className="h-8 text-xs flex items-center gap-1.5"
+					>
+						<RefreshCw className="w-3.5 h-3.5" />
+						<span>Refresh</span>
+					</Button>
+				}
+			/>
 
 			<div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 pt-1">
 				{isLoading && chats.length === 0 ? (
-					<div className="col-span-full py-16 text-center text-xs text-muted-foreground flex flex-col items-center gap-2">
-						<RefreshCw className="w-6 h-6 animate-spin text-primary" />
-						<span>Loading registered groups...</span>
-					</div>
+					<LoadingState
+						icon={RefreshCw}
+						text="Loading registered groups..."
+						className="col-span-full py-16"
+					/>
 				) : chats.length > 0 ? (
 					chats.map((c) => (
 						<GroupCard
@@ -224,16 +221,12 @@ export const GroupsTab: FC<GroupsTabProps> = ({
 						/>
 					))
 				) : (
-					<div className="col-span-full py-16 text-center text-muted-foreground flex flex-col items-center justify-center gap-3 border border-dashed border-border/60 rounded-2xl bg-card/30">
-						<ShieldAlert className="w-8 h-8 opacity-40" />
-						<div className="text-sm font-medium text-foreground">
-							No groups registered
-						</div>
-						<p className="text-xs text-muted-foreground max-w-sm">
-							The bot has not been added to any Telegram groups yet. Add the bot
-							to your group to manage it here.
-						</p>
-					</div>
+					<EmptyState
+						icon={ShieldAlert}
+						title="No groups registered"
+						description="The bot has not been added to any Telegram groups yet. Add the bot to your group to manage it here."
+						className="col-span-full py-16"
+					/>
 				)}
 			</div>
 		</div>

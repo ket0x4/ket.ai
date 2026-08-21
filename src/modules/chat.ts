@@ -48,11 +48,12 @@ async function generateAndSendReply(
 				);
 
 				const sentMsg = await ctx
-					.reply(statusMsgText, {
-						...(replyToMessageId
+					.reply(
+						statusMsgText,
+						replyToMessageId
 							? { reply_to_message_id: replyToMessageId }
-							: {}),
-					})
+							: undefined,
+					)
 					.catch((e) => {
 						logger.warn(`${logPrefix} Failed to send status message:`, e);
 						return null;
@@ -66,9 +67,11 @@ async function generateAndSendReply(
 	);
 
 	// Send final reply
-	await sendLongMessage(ctx, reply, {
-		...(replyToMessageId ? { reply_to_message_id: replyToMessageId } : {}),
-	});
+	await sendLongMessage(
+		ctx,
+		reply,
+		replyToMessageId ? { reply_to_message_id: replyToMessageId } : undefined,
+	);
 
 	// Delete the temporary status message after final answer is sent
 	if (statusMessageId && ctx.chat) {

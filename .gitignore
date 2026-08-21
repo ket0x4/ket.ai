@@ -10,3 +10,6 @@ system.txt
 /logs
 *.db-shm
 *.db-wal
+public/
+web/dist/
+*.tsbuildinfo

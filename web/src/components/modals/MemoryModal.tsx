@@ -18,7 +18,9 @@ import {
 	SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { apiFetch } from "@/lib/api";
+import { useAsyncAction } from "@/hooks/useAsyncAction";
+import { api } from "@/lib/api";
+import { MEMORY_CATEGORY_LIST } from "@/lib/constants";
 import type {
 	Chat,
 	Memory,
@@ -56,7 +58,7 @@ export const MemoryModal: FC<MemoryModalProps> = ({
 	const [chatId, setChatId] = useState<string>("");
 	const [category, setCategory] = useState<MemoryCategory>("PROFILE");
 	const [memoryText, setMemoryText] = useState("");
-	const [isSubmitting, setIsSubmitting] = useState(false);
+	const { isLoading: isSubmitting, execute } = useAsyncAction();
 
 	useEffect(() => {
 		if (isEdit && memory) {
@@ -89,30 +91,31 @@ export const MemoryModal: FC<MemoryModalProps> = ({
 			return;
 		}
 
-		try {
-			setIsSubmitting(true);
-			if (isEdit && memory) {
-				await apiFetch<{ success: boolean }>(`/api/memories/${memory.id}`, {
-					method: "PATCH",
-					body: JSON.stringify({ memoryText: trimmed, category }),
+		await execute(
+			async () => {
+				if (isEdit && memory) {
+					return api.memories.update(memory.id, {
+						memoryText: trimmed,
+						category,
+					});
+				}
+				return api.memories.create({
+					chatId,
+					memoryText: trimmed,
+					category,
 				});
-				toast.success("Memory updated successfully!");
-			} else {
-				await apiFetch<{ success: boolean }>("/api/memories", {
-					method: "POST",
-					body: JSON.stringify({ chatId, memoryText: trimmed, category }),
-				});
-				toast.success("Fact remembered successfully!");
-			}
-
-			onOpenChange(false);
-			onSuccess();
-		} catch (err: unknown) {
-			const msg = err instanceof Error ? err.message : "Failed to save memory";
-			toast.error(msg);
-		} finally {
-			setIsSubmitting(false);
-		}
+			},
+			{
+				successMessage: isEdit
+					? "Memory updated successfully!"
+					: "Fact remembered successfully!",
+				errorMessage: "Failed to save memory",
+				onSuccess: () => {
+					onOpenChange(false);
+					onSuccess();
+				},
+			},
+		);
 	};
 
 	return (
@@ -186,22 +189,14 @@ export const MemoryModal: FC<MemoryModalProps> = ({
 									<SelectValue />
 								</SelectTrigger>
 								<SelectContent>
-									<SelectItem value="PROFILE">
-										<span className="font-medium text-blue-400">PROFILE</span> —
-										Permanent Profile / Identity
-									</SelectItem>
-									<SelectItem value="DYNAMIC">
-										<span className="font-medium text-emerald-400">
-											DYNAMIC
-										</span>{" "}
-										— Preferences & State
-									</SelectItem>
-									<SelectItem value="TEMPORARY">
-										<span className="font-medium text-amber-400">
-											TEMPORARY
-										</span>{" "}
-										— Short-Lived Event / Context
-									</SelectItem>
+									{MEMORY_CATEGORY_LIST.map((cat) => (
+										<SelectItem key={cat.value} value={cat.value}>
+											<span className={`font-medium ${cat.textColor}`}>
+												{cat.label}
+											</span>{" "}
+											— {cat.description}
+										</SelectItem>
+									))}
 								</SelectContent>
 							</Select>
 						</div>

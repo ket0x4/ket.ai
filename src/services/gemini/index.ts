@@ -409,7 +409,7 @@ export const GeminiService = {
 				);
 
 				return parsed.reply || options.fallbackEmpty;
-			} catch (_parseError) {
+			} catch {
 				return responseText || options.fallbackEmpty;
 			}
 		} catch (error) {

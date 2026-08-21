@@ -133,7 +133,7 @@ export let botUsername = "";
 export async function withTyping(ctx: Context, action: () => Promise<void>) {
 	try {
 		await ctx.replyWithChatAction("typing");
-	} catch (_e) {
+	} catch {
 		// Ignore error if chat action fails
 	}
 
@@ -188,7 +188,7 @@ async function handleUnauthorizedGroup(
 	try {
 		await ctx.reply(CONFIG.MESSAGES.unauthorized_group_reply).catch(() => {});
 		await ctx.leaveChat();
-	} catch (_e) {
+	} catch {
 		logger.warn(`[Security] Could not cleanly leave chat ${chatIdStr}.`);
 	}
 	setTimeout(() => leavingChats.delete(chatIdStr), 60000);

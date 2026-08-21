@@ -1,6 +1,7 @@
-import { Bot, Crown, ShieldCheck, User as UserIcon } from "lucide-react";
+import { Bot } from "lucide-react";
 import type { FC } from "react";
 import { Badge } from "@/components/ui/badge";
+import { USER_ROLES } from "@/lib/constants";
 import type { TelegramUser, UserRole } from "@/types";
 
 interface HeaderProps {
@@ -10,31 +11,8 @@ interface HeaderProps {
 }
 
 export const Header: FC<HeaderProps> = ({ user, role, isOnline = true }) => {
-	const getRoleBadge = (role: UserRole) => {
-		switch (role) {
-			case "owner":
-				return (
-					<Badge variant="owner" className="flex items-center gap-1">
-						<Crown className="w-3 h-3 text-purple-400" />
-						<span>Owner</span>
-					</Badge>
-				);
-			case "admin":
-				return (
-					<Badge variant="admin" className="flex items-center gap-1">
-						<ShieldCheck className="w-3 h-3 text-blue-400" />
-						<span>Admin</span>
-					</Badge>
-				);
-			default:
-				return (
-					<Badge variant="user" className="flex items-center gap-1">
-						<UserIcon className="w-3 h-3 text-zinc-400" />
-						<span>User</span>
-					</Badge>
-				);
-		}
-	};
+	const roleMeta = USER_ROLES[role] || USER_ROLES.user;
+	const RoleIcon = roleMeta.icon;
 
 	const displayName = user
 		? user.first_name + (user.last_name ? ` ${user.last_name}` : "")
@@ -77,7 +55,13 @@ export const Header: FC<HeaderProps> = ({ user, role, isOnline = true }) => {
 							</span>
 						)}
 					</div>
-					{getRoleBadge(role)}
+					<Badge
+						variant={roleMeta.badgeVariant}
+						className="flex items-center gap-1"
+					>
+						<RoleIcon className={`w-3 h-3 ${roleMeta.iconColor}`} />
+						<span>{roleMeta.label}</span>
+					</Badge>
 				</div>
 			</div>
 		</header>

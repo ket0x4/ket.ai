@@ -28,3 +28,12 @@ export function formatDate(timestamp: number): string {
 		minute: "2-digit",
 	});
 }
+
+export function getErrorMessage(
+	err: unknown,
+	fallback = "An unexpected error occurred",
+): string {
+	if (err instanceof Error && err.message) return err.message;
+	if (typeof err === "string" && err.trim().length > 0) return err;
+	return fallback;
+}

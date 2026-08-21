@@ -78,7 +78,7 @@ async function fetchPageContent(
 				? urlInput
 				: `https://${urlInput}`;
 		validUrl = new URL(formattedUrl);
-	} catch (_err) {
+	} catch {
 		logger.warn(`[UrlSummarizer] Invalid URL provided: "${urlInput}"`);
 		return {
 			url: urlInput,

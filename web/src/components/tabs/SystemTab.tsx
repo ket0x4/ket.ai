@@ -31,8 +31,11 @@ import {
 } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
-import { apiFetch } from "@/lib/api";
+import { useAsyncAction } from "@/hooks/useAsyncAction";
+import { api } from "@/lib/api";
 import type { BotSettings, LogEntry, ToolTrace } from "@/types";
+
+const LOG_LEVELS = ["ALL", "INFO", "WARN", "ERROR"] as const;
 
 // Subcomponent 1: Bot Settings Card
 const BotSettingsCard: FC = () => {
@@ -44,12 +47,14 @@ const BotSettingsCard: FC = () => {
 		log_level: "info",
 		enable_web_search: true,
 	});
-	const [isSaving, setIsSaving] = useState(false);
-	const [isClearingCache, setIsClearingCache] = useState(false);
+
+	const { isLoading: isSaving, execute: executeSave } = useAsyncAction();
+	const { isLoading: isClearingCache, execute: executeClearCache } =
+		useAsyncAction();
 
 	const loadSettings = useCallback(async () => {
 		try {
-			const data = await apiFetch<BotSettings>("/api/settings");
+			const data = await api.settings.get();
 			setSettings(data);
 		} catch (err: unknown) {
 			const msg =
@@ -63,36 +68,18 @@ const BotSettingsCard: FC = () => {
 	}, [loadSettings]);
 
 	const handleSaveSettings = async () => {
-		try {
-			setIsSaving(true);
-			await apiFetch<{ success: boolean }>("/api/settings", {
-				method: "PATCH",
-				body: JSON.stringify(settings),
-			});
-			toast.success("Global bot settings saved!");
-		} catch (err: unknown) {
-			const msg = err instanceof Error ? err.message : "Save failed";
-			toast.error(msg);
-		} finally {
-			setIsSaving(false);
-		}
+		await executeSave(() => api.settings.update(settings), {
+			successMessage: "Global bot settings saved!",
+			errorMessage: "Save failed",
+		});
 	};
 
 	const handleClearCache = async () => {
 		if (!window.confirm("Clear memory vector embedding cache?")) return;
-		try {
-			setIsClearingCache(true);
-			await apiFetch<{ success: boolean; message: string }>(
-				"/api/settings/cache-clear",
-				{ method: "POST" },
-			);
-			toast.success("Embedding cache purged successfully.");
-		} catch (err: unknown) {
-			const msg = err instanceof Error ? err.message : "Cache clear failed";
-			toast.error(msg);
-		} finally {
-			setIsClearingCache(false);
-		}
+		await executeClearCache(() => api.settings.clearCache(), {
+			successMessage: "Embedding cache purged successfully.",
+			errorMessage: "Cache clear failed",
+		});
 	};
 
 	const replyProbPct = Math.round(
@@ -328,14 +315,11 @@ const LiveLogsCard: FC = () => {
 	const loadLogs = useCallback(async () => {
 		try {
 			setIsLoading(true);
-			const params = new URLSearchParams();
-			if (logType === "error") params.append("type", "error");
-			if (logLevelFilter !== "ALL") params.append("level", logLevelFilter);
-			if (logSearch.trim()) params.append("search", logSearch.trim());
-
-			const data = await apiFetch<{ logs: LogEntry[] }>(
-				`/api/logs?${params.toString()}`,
-			);
+			const data = await api.logs.get({
+				type: logType,
+				level: logLevelFilter,
+				search: logSearch,
+			});
 			setLogs(data.logs || []);
 		} catch (err: unknown) {
 			const msg = err instanceof Error ? err.message : "Failed to fetch logs";
@@ -378,7 +362,7 @@ const LiveLogsCard: FC = () => {
 			<CardContent className="space-y-3">
 				<div className="flex flex-col sm:flex-row gap-2.5 items-stretch sm:items-center justify-between text-xs">
 					<div className="flex items-center gap-1 bg-background/50 p-1 rounded-lg border border-border/50">
-						{["ALL", "INFO", "WARN", "ERROR"].map((lvl) => (
+						{LOG_LEVELS.map((lvl) => (
 							<button
 								type="button"
 								key={lvl}
@@ -471,7 +455,7 @@ const ToolTracesCard: FC = () => {
 	const loadTraces = useCallback(async () => {
 		try {
 			setIsLoading(true);
-			const data = await apiFetch<{ traces: ToolTrace[] }>("/api/tool-traces");
+			const data = await api.traces.get();
 			setTraces(data.traces || []);
 		} catch (err: unknown) {
 			const msg = err instanceof Error ? err.message : "Failed to fetch traces";

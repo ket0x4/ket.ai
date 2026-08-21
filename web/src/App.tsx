@@ -18,9 +18,8 @@ import { SandboxTab } from "@/components/tabs/SandboxTab";
 import { SystemTab } from "@/components/tabs/SystemTab";
 import { Toaster } from "@/components/ui/sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { apiFetch, getTelegramWebApp } from "@/lib/api";
+import { api, getTelegramWebApp } from "@/lib/api";
 import type {
-	AuthContext,
 	Chat,
 	Memory,
 	StatsResponse,
@@ -58,7 +57,7 @@ export default function App() {
 
 		try {
 			setAuthChecked(false);
-			const auth = await apiFetch<AuthContext>("/api/me");
+			const auth = await api.auth.me();
 			if (auth.valid && auth.user) {
 				setIsAuthenticated(true);
 				setCurrentUser(auth.user);
@@ -68,7 +67,7 @@ export default function App() {
 			} else {
 				setIsAuthenticated(false);
 			}
-		} catch (_err) {
+		} catch {
 			setIsAuthenticated(false);
 		} finally {
 			setAuthChecked(true);
@@ -82,9 +81,9 @@ export default function App() {
 		try {
 			setIsLoadingData(true);
 			const [statsRes, chatsRes, memoriesRes] = await Promise.all([
-				apiFetch<StatsResponse>("/api/stats").catch(() => null),
-				apiFetch<Chat[]>("/api/chats").catch(() => []),
-				apiFetch<Memory[]>("/api/memories?scope=all").catch(() => []),
+				api.stats.get().catch(() => null),
+				api.chats.list().catch(() => []),
+				api.memories.list({ scope: "all" }).catch(() => []),
 			]);
 
 			if (statsRes) setStats(statsRes);

@@ -12,6 +12,12 @@ import {
 	Users,
 } from "lucide-react";
 import type { FC } from "react";
+import {
+	EmptyState,
+	LoadingState,
+	MetricCard,
+	type MetricCardProps,
+} from "@/components/common";
 import { Button } from "@/components/ui/button";
 import {
 	Card,
@@ -20,175 +26,103 @@ import {
 	CardHeader,
 	CardTitle,
 } from "@/components/ui/card";
+import { MEMORY_CATEGORY_LIST } from "@/lib/constants";
 import { formatBytes, formatUptime } from "@/lib/utils";
 import type { StatsResponse, UserRole } from "@/types";
 
-// Subcomponent: Owner metrics
-const OwnerMetricsGrid: FC<{ stats: StatsResponse | null }> = ({ stats }) => (
-	<>
-		<Card className="glass-card">
-			<CardContent className="p-4 sm:p-5 flex flex-col justify-between h-full space-y-2">
-				<div className="flex items-center justify-between text-muted-foreground">
-					<span className="text-xs font-medium">Registered Groups</span>
-					<Users className="w-4 h-4 text-blue-400" />
-				</div>
-				<div className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
-					{stats?.totalChats ?? 0}
-				</div>
-				<span className="text-[11px] text-muted-foreground">
-					Total chat contexts
-				</span>
-			</CardContent>
-		</Card>
+function getMetricCards(
+	role: UserRole,
+	stats: StatsResponse | null,
+): MetricCardProps[] {
+	if (role === "owner") {
+		return [
+			{
+				title: "Registered Groups",
+				value: stats?.totalChats ?? 0,
+				icon: Users,
+				iconColor: "text-blue-400",
+				description: "Total chat contexts",
+			},
+			{
+				title: "Whitelisted",
+				value: stats?.allowedChats ?? 0,
+				icon: CheckCircle2,
+				iconColor: "text-emerald-400",
+				valueColor: "text-emerald-400",
+				description: "Active authorized groups",
+			},
+			{
+				title: "Total Memories",
+				value: stats?.totalMemories ?? 0,
+				icon: Brain,
+				iconColor: "text-purple-400",
+				description: "Semantic fact embeddings",
+			},
+			{
+				title: "Messages",
+				value: stats?.totalMessages ?? 0,
+				icon: MessageSquare,
+				iconColor: "text-amber-400",
+				description: "Processed chat turns",
+			},
+		];
+	}
 
-		<Card className="glass-card">
-			<CardContent className="p-4 sm:p-5 flex flex-col justify-between h-full space-y-2">
-				<div className="flex items-center justify-between text-muted-foreground">
-					<span className="text-xs font-medium">Whitelisted</span>
-					<CheckCircle2 className="w-4 h-4 text-emerald-400" />
-				</div>
-				<div className="text-2xl sm:text-3xl font-bold tracking-tight text-emerald-400">
-					{stats?.allowedChats ?? 0}
-				</div>
-				<span className="text-[11px] text-muted-foreground">
-					Active authorized groups
-				</span>
-			</CardContent>
-		</Card>
+	if (role === "admin") {
+		return [
+			{
+				title: "Managed Groups",
+				value: stats?.managedGroupsCount ?? 0,
+				icon: Users,
+				iconColor: "text-blue-400",
+				description: "Where you are admin",
+			},
+			{
+				title: "Group Memories",
+				value: stats?.totalMemories ?? 0,
+				icon: Brain,
+				iconColor: "text-purple-400",
+				description: "Saved in your groups",
+			},
+			{
+				title: "Group Messages",
+				value: stats?.totalMessages ?? 0,
+				icon: MessageSquare,
+				iconColor: "text-emerald-400",
+				valueColor: "text-emerald-400",
+				description: "Across managed channels",
+				colSpan: 2,
+			},
+		];
+	}
 
-		<Card className="glass-card">
-			<CardContent className="p-4 sm:p-5 flex flex-col justify-between h-full space-y-2">
-				<div className="flex items-center justify-between text-muted-foreground">
-					<span className="text-xs font-medium">Total Memories</span>
-					<Brain className="w-4 h-4 text-purple-400" />
-				</div>
-				<div className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
-					{stats?.totalMemories ?? 0}
-				</div>
-				<span className="text-[11px] text-muted-foreground">
-					Semantic fact embeddings
-				</span>
-			</CardContent>
-		</Card>
+	return [
+		{
+			title: "My Saved Facts",
+			value: stats?.totalMemories ?? 0,
+			icon: Brain,
+			iconColor: "text-blue-400",
+			valueColor: "text-blue-400",
+			description: "Personal memory records",
+		},
+		{
+			title: "My Groups",
+			value: stats?.totalGroups ?? 0,
+			icon: Users,
+			iconColor: "text-purple-400",
+			description: "Active group memberships",
+		},
+		{
+			title: "Recorded Messages",
+			value: stats?.totalMessages ?? 0,
+			icon: MessageSquare,
+			iconColor: "text-amber-400",
+			description: "Recorded interactions",
+			colSpan: 2,
+		},
+	];
+}
 
-		<Card className="glass-card">
-			<CardContent className="p-4 sm:p-5 flex flex-col justify-between h-full space-y-2">
-				<div className="flex items-center justify-between text-muted-foreground">
-					<span className="text-xs font-medium">Messages</span>
-					<MessageSquare className="w-4 h-4 text-amber-400" />
-				</div>
-				<div className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
-					{stats?.totalMessages ?? 0}
-				</div>
-				<span className="text-[11px] text-muted-foreground">
-					Processed chat turns
-				</span>
-			</CardContent>
-		</Card>
-	</>
-);
-
-// Subcomponent: Admin metrics
-const AdminMetricsGrid: FC<{ stats: StatsResponse | null }> = ({ stats }) => (
-	<>
-		<Card className="glass-card">
-			<CardContent className="p-4 sm:p-5 flex flex-col justify-between h-full space-y-2">
-				<div className="flex items-center justify-between text-muted-foreground">
-					<span className="text-xs font-medium">Managed Groups</span>
-					<Users className="w-4 h-4 text-blue-400" />
-				</div>
-				<div className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
-					{stats?.managedGroupsCount ?? 0}
-				</div>
-				<span className="text-[11px] text-muted-foreground">
-					Where you are admin
-				</span>
-			</CardContent>
-		</Card>
-
-		<Card className="glass-card">
-			<CardContent className="p-4 sm:p-5 flex flex-col justify-between h-full space-y-2">
-				<div className="flex items-center justify-between text-muted-foreground">
-					<span className="text-xs font-medium">Group Memories</span>
-					<Brain className="w-4 h-4 text-purple-400" />
-				</div>
-				<div className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
-					{stats?.totalMemories ?? 0}
-				</div>
-				<span className="text-[11px] text-muted-foreground">
-					Saved in your groups
-				</span>
-			</CardContent>
-		</Card>
-
-		<Card className="glass-card col-span-2">
-			<CardContent className="p-4 sm:p-5 flex flex-col justify-between h-full space-y-2">
-				<div className="flex items-center justify-between text-muted-foreground">
-					<span className="text-xs font-medium">Group Messages</span>
-					<MessageSquare className="w-4 h-4 text-emerald-400" />
-				</div>
-				<div className="text-2xl sm:text-3xl font-bold tracking-tight text-emerald-400">
-					{stats?.totalMessages ?? 0}
-				</div>
-				<span className="text-[11px] text-muted-foreground">
-					Across managed channels
-				</span>
-			</CardContent>
-		</Card>
-	</>
-);
-
-// Subcomponent: User metrics
-const UserMetricsGrid: FC<{ stats: StatsResponse | null }> = ({ stats }) => (
-	<>
-		<Card className="glass-card">
-			<CardContent className="p-4 sm:p-5 flex flex-col justify-between h-full space-y-2">
-				<div className="flex items-center justify-between text-muted-foreground">
-					<span className="text-xs font-medium">My Saved Facts</span>
-					<Brain className="w-4 h-4 text-blue-400" />
-				</div>
-				<div className="text-2xl sm:text-3xl font-bold tracking-tight text-blue-400">
-					{stats?.totalMemories ?? 0}
-				</div>
-				<span className="text-[11px] text-muted-foreground">
-					Personal memory records
-				</span>
-			</CardContent>
-		</Card>
-
-		<Card className="glass-card">
-			<CardContent className="p-4 sm:p-5 flex flex-col justify-between h-full space-y-2">
-				<div className="flex items-center justify-between text-muted-foreground">
-					<span className="text-xs font-medium">My Groups</span>
-					<Users className="w-4 h-4 text-purple-400" />
-				</div>
-				<div className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
-					{stats?.totalGroups ?? 0}
-				</div>
-				<span className="text-[11px] text-muted-foreground">
-					Active group memberships
-				</span>
-			</CardContent>
-		</Card>
-
-		<Card className="glass-card col-span-2">
-			<CardContent className="p-4 sm:p-5 flex flex-col justify-between h-full space-y-2">
-				<div className="flex items-center justify-between text-muted-foreground">
-					<span className="text-xs font-medium">Recorded Messages</span>
-					<MessageSquare className="w-4 h-4 text-amber-400" />
-				</div>
-				<div className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
-					{stats?.totalMessages ?? 0}
-				</div>
-				<span className="text-[11px] text-muted-foreground">
-					Recorded interactions
-				</span>
-			</CardContent>
-		</Card>
-	</>
-);
-
-// Subcomponent: Memory breakdown & system info
 const MemoryDistributionCard: FC<{
 	stats: StatsResponse | null;
 	role: UserRole;
@@ -203,9 +137,45 @@ const MemoryDistributionCard: FC<{
 		(catStats.PROFILE || 0) +
 			(catStats.DYNAMIC || 0) +
 			(catStats.TEMPORARY || 0) || 1;
-	const pPct = Math.round(((catStats.PROFILE || 0) / totalSum) * 100);
-	const dPct = Math.round(((catStats.DYNAMIC || 0) / totalSum) * 100);
-	const tPct = Math.max(0, 100 - pPct - dPct);
+
+	const percentages = {
+		PROFILE: Math.round(((catStats.PROFILE || 0) / totalSum) * 100),
+		DYNAMIC: Math.round(((catStats.DYNAMIC || 0) / totalSum) * 100),
+		TEMPORARY: Math.max(
+			0,
+			100 -
+				Math.round(((catStats.PROFILE || 0) / totalSum) * 100) -
+				Math.round(((catStats.DYNAMIC || 0) / totalSum) * 100),
+		),
+	};
+
+	const systemMetrics = [
+		{
+			icon: Activity,
+			iconColor: "text-emerald-400",
+			label: "Uptime",
+			value: formatUptime(stats?.uptimeSeconds ?? 0),
+		},
+		{
+			icon: Cpu,
+			iconColor: "text-blue-400",
+			label: "RAM Usage",
+			value: `${stats?.memoryUsageMb ?? 0} MB`,
+		},
+		{
+			icon: Database,
+			iconColor: "text-purple-400",
+			label: "DB Size",
+			value: formatBytes(stats?.dbSizeBytes ?? 0),
+		},
+		{
+			icon: Sparkles,
+			iconColor: "text-amber-400",
+			label: "Active Model",
+			value: stats?.model || "gemini",
+			title: stats?.model,
+		},
+	];
 
 	return (
 		<Card className="glass-card">
@@ -230,116 +200,70 @@ const MemoryDistributionCard: FC<{
 			</CardHeader>
 			<CardContent className="space-y-4">
 				<div className="h-3 w-full rounded-full bg-zinc-800 flex overflow-hidden p-0.5 gap-0.5">
-					<div
-						style={{ width: `${pPct}%` }}
-						className="h-full bg-blue-500 rounded-l-full transition-all duration-500 hover:brightness-110"
-						title={`PROFILE: ${catStats.PROFILE} (${pPct}%)`}
-					/>
-					<div
-						style={{ width: `${dPct}%` }}
-						className="h-full bg-emerald-500 transition-all duration-500 hover:brightness-110"
-						title={`DYNAMIC: ${catStats.DYNAMIC} (${dPct}%)`}
-					/>
-					<div
-						style={{ width: `${tPct}%` }}
-						className="h-full bg-amber-500 rounded-r-full transition-all duration-500 hover:brightness-110"
-						title={`TEMPORARY: ${catStats.TEMPORARY} (${tPct}%)`}
-					/>
+					{MEMORY_CATEGORY_LIST.map((cat, idx) => (
+						<div
+							key={cat.value}
+							style={{ width: `${percentages[cat.value]}%` }}
+							className={`h-full ${cat.barColor} transition-all duration-500 hover:brightness-110 ${
+								idx === 0
+									? "rounded-l-full"
+									: idx === MEMORY_CATEGORY_LIST.length - 1
+										? "rounded-r-full"
+										: ""
+							}`}
+							title={`${cat.label}: ${catStats[cat.value] || 0} (${percentages[cat.value]}%)`}
+						/>
+					))}
 				</div>
 
 				<div className="grid grid-cols-3 gap-2 text-xs pt-1">
-					<div className="flex items-center gap-2 p-2 rounded-lg bg-blue-500/10 border border-blue-500/20">
-						<span className="w-2 h-2 rounded-full bg-blue-400 shrink-0" />
-						<div className="truncate">
-							<span className="font-semibold text-blue-400">PROFILE: </span>
-							<span className="font-mono text-foreground font-bold">
-								{catStats.PROFILE || 0}
-							</span>
-							<span className="text-muted-foreground text-[10px] ml-1">
-								({pPct}%)
-							</span>
+					{MEMORY_CATEGORY_LIST.map((cat) => (
+						<div
+							key={cat.value}
+							className={`flex items-center gap-2 p-2 rounded-lg ${cat.chipBg} border ${cat.chipBorder}`}
+						>
+							<span
+								className={`w-2 h-2 rounded-full ${cat.dotColor} shrink-0`}
+							/>
+							<div className="truncate">
+								<span className={`font-semibold ${cat.textColor}`}>
+									{cat.label}:{" "}
+								</span>
+								<span className="font-mono text-foreground font-bold">
+									{catStats[cat.value] || 0}
+								</span>
+								<span className="text-muted-foreground text-[10px] ml-1">
+									({percentages[cat.value]}%)
+								</span>
+							</div>
 						</div>
-					</div>
-
-					<div className="flex items-center gap-2 p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
-						<span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />
-						<div className="truncate">
-							<span className="font-semibold text-emerald-400">DYNAMIC: </span>
-							<span className="font-mono text-foreground font-bold">
-								{catStats.DYNAMIC || 0}
-							</span>
-							<span className="text-muted-foreground text-[10px] ml-1">
-								({dPct}%)
-							</span>
-						</div>
-					</div>
-
-					<div className="flex items-center gap-2 p-2 rounded-lg bg-amber-500/10 border border-amber-500/20">
-						<span className="w-2 h-2 rounded-full bg-amber-400 shrink-0" />
-						<div className="truncate">
-							<span className="font-semibold text-amber-400">TEMPORARY: </span>
-							<span className="font-mono text-foreground font-bold">
-								{catStats.TEMPORARY || 0}
-							</span>
-							<span className="text-muted-foreground text-[10px] ml-1">
-								({tPct}%)
-							</span>
-						</div>
-					</div>
+					))}
 				</div>
 
 				{role === "owner" && (
 					<div className="pt-3 border-t border-border/60 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-						<div className="flex items-center gap-2.5 p-2 rounded-lg bg-background/50 border border-border/40">
-							<Activity className="w-4 h-4 text-emerald-400 shrink-0" />
-							<div>
-								<div className="text-[10px] text-muted-foreground uppercase font-medium">
-									Uptime
-								</div>
-								<div className="font-semibold font-mono text-foreground">
-									{formatUptime(stats?.uptimeSeconds ?? 0)}
-								</div>
-							</div>
-						</div>
-
-						<div className="flex items-center gap-2.5 p-2 rounded-lg bg-background/50 border border-border/40">
-							<Cpu className="w-4 h-4 text-blue-400 shrink-0" />
-							<div>
-								<div className="text-[10px] text-muted-foreground uppercase font-medium">
-									RAM Usage
-								</div>
-								<div className="font-semibold font-mono text-foreground">
-									{stats?.memoryUsageMb ?? 0} MB
-								</div>
-							</div>
-						</div>
-
-						<div className="flex items-center gap-2.5 p-2 rounded-lg bg-background/50 border border-border/40">
-							<Database className="w-4 h-4 text-purple-400 shrink-0" />
-							<div>
-								<div className="text-[10px] text-muted-foreground uppercase font-medium">
-									DB Size
-								</div>
-								<div className="font-semibold font-mono text-foreground">
-									{formatBytes(stats?.dbSizeBytes ?? 0)}
-								</div>
-							</div>
-						</div>
-
-						<div className="flex items-center gap-2.5 p-2 rounded-lg bg-background/50 border border-border/40">
-							<Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
-							<div>
-								<div className="text-[10px] text-muted-foreground uppercase font-medium">
-									Active Model
-								</div>
+						{systemMetrics.map((item) => {
+							const Icon = item.icon;
+							return (
 								<div
-									className="font-semibold font-mono text-foreground truncate max-w-[110px]"
-									title={stats?.model}
+									key={item.label}
+									className="flex items-center gap-2.5 p-2 rounded-lg bg-background/50 border border-border/40"
 								>
-									{stats?.model || "gemini"}
+									<Icon className={`w-4 h-4 shrink-0 ${item.iconColor}`} />
+									<div>
+										<div className="text-[10px] text-muted-foreground uppercase font-medium">
+											{item.label}
+										</div>
+										<div
+											className="font-semibold font-mono text-foreground truncate max-w-[110px]"
+											title={item.title}
+										>
+											{item.value}
+										</div>
+									</div>
 								</div>
-							</div>
-						</div>
+							);
+						})}
 					</div>
 				)}
 			</CardContent>
@@ -347,7 +271,6 @@ const MemoryDistributionCard: FC<{
 	);
 };
 
-// Subcomponent: Active chats list
 const TopActiveGroupsCard: FC<{
 	topChats?: StatsResponse["topChats"];
 	onNavigateToGroups: () => void;
@@ -397,10 +320,13 @@ const TopActiveGroupsCard: FC<{
 					))}
 				</div>
 			) : (
-				<div className="py-8 text-center text-xs text-muted-foreground flex flex-col items-center gap-2">
-					<Server className="w-6 h-6 opacity-40" />
-					<span>No active groups recorded yet.</span>
-				</div>
+				<EmptyState
+					icon={Server}
+					title="No active groups"
+					description="No active groups recorded yet."
+					bordered={false}
+					className="py-8"
+				/>
 			)}
 		</CardContent>
 	</Card>
@@ -423,23 +349,22 @@ export const DashboardTab: FC<DashboardTabProps> = ({
 }) => {
 	if (isLoading && !stats) {
 		return (
-			<div className="flex flex-col items-center justify-center py-16 text-muted-foreground gap-3">
-				<Activity className="w-8 h-8 animate-spin text-primary" />
-				<span className="text-sm">Loading telemetry & metrics...</span>
-			</div>
+			<LoadingState
+				icon={Activity}
+				text="Loading telemetry & metrics..."
+				iconClassName="w-8 h-8 animate-spin text-primary"
+			/>
 		);
 	}
+
+	const metricCards = getMetricCards(role, stats);
 
 	return (
 		<div className="space-y-6 animate-in fade-in duration-200">
 			<div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-				{role === "owner" ? (
-					<OwnerMetricsGrid stats={stats} />
-				) : role === "admin" ? (
-					<AdminMetricsGrid stats={stats} />
-				) : (
-					<UserMetricsGrid stats={stats} />
-				)}
+				{metricCards.map((card) => (
+					<MetricCard key={card.title} {...card} />
+				))}
 			</div>
 
 			{role !== "user" && (

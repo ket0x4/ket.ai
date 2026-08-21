@@ -1,6 +1,4 @@
 import {
-	Check,
-	Copy,
 	Download,
 	Edit2,
 	Inbox,
@@ -11,7 +9,7 @@ import {
 	Upload,
 } from "lucide-react";
 import { type ChangeEvent, type FC, useMemo, useRef, useState } from "react";
-import { toast } from "sonner";
+import { CopyButton, EmptyState, LoadingState } from "@/components/common";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -23,28 +21,11 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
-import { apiFetch } from "@/lib/api";
+import { useAsyncAction } from "@/hooks/useAsyncAction";
+import { api } from "@/lib/api";
+import { MEMORY_CATEGORIES, MEMORY_CATEGORY_LIST } from "@/lib/constants";
 import { formatDate } from "@/lib/utils";
-import type {
-	Chat,
-	Memory,
-	MemoryCategory,
-	TelegramUser,
-	UserRole,
-} from "@/types";
-
-function getCategoryBadgeVariant(cat: MemoryCategory) {
-	switch (cat) {
-		case "PROFILE":
-			return "profile";
-		case "DYNAMIC":
-			return "dynamic";
-		case "TEMPORARY":
-			return "temporary";
-		default:
-			return "default";
-	}
-}
+import type { Chat, Memory, TelegramUser, UserRole } from "@/types";
 
 interface MemoryCardProps {
 	memory: Memory;
@@ -65,28 +46,20 @@ const MemoryCard: FC<MemoryCardProps> = ({
 	onEdit,
 	onDelete,
 }) => {
-	const [copied, setCopied] = useState(false);
-
 	const isOwner = role === "owner";
 	const isAdminOfChat = adminChatIds.includes(memory.chat_id);
 	const isMyMemory = currentUser && memory.user_id === currentUser.id;
 	const canEditDelete = isOwner || isAdminOfChat || isMyMemory;
 
-	const handleCopy = () => {
-		if (navigator.clipboard) {
-			navigator.clipboard.writeText(memory.memory_text);
-			setCopied(true);
-			toast.success("Fact copied to clipboard!");
-			setTimeout(() => setCopied(false), 2000);
-		}
-	};
+	const catMeta =
+		MEMORY_CATEGORIES[memory.category] || MEMORY_CATEGORIES.PROFILE;
 
 	return (
 		<Card className="glass-card hover:border-primary/40 transition-all duration-200">
 			<div className="p-4 sm:p-5 space-y-3">
 				<div className="flex items-center justify-between gap-2 flex-wrap text-xs">
 					<div className="flex items-center gap-2 flex-wrap">
-						<Badge variant={getCategoryBadgeVariant(memory.category)}>
+						<Badge variant={catMeta.badgeVariant}>
 							{memory.category || "PROFILE"}
 						</Badge>
 						<span className="px-2 py-0.5 rounded-md bg-secondary text-muted-foreground text-[11px] font-medium truncate max-w-[200px]">
@@ -103,24 +76,10 @@ const MemoryCard: FC<MemoryCardProps> = ({
 				</p>
 
 				<div className="flex items-center justify-between pt-2 border-t border-border/40 text-xs">
-					<Button
-						variant="ghost"
-						size="sm"
-						onClick={handleCopy}
-						className="h-7 px-2 text-muted-foreground hover:text-foreground flex items-center gap-1.5 text-xs"
-					>
-						{copied ? (
-							<>
-								<Check className="w-3.5 h-3.5 text-emerald-400" />
-								<span className="text-emerald-400">Copied</span>
-							</>
-						) : (
-							<>
-								<Copy className="w-3.5 h-3.5" />
-								<span>Copy</span>
-							</>
-						)}
-					</Button>
+					<CopyButton
+						text={memory.memory_text}
+						successMessage="Fact copied to clipboard!"
+					/>
 
 					{canEditDelete && (
 						<div className="flex items-center gap-1">
@@ -203,7 +162,11 @@ export const MemoriesTab: FC<MemoriesTabProps> = ({
 	const [scopeFilter, setScopeFilter] = useState<string>("mine");
 	const [chatFilter, setChatFilter] = useState<string>("all");
 	const [categoryFilter, setCategoryFilter] = useState<string>("all");
-	const [isPruning, setIsPruning] = useState(false);
+
+	const { isLoading: isPruning, execute: executePrune } = useAsyncAction();
+	const { execute: executeDelete } = useAsyncAction();
+	const { execute: executeExport } = useAsyncAction();
+	const { execute: executeImport } = useAsyncAction();
 
 	const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -236,90 +199,72 @@ export const MemoriesTab: FC<MemoriesTabProps> = ({
 			return;
 		}
 
-		try {
-			await apiFetch<{ success: boolean }>(`/api/memories/${m.id}`, {
-				method: "DELETE",
-			});
-			toast.success("Memory deleted.");
-			onRefresh();
-		} catch (err: unknown) {
-			const msg = err instanceof Error ? err.message : "Delete failed";
-			toast.error(msg);
-		}
+		await executeDelete(() => api.memories.delete(m.id), {
+			successMessage: "Memory deleted.",
+			errorMessage: "Delete failed",
+			onSuccess: onRefresh,
+		});
 	};
 
 	const handlePrune = async () => {
 		if (!window.confirm("Prune all expired temporary memories now?")) return;
 
-		try {
-			setIsPruning(true);
-			const res = await apiFetch<{ prunedCount: number }>(
-				"/api/memories/prune",
-				{
-					method: "POST",
-					body: JSON.stringify(
-						chatFilter !== "all" ? { chatId: chatFilter } : {},
-					),
-				},
-			);
-			toast.success(`Pruned ${res.prunedCount} expired memories.`);
-			onRefresh();
-		} catch (err: unknown) {
-			const msg = err instanceof Error ? err.message : "Prune failed";
-			toast.error(msg);
-		} finally {
-			setIsPruning(false);
-		}
+		await executePrune(
+			() => api.memories.prune(chatFilter !== "all" ? chatFilter : undefined),
+			{
+				successMessage: (res) => `Pruned ${res.prunedCount} expired memories.`,
+				errorMessage: "Prune failed",
+				onSuccess: onRefresh,
+			},
+		);
 	};
 
 	const handleExport = async () => {
-		try {
-			const data = await apiFetch<unknown>("/api/memories/export");
-			const blob = new Blob([JSON.stringify(data, null, 2)], {
-				type: "application/json",
-			});
-			const url = URL.createObjectURL(blob);
-			const a = document.createElement("a");
-			a.href = url;
-			a.download = `ket_memories_${Date.now()}.json`;
-			a.click();
-			URL.revokeObjectURL(url);
-			toast.success("Export downloaded!");
-		} catch (err: unknown) {
-			const msg = err instanceof Error ? err.message : "Export failed";
-			toast.error(msg);
-		}
+		await executeExport(
+			async () => {
+				const data = await api.memories.export();
+				const blob = new Blob([JSON.stringify(data, null, 2)], {
+					type: "application/json",
+				});
+				const url = URL.createObjectURL(blob);
+				const a = document.createElement("a");
+				a.href = url;
+				a.download = `ket_memories_${Date.now()}.json`;
+				a.click();
+				URL.revokeObjectURL(url);
+			},
+			{
+				successMessage: "Export downloaded!",
+				errorMessage: "Export failed",
+			},
+		);
 	};
 
 	const handleFileChange = async (e: ChangeEvent<HTMLInputElement>) => {
 		const file = e.target.files?.[0];
 		if (!file) return;
 
-		try {
-			const text = await file.text();
-			const parsed = JSON.parse(text);
-			const list = Array.isArray(parsed) ? parsed : parsed.memories;
+		await executeImport(
+			async () => {
+				const text = await file.text();
+				const parsed = JSON.parse(text);
+				const list = Array.isArray(parsed) ? parsed : parsed.memories;
 
-			if (!Array.isArray(list)) {
-				throw new Error("Invalid format: expected memories array.");
-			}
+				if (!Array.isArray(list)) {
+					throw new Error("Invalid format: expected memories array.");
+				}
 
-			const res = await apiFetch<{ importedCount: number }>(
-				"/api/memories/import",
-				{
-					method: "POST",
-					body: JSON.stringify({ memories: list }),
-				},
-			);
+				return api.memories.import(list);
+			},
+			{
+				successMessage: (res) =>
+					`Imported ${res?.importedCount ?? 0} memory records!`,
+				errorMessage: "Import failed",
+				onSuccess: onRefresh,
+			},
+		);
 
-			toast.success(`Imported ${res.importedCount} memory records!`);
-			onRefresh();
-		} catch (err: unknown) {
-			const msg = err instanceof Error ? err.message : "Import failed";
-			toast.error(msg);
-		} finally {
-			if (fileInputRef.current) fileInputRef.current.value = "";
-		}
+		if (fileInputRef.current) fileInputRef.current.value = "";
 	};
 
 	const getChatLabel = (chatId: string) => {
@@ -428,19 +373,22 @@ export const MemoriesTab: FC<MemoriesTabProps> = ({
 					</SelectTrigger>
 					<SelectContent>
 						<SelectItem value="all">All Categories</SelectItem>
-						<SelectItem value="PROFILE">PROFILE</SelectItem>
-						<SelectItem value="DYNAMIC">DYNAMIC</SelectItem>
-						<SelectItem value="TEMPORARY">TEMPORARY</SelectItem>
+						{MEMORY_CATEGORY_LIST.map((cat) => (
+							<SelectItem key={cat.value} value={cat.value}>
+								{cat.label}
+							</SelectItem>
+						))}
 					</SelectContent>
 				</Select>
 			</div>
 
 			<div className="space-y-3 pt-2">
 				{isLoading && memories.length === 0 ? (
-					<div className="py-16 text-center text-muted-foreground flex flex-col items-center gap-3">
-						<Sparkles className="w-6 h-6 animate-pulse text-primary" />
-						<span className="text-xs">Loading semantic facts...</span>
-					</div>
+					<LoadingState
+						icon={Sparkles}
+						text="Loading semantic facts..."
+						iconClassName="w-6 h-6 animate-pulse text-primary"
+					/>
 				) : filteredMemories.length > 0 ? (
 					filteredMemories.map((m) => (
 						<MemoryCard
@@ -455,20 +403,17 @@ export const MemoriesTab: FC<MemoriesTabProps> = ({
 						/>
 					))
 				) : (
-					<div className="py-16 text-center text-muted-foreground flex flex-col items-center justify-center gap-3 border border-dashed border-border/60 rounded-2xl bg-card/30">
-						<Inbox className="w-8 h-8 opacity-40" />
-						<div className="text-sm font-medium text-foreground">
-							No memory records found
-						</div>
-						<p className="text-xs text-muted-foreground max-w-sm">
-							No facts match your search filters. You can record a new fact
-							anytime.
-						</p>
-						<Button size="sm" onClick={onOpenAddModal} className="mt-2 text-xs">
-							<Plus className="w-3.5 h-3.5 mr-1" />
-							Add First Fact
-						</Button>
-					</div>
+					<EmptyState
+						icon={Inbox}
+						title="No memory records found"
+						description="No facts match your search filters. You can record a new fact anytime."
+						action={
+							<Button size="sm" onClick={onOpenAddModal} className="text-xs">
+								<Plus className="w-3.5 h-3.5 mr-1" />
+								Add First Fact
+							</Button>
+						}
+					/>
 				)}
 			</div>
 		</div>

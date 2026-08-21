@@ -66,7 +66,7 @@ const getInitData = (): string => {
 	return "";
 };
 
-export async function apiFetch<T>(
+async function apiFetch<T>(
 	endpoint: string,
 	options: RequestInit = {},
 ): Promise<T> {
@@ -95,3 +95,140 @@ export async function apiFetch<T>(
 
 	return (await res.json()) as T;
 }
+
+import type {
+	AuthContext,
+	BotSettings,
+	Chat,
+	LogEntry,
+	Memory,
+	MemoryCategory,
+	SandboxResponse,
+	StatsResponse,
+	ToolTrace,
+} from "@/types";
+
+export const api = {
+	auth: {
+		me: () => apiFetch<AuthContext>("/api/me"),
+	},
+	stats: {
+		get: () => apiFetch<StatsResponse>("/api/stats"),
+	},
+	chats: {
+		list: () => apiFetch<Chat[]>("/api/chats"),
+		update: (
+			chatId: string,
+			data: { is_allowed?: boolean; reply_probability?: number },
+		) =>
+			apiFetch<{ success: boolean; message?: string }>(`/api/chats/${chatId}`, {
+				method: "PATCH",
+				body: JSON.stringify(data),
+			}),
+	},
+	memories: {
+		list: (params?: {
+			chatId?: string;
+			search?: string;
+			category?: string;
+			scope?: string;
+		}) => {
+			const searchParams = new URLSearchParams();
+			if (params?.chatId) searchParams.append("chat_id", params.chatId);
+			if (params?.search) searchParams.append("search", params.search);
+			if (params?.category) searchParams.append("category", params.category);
+			if (params?.scope) searchParams.append("scope", params.scope);
+			const qs = searchParams.toString();
+			return apiFetch<Memory[]>(`/api/memories${qs ? `?${qs}` : ""}`);
+		},
+		create: (data: {
+			chatId: string;
+			memoryText: string;
+			category?: MemoryCategory;
+		}) =>
+			apiFetch<{ success: boolean; message?: string }>("/api/memories", {
+				method: "POST",
+				body: JSON.stringify(data),
+			}),
+		update: (
+			id: number,
+			data: { memoryText?: string; category?: MemoryCategory },
+		) =>
+			apiFetch<{ success: boolean; message?: string }>(`/api/memories/${id}`, {
+				method: "PATCH",
+				body: JSON.stringify(data),
+			}),
+		delete: (id: number) =>
+			apiFetch<{ success: boolean; message?: string }>(`/api/memories/${id}`, {
+				method: "DELETE",
+			}),
+		prune: (chatId?: string) =>
+			apiFetch<{ success: boolean; prunedCount: number }>(
+				"/api/memories/prune",
+				{
+					method: "POST",
+					body: JSON.stringify(chatId ? { chatId } : {}),
+				},
+			),
+		export: () => apiFetch<unknown>("/api/memories/export"),
+		import: (
+			memories: Array<{
+				chatId?: string;
+				memoryText?: string;
+				category?: MemoryCategory;
+			}>,
+		) =>
+			apiFetch<{ success: boolean; importedCount: number }>(
+				"/api/memories/import",
+				{
+					method: "POST",
+					body: JSON.stringify({ memories }),
+				},
+			),
+	},
+	settings: {
+		get: () => apiFetch<BotSettings>("/api/settings"),
+		update: (data: Partial<BotSettings>) =>
+			apiFetch<{ success: boolean; message?: string; settings?: BotSettings }>(
+				"/api/settings",
+				{
+					method: "PATCH",
+					body: JSON.stringify(data),
+				},
+			),
+		clearCache: () =>
+			apiFetch<{ success: boolean; message: string }>(
+				"/api/settings/cache-clear",
+				{
+					method: "POST",
+				},
+			),
+	},
+	logs: {
+		get: (params?: {
+			type?: "app" | "error";
+			level?: string;
+			search?: string;
+			limit?: number;
+		}) => {
+			const searchParams = new URLSearchParams();
+			if (params?.type === "error") searchParams.append("type", "error");
+			if (params?.level && params.level !== "ALL")
+				searchParams.append("level", params.level);
+			if (params?.search) searchParams.append("search", params.search);
+			if (params?.limit) searchParams.append("limit", params.limit.toString());
+			const qs = searchParams.toString();
+			return apiFetch<{ logs: LogEntry[] }>(`/api/logs${qs ? `?${qs}` : ""}`);
+		},
+	},
+	traces: {
+		get: () => apiFetch<{ traces: ToolTrace[] }>("/api/tool-traces"),
+	},
+	sandbox: {
+		run: (data: { prompt: string; systemInstruction?: string }) =>
+			apiFetch<SandboxResponse>("/api/sandbox", {
+				method: "POST",
+				body: JSON.stringify(data),
+			}),
+	},
+};

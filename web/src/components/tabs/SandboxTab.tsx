@@ -1,6 +1,7 @@
-import { Bot, Check, Code2, Copy, Play, Sparkles, Timer } from "lucide-react";
+import { Bot, Code2, Play, Sparkles, Timer } from "lucide-react";
 import { type FC, useState } from "react";
 import { toast } from "sonner";
+import { CopyButton } from "@/components/common";
 import {
 	Badge,
 	Button,
@@ -11,51 +12,28 @@ import {
 	CardTitle,
 	Textarea,
 } from "@/components/ui";
-import { apiFetch } from "@/lib/api";
+import { useAsyncAction } from "@/hooks/useAsyncAction";
+import { api } from "@/lib/api";
+import { SANDBOX_SAMPLE_PROMPTS } from "@/lib/constants";
 import type { SandboxResponse } from "@/types";
 
 export const SandboxTab: FC = () => {
 	const [prompt, setPrompt] = useState("");
-	const [isExecuting, setIsExecuting] = useState(false);
 	const [response, setResponse] = useState<SandboxResponse | null>(null);
-	const [copied, setCopied] = useState(false);
-
-	const samplePrompts = [
-		"What is your identity and what group are we in?",
-		"Summarize what you know about the bot owner.",
-		"Search the web for the latest TypeScript release features.",
-		"Explain the difference between PROFILE and TEMPORARY memories.",
-	];
+	const { isLoading: isExecuting, execute } = useAsyncAction();
 
 	const handleRunSandbox = async () => {
-		if (!prompt.trim()) {
+		const trimmed = prompt.trim();
+		if (!trimmed) {
 			toast.error("Please enter a test prompt.");
 			return;
 		}
 
-		try {
-			setIsExecuting(true);
-			const res = await apiFetch<SandboxResponse>("/api/sandbox", {
-				method: "POST",
-				body: JSON.stringify({ prompt: prompt.trim() }),
-			});
-			setResponse(res);
-			toast.success("Reasoning loop completed!");
-		} catch (err: unknown) {
-			const msg = err instanceof Error ? err.message : "Execution failed";
-			toast.error(msg);
-		} finally {
-			setIsExecuting(false);
-		}
-	};
-
-	const handleCopyResponse = () => {
-		if (response?.reply && navigator.clipboard) {
-			navigator.clipboard.writeText(response.reply);
-			setCopied(true);
-			toast.success("Response copied to clipboard!");
-			setTimeout(() => setCopied(false), 2000);
-		}
+		await execute(() => api.sandbox.run({ prompt: trimmed }), {
+			successMessage: "Reasoning loop completed!",
+			errorMessage: "Execution failed",
+			onSuccess: (res) => setResponse(res),
+		});
 	};
 
 	return (
@@ -95,7 +73,7 @@ export const SandboxTab: FC = () => {
 							Quick test templates:
 						</div>
 						<div className="flex flex-wrap gap-1.5">
-							{samplePrompts.map((p) => (
+							{SANDBOX_SAMPLE_PROMPTS.map((p) => (
 								<button
 									type="button"
 									key={p}
@@ -152,24 +130,11 @@ export const SandboxTab: FC = () => {
 						</CardDescription>
 					</div>
 					{response?.reply && (
-						<Button
-							variant="ghost"
-							size="sm"
-							onClick={handleCopyResponse}
-							className="h-8 text-xs flex items-center gap-1.5"
-						>
-							{copied ? (
-								<>
-									<Check className="w-3.5 h-3.5 text-emerald-400" />
-									<span className="text-emerald-400">Copied</span>
-								</>
-							) : (
-								<>
-									<Copy className="w-3.5 h-3.5" />
-									<span>Copy</span>
-								</>
-							)}
-						</Button>
+						<CopyButton
+							text={response.reply}
+							successMessage="Response copied to clipboard!"
+							className="h-8"
+						/>
 					)}
 				</CardHeader>
 
