@@ -7,8 +7,15 @@ import { registerCommandHandlers } from "../modules/commands";
 import { registerImageHandlers } from "../modules/image";
 import { registerVoiceHandlers } from "../modules/voice";
 import logger from "../utils/logger";
-import { extractPhotoFileId } from "../utils/mediaDownloader";
+import {
+	downloadTelegramFileById,
+	extractPhotoFileId,
+	getAudioMimeType,
+	isDownloadError,
+} from "../utils/mediaDownloader";
 import { extractTelegramChatTitle } from "../utils/message";
+import { describeImage, transcribeAudio } from "./gemini/mediaPerception";
+import { checkAndRunBackgroundMemoryExtraction } from "./gemini/memoryWorker";
 
 export const bot = new GrammyBot(CONFIG.TELEGRAM_BOT_TOKEN);
 
@@ -307,6 +314,165 @@ async function handleGroupAuth(
 	return true;
 }
 
+async function processBackgroundVoice(
+	ctx: Context,
+	chatIdStr: string,
+	messageId: number,
+	fileId: string,
+	mimeType?: string,
+): Promise<void> {
+	try {
+		const downloadResult = await downloadTelegramFileById(ctx, fileId, "voice");
+		if (isDownloadError(downloadResult)) {
+			logger.warn(
+				`[Multimodal Perception] Could not download voice message ${messageId} in chat ${chatIdStr}: ${downloadResult.error}`,
+			);
+			return;
+		}
+
+		const resolvedMime = getAudioMimeType(downloadResult.filePath, mimeType);
+		const transcription = await transcribeAudio(
+			downloadResult.buffer,
+			resolvedMime,
+		);
+
+		const updatedText = transcription.trim()
+			? `[Ses Kaydı]: ${transcription.trim()}`
+			: `[Ses Kaydı: (Sessiz / Konuşma Yok)]`;
+
+		Repository.updateMessageText(chatIdStr, messageId, updatedText);
+		logger.info(
+			`[Multimodal Perception] Voice transcribed for msg ${messageId} in chat ${chatIdStr}: "${updatedText}"`,
+		);
+
+		// Trigger background memory worker counter
+		checkAndRunBackgroundMemoryExtraction(chatIdStr).catch(() => {});
+	} catch (err) {
+		logger.error(
+			`[Multimodal Perception] Error processing background voice for msg ${messageId}:`,
+			err,
+		);
+	}
+}
+
+async function processBackgroundPhoto(
+	ctx: Context,
+	chatIdStr: string,
+	messageId: number,
+	fileId: string,
+	caption?: string,
+): Promise<void> {
+	try {
+		const downloadResult = await downloadTelegramFileById(ctx, fileId, "photo");
+		if (isDownloadError(downloadResult)) {
+			logger.warn(
+				`[Multimodal Perception] Could not download photo message ${messageId} in chat ${chatIdStr}: ${downloadResult.error}`,
+			);
+			return;
+		}
+
+		const description = await describeImage(
+			downloadResult.buffer,
+			"image/jpeg",
+			caption,
+		);
+
+		let updatedText = "";
+		if (description.trim()) {
+			updatedText = caption?.trim()
+				? `[Görsel - "${caption.trim()}"]: ${description.trim()}`
+				: `[Görsel]: ${description.trim()}`;
+		} else if (caption?.trim()) {
+			updatedText = `[Görsel]: ${caption.trim()}`;
+		} else {
+			updatedText = `[Görsel]`;
+		}
+
+		Repository.updateMessageText(chatIdStr, messageId, updatedText);
+		logger.info(
+			`[Multimodal Perception] Photo described for msg ${messageId} in chat ${chatIdStr}: "${updatedText}"`,
+		);
+
+		// Trigger background memory worker counter
+		checkAndRunBackgroundMemoryExtraction(chatIdStr).catch(() => {});
+	} catch (err) {
+		logger.error(
+			`[Multimodal Perception] Error processing background photo for msg ${messageId}:`,
+			err,
+		);
+	}
+}
+
+interface ExtractedMediaInfo {
+	textContent: string;
+	photoFileId?: string;
+	voiceFileId?: string;
+	voiceMimeType?: string;
+	initialText?: string;
+}
+
+function extractMessageMediaInfo(msg?: Context["message"]): ExtractedMediaInfo {
+	if (!msg) return { textContent: "" };
+
+	const textContent = msg.text || msg.caption || "";
+	const photoFileId =
+		extractPhotoFileId(msg.photo) ||
+		(msg.document?.mime_type?.startsWith("image/")
+			? msg.document.file_id
+			: undefined);
+	const voiceFileId = msg.voice?.file_id || msg.audio?.file_id;
+	const voiceMimeType = msg.voice?.mime_type || msg.audio?.mime_type;
+
+	let initialText: string | undefined = textContent || undefined;
+	if (!initialText) {
+		if (photoFileId) initialText = "[Görsel]";
+		else if (voiceFileId) initialText = "[Ses Kaydı]";
+	}
+
+	return {
+		textContent,
+		photoFileId,
+		voiceFileId,
+		voiceMimeType,
+		initialText,
+	};
+}
+
+function triggerBackgroundMediaPerception(
+	ctx: Context,
+	chatIdStr: string,
+	messageId: number,
+	mediaInfo: ExtractedMediaInfo,
+): void {
+	if (mediaInfo.voiceFileId) {
+		processBackgroundVoice(
+			ctx,
+			chatIdStr,
+			messageId,
+			mediaInfo.voiceFileId,
+			mediaInfo.voiceMimeType,
+		).catch((err) => {
+			logger.error(
+				`[Multimodal Perception] Voice background task error in chat ${chatIdStr}:`,
+				err,
+			);
+		});
+	} else if (mediaInfo.photoFileId) {
+		processBackgroundPhoto(
+			ctx,
+			chatIdStr,
+			messageId,
+			mediaInfo.photoFileId,
+			mediaInfo.textContent || undefined,
+		).catch((err) => {
+			logger.error(
+				`[Multimodal Perception] Photo background task error in chat ${chatIdStr}:`,
+				err,
+			);
+		});
+	}
+}
+
 /**
  * Initializes and configures the bot.
  */
@@ -356,7 +522,13 @@ async function initBot() {
 
 	// 4. Middleware: Message Archiver & Background Topic Summarizer
 	bot.on(
-		["message:text", "message:photo", "message:voice"],
+		[
+			"message:text",
+			"message:photo",
+			"message:voice",
+			"message:audio",
+			"message:document",
+		],
 		async (ctx, next) => {
 			const chat = ctx.chat;
 			const msg = ctx.message;
@@ -364,11 +536,8 @@ async function initBot() {
 
 			if (!chat || !msg || !from) return await next();
 
-			const photoFileId =
-				extractPhotoFileId(msg.photo) ||
-				(msg.document?.mime_type?.startsWith("image/")
-					? msg.document.file_id
-					: undefined);
+			const chatIdStr = chat.id.toString();
+			const mediaInfo = extractMessageMediaInfo(msg);
 			const isSelf = from.is_bot && from.username === botUsername;
 
 			Repository.saveMessage({
@@ -378,8 +547,8 @@ async function initBot() {
 				username: from.username || undefined,
 				firstName: from.first_name,
 				replyToMessageId: msg.reply_to_message?.message_id || undefined,
-				text: textContent || undefined,
-				photoFileId,
+				text: mediaInfo.initialText,
+				photoFileId: mediaInfo.photoFileId,
 				isBotReply: isSelf,
 				sentAt: msg.date,
 			});
@@ -387,6 +556,13 @@ async function initBot() {
 			if (!from.is_bot) {
 				triggerPeriodicRetentionCleanup(chatIdStr);
 			}
+
+			triggerBackgroundMediaPerception(
+				ctx,
+				chatIdStr,
+				msg.message_id,
+				mediaInfo,
+			);
 
 			await next();
 		},

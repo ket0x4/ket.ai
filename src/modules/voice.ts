@@ -4,19 +4,7 @@ import {
 	isDirectMediaInteraction,
 	processMediaInteraction,
 } from "../services/mediaHelper";
-
-/**
- * Determines the audio MIME type from a Telegram voice file path.
- * Telegram voice messages are typically OGG/Opus (.oga),
- * but we handle other extensions as a safeguard.
- */
-function getAudioMimeType(filePath: string): string {
-	if (filePath.endsWith(".mp3")) return "audio/mpeg";
-	if (filePath.endsWith(".wav")) return "audio/wav";
-	if (filePath.endsWith(".m4a")) return "audio/mp4";
-	// Default: Telegram voice messages use OGG/Opus (.oga)
-	return "audio/ogg";
-}
+import { getAudioMimeType } from "../utils/mediaDownloader";
 
 export function registerVoiceHandlers(bot: Bot) {
 	// Listen to voice messages

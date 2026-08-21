@@ -5,6 +5,7 @@ import { Repository } from "../../db/repository";
 import logger from "../../utils/logger";
 import { ToolTraceLogger } from "../../utils/toolTrace";
 import { ai } from "./client";
+import { describeImage, transcribeAudio } from "./mediaPerception";
 import { getRelevantMemories, processNewMemory } from "./memory";
 import {
 	buildHistoryList,
@@ -710,4 +711,7 @@ export const GeminiService = {
 			},
 		);
 	},
+
+	transcribeAudio,
+	describeImage,
 };

@@ -26,6 +26,23 @@ export function extractPhotoFileId(
 	return photo[photo.length - 1].file_id;
 }
 
+/**
+ * Determines the audio MIME type from a Telegram file path or provided fallback MIME type.
+ */
+export function getAudioMimeType(
+	filePath?: string,
+	fallbackMime?: string,
+): string {
+	if (fallbackMime) return fallbackMime;
+	if (!filePath) return "audio/ogg";
+	if (filePath.endsWith(".mp3")) return "audio/mpeg";
+	if (filePath.endsWith(".wav")) return "audio/wav";
+	if (filePath.endsWith(".m4a")) return "audio/mp4";
+	if (filePath.endsWith(".ogg") || filePath.endsWith(".oga"))
+		return "audio/ogg";
+	return "audio/ogg";
+}
+
 async function fetchAndProcessTelegramFile(
 	fileDetails: { file_path?: string; file_size?: number },
 	mediaType: string,
