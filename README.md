@@ -15,10 +15,8 @@ It doesn't just reply to direct messages; it understands the flow of the convers
   - **Contradiction Auto-Replacement:** Automatically replaces outdated user facts when a new conflicting statement is detected.
 - **Async Background Memory Worker:** Automatically analyzes group conversation history in the background every 15 messages to capture user facts even when the bot hasn't directly responded to the message.
 - **Unified Memory Commands & Intent Triggers:**
-  - `/mem` — Open interactive memory dashboard (with inline buttons for all memories, profile, and help).
-  - `/mem me` — View facts remembered about yourself in the group.
-  - `/mem del <id>` — Delete a specific memory record by ID.
   - `/remember <fact>` — Explicitly store a fact into memory (or reply to any message with `/remember`).
+  - **Telegram Mini App Dashboard:** Manage, search, export/import, and prune group memories via `/app` or `/admin`.
   - **Natural Intent Triggers:** Automatic priority extraction when users say *"remember this"*, *"keep in mind"*, *"note this"*, or *"save this"*.
 - **Image and Audio Recognition:** It can view photos and listen to voice messages shared in the group, and reply with fitting, humorous, "shitposter buddy" style responses.
 - **Spontaneous Mode:** Ket can spontaneously jump into the chat flow with a certain probability (e.g., 5%) to drop a funny or sarcastic comment, making the group chat feel alive.
@@ -42,7 +40,7 @@ Create a `config.json` file in the root directory of the project:
   "BOT_TOKEN": "YOUR_TELEGRAM_BOT_TOKEN",
   "GEMINI_API_KEY": "YOUR_GEMINI_API_KEY",
   "ADMIN_IDS": [123456789],
-  "GEMINI_MODEL": "gemini-3.1-flash-lite",
+  "GEMINI_MODEL": "gemini-3.5-flash-lite",
   "POLLING_INTERVAL": 1000
 }
 ```
