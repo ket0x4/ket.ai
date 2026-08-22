@@ -313,6 +313,7 @@ export function registerCommandHandlers(bot: Bot) {
 		await processNewMemory(chatIdStr, formattedFact, {
 			userId,
 			category: "PROFILE",
+			priority: "high",
 		});
 
 		logger.info(

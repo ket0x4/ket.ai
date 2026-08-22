@@ -306,6 +306,7 @@ async function processExtractedMemories(
 			userId: targetUserId,
 			category: cat,
 			ttlDays: ttl,
+			priority: "low",
 		});
 	}
 }
@@ -323,14 +324,16 @@ async function runAgentStepLoop(
 		const step = fsm.incrementStep();
 		fsm.transition("CALLING_MODEL", { step });
 
-		const response = await runWithRetry(() =>
-			ai.models.generateContent({
-				model: CONFIG.GEMINI_MODEL,
-				// biome-ignore lint/suspicious/noExplicitAny: SDK expects content structure
-				contents: contents as any,
-				// biome-ignore lint/suspicious/noExplicitAny: SDK expects config structure
-				config: genConfig as any,
-			}),
+		const response = await runWithRetry(
+			() =>
+				ai.models.generateContent({
+					model: CONFIG.GEMINI_MODEL,
+					// biome-ignore lint/suspicious/noExplicitAny: SDK expects content structure
+					contents: contents as any,
+					// biome-ignore lint/suspicious/noExplicitAny: SDK expects config structure
+					config: genConfig as any,
+				}),
+			{ priority: "high" },
 		);
 
 		const rawParts = response.candidates?.[0]?.content?.parts as
@@ -652,33 +655,35 @@ export const GeminiService = {
 			const prompt =
 				"Analyze the conversations below. Summarize the main topic of conversation or the situation being discussed by a person in a maximum of 1–2 sentences.";
 
-			const response = await runWithRetry(() =>
-				ai.models.generateContent({
-					model: CONFIG.GEMINI_MODEL,
-					contents: JSON.stringify({
-						messages: historyList,
-						instruction: prompt,
-					}),
-					config: {
-						systemInstruction:
-							"You are an analysis expert. You summarize group chats in just 1-2 sentences.",
-						temperature: 0.3,
-						maxOutputTokens: 1024,
-						thinkingConfig: getThinkingConfig(CONFIG.GEMINI_MODEL),
-						responseMimeType: "application/json",
-						responseSchema: {
-							type: "OBJECT",
-							properties: {
-								summary: {
-									type: "STRING",
-									description:
-										"A 1-2 sentence text summarizing the current topic of the group chat.",
+			const response = await runWithRetry(
+				() =>
+					ai.models.generateContent({
+						model: CONFIG.GEMINI_MODEL,
+						contents: JSON.stringify({
+							messages: historyList,
+							instruction: prompt,
+						}),
+						config: {
+							systemInstruction:
+								"You are an analysis expert. You summarize group chats in just 1-2 sentences.",
+							temperature: 0.3,
+							maxOutputTokens: 1024,
+							thinkingConfig: getThinkingConfig(CONFIG.GEMINI_MODEL),
+							responseMimeType: "application/json",
+							responseSchema: {
+								type: "OBJECT",
+								properties: {
+									summary: {
+										type: "STRING",
+										description:
+											"A 1-2 sentence text summarizing the current topic of the group chat.",
+									},
 								},
+								required: ["summary"],
 							},
-							required: ["summary"],
 						},
-					},
-				}),
+					}),
+				{ priority: "low" },
 			);
 
 			const responseText = response.text?.trim() || "";

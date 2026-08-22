@@ -694,6 +694,7 @@ async function handleMemoriesPost(
 		await processNewMemory(body.chatId, body.memoryText, {
 			category: body.category || "PROFILE",
 			userId: auth.user.id,
+			priority: "high",
 		});
 
 		return jsonResponse({
@@ -722,7 +723,11 @@ async function handleMemoryPatch(
 		};
 		if (!body.memoryText) return errorResponse("memoryText is required");
 
-		const emb = await generateEmbedding(body.memoryText, "RETRIEVAL_DOCUMENT");
+		const emb = await generateEmbedding(
+			body.memoryText,
+			"RETRIEVAL_DOCUMENT",
+			"high",
+		);
 		Repository.updateMemory(
 			id,
 			body.memoryText,

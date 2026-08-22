@@ -223,6 +223,120 @@ describe("SmartRetry", () => {
 		expect(results).toEqual([1, 2]);
 		expect(Date.now() - start).toBeGreaterThanOrEqual(45);
 	});
+
+	test("GeminiRateLimiter should prioritize high priority tasks over low priority tasks", async () => {
+		const limiter = new GeminiRateLimiter(10);
+		const executionOrder: string[] = [];
+
+		// Task 1 (Low) starts immediately and holds execution for 40ms
+		const p1 = limiter.schedule(
+			async () => {
+				await new Promise((r) => setTimeout(r, 40));
+				executionOrder.push("L1");
+				return "L1";
+			},
+			{ priority: "low", customIntervalMs: 10 },
+		);
+
+		// Give L1 a tick to start running
+		await new Promise((r) => setTimeout(r, 5));
+
+		// Queue L2 and L3 (low priority)
+		const p2 = limiter.schedule(
+			async () => {
+				executionOrder.push("L2");
+				return "L2";
+			},
+			{ priority: "low", customIntervalMs: 10 },
+		);
+
+		const p3 = limiter.schedule(
+			async () => {
+				executionOrder.push("L3");
+				return "L3";
+			},
+			{ priority: "low", customIntervalMs: 10 },
+		);
+
+		// Queue H1 (high priority) - should jump ahead of L2 and L3
+		const pH1 = limiter.schedule(
+			async () => {
+				executionOrder.push("H1");
+				return "H1";
+			},
+			{ priority: "high", customIntervalMs: 10 },
+		);
+
+		// Queue H2 (high priority) - should jump ahead of L2 and L3 as well
+		const pH2 = limiter.schedule(
+			async () => {
+				executionOrder.push("H2");
+				return "H2";
+			},
+			{ priority: "high", customIntervalMs: 10 },
+		);
+
+		expect(limiter.getQueueLength()).toEqual({ high: 2, low: 2, total: 4 });
+
+		await Promise.all([p1, p2, p3, pH1, pH2]);
+
+		// Execution order must be: L1 (already executing), H1, H2, L2, L3
+		expect(executionOrder).toEqual(["L1", "H1", "H2", "L2", "L3"]);
+		expect(limiter.getQueueLength()).toEqual({ high: 0, low: 0, total: 0 });
+	});
+
+	test("GeminiRateLimiter should handle failed tasks without stalling queue", async () => {
+		const limiter = new GeminiRateLimiter(5);
+		const results: string[] = [];
+
+		const p1 = limiter
+			.schedule(
+				async () => {
+					throw new Error("Task failed");
+				},
+				{ priority: "high", customIntervalMs: 5 },
+			)
+			.catch((e) => {
+				results.push(`Caught: ${e.message}`);
+			});
+
+		const p2 = limiter.schedule(
+			async () => {
+				results.push("Task 2 success");
+				return "ok";
+			},
+			{ priority: "high", customIntervalMs: 5 },
+		);
+
+		await Promise.all([p1, p2]);
+		expect(results).toEqual(["Caught: Task failed", "Task 2 success"]);
+	});
+
+	test("GeminiRateLimiter clearQueue clears pending queues", async () => {
+		const limiter = new GeminiRateLimiter(50);
+		// Start a running task
+		const p1 = limiter.schedule(
+			async () => {
+				await new Promise((r) => setTimeout(r, 20));
+				return "done";
+			},
+			{ priority: "high", customIntervalMs: 50 },
+		);
+
+		// Queue low and high tasks
+		const pLow = limiter
+			.schedule(async () => 1, { priority: "low" })
+			.catch(() => "cancelled");
+		const pHigh = limiter
+			.schedule(async () => 2, { priority: "high" })
+			.catch(() => "cancelled");
+
+		expect(limiter.getQueueLength().total).toBe(2);
+		limiter.clearQueue();
+		expect(limiter.getQueueLength().total).toBe(0);
+
+		await Promise.all([p1, pLow, pHigh]);
+	});
 });
 
 describe("ThinkingConfig and Reply Parsing", () => {

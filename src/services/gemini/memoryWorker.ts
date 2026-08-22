@@ -120,6 +120,7 @@ async function saveExtractedMemories(
 			userId: typeof item.user_id === "number" ? item.user_id : null,
 			category: cat,
 			ttlDays: ttl,
+			priority: "low",
 		});
 		savedCount++;
 	}
@@ -139,21 +140,23 @@ async function runBackgroundMemoryExtraction(chatIdStr: string): Promise<void> {
 	);
 
 	try {
-		const response = await runWithRetry(() =>
-			ai.models.generateContent({
-				model: CONFIG.GEMINI_MODEL,
-				contents: prompt,
-				config: {
-					systemInstruction:
-						"You are a quiet background memory analyzer for a Telegram group bot. Extract factual details about users. Output strictly JSON.",
-					temperature: 0.2,
-					maxOutputTokens: 2048,
-					thinkingConfig: getThinkingConfig(CONFIG.GEMINI_MODEL),
-					responseMimeType: "application/json",
-					// biome-ignore lint/suspicious/noExplicitAny: SDK schema typing
-					responseSchema: getExtractionSchema() as any,
-				},
-			}),
+		const response = await runWithRetry(
+			() =>
+				ai.models.generateContent({
+					model: CONFIG.GEMINI_MODEL,
+					contents: prompt,
+					config: {
+						systemInstruction:
+							"You are a quiet background memory analyzer for a Telegram group bot. Extract factual details about users. Output strictly JSON.",
+						temperature: 0.2,
+						maxOutputTokens: 2048,
+						thinkingConfig: getThinkingConfig(CONFIG.GEMINI_MODEL),
+						responseMimeType: "application/json",
+						// biome-ignore lint/suspicious/noExplicitAny: SDK schema typing
+						responseSchema: getExtractionSchema() as any,
+					},
+				}),
+			{ priority: "low" },
 		);
 
 		const responseText = response.text?.trim() || "[]";

@@ -138,14 +138,61 @@ export function extractRetryDelayMs(error: unknown): number | null {
 	return parseTextDelay(str);
 }
 
+export type RequestPriority = "high" | "low";
+
+interface ScheduleOptions {
+	priority?: RequestPriority;
+	customIntervalMs?: number;
+}
+
+export interface RunWithRetryOptions {
+	retries?: number;
+	baseDelayMs?: number;
+	priority?: RequestPriority;
+	customIntervalMs?: number;
+}
+
+interface QueuedTask<T = unknown> {
+	fn: () => Promise<T>;
+	customIntervalMs?: number;
+	priority: RequestPriority;
+	resolve: (value: T | PromiseLike<T>) => void;
+	// biome-ignore lint/suspicious/noExplicitAny: rejection reason can be any error
+	reject: (reason?: any) => void;
+}
+
+function parseScheduleOptions(optionsOrInterval?: number | ScheduleOptions): {
+	priority: RequestPriority;
+	customIntervalMs?: number;
+} {
+	let priority: RequestPriority = "high";
+	let customIntervalMs: number | undefined;
+
+	if (typeof optionsOrInterval === "number") {
+		customIntervalMs = optionsOrInterval;
+	} else if (
+		typeof optionsOrInterval === "object" &&
+		optionsOrInterval !== null
+	) {
+		if (optionsOrInterval.priority) priority = optionsOrInterval.priority;
+		if (optionsOrInterval.customIntervalMs !== undefined) {
+			customIntervalMs = optionsOrInterval.customIntervalMs;
+		}
+	}
+	return { priority, customIntervalMs };
+}
+
 /**
- * Pacing rate limiter to enforce minimum time interval between consecutive Gemini API requests.
+ * Pacing rate limiter to enforce minimum time interval between consecutive Gemini API requests,
+ * utilizing a two-tier priority queue (high for user-facing interactions, low for background tasks).
  * @internal
  */
 export class GeminiRateLimiter {
 	private lastRequestEndTime = 0;
 	private minIntervalMs: number;
-	private queue: Promise<void> = Promise.resolve();
+	private highPriorityQueue: QueuedTask[] = [];
+	private lowPriorityQueue: QueuedTask[] = [];
+	private isProcessing = false;
 
 	constructor(minIntervalMs = 3500) {
 		this.minIntervalMs = minIntervalMs;
@@ -155,44 +202,118 @@ export class GeminiRateLimiter {
 		this.minIntervalMs = ms;
 	}
 
+	public getQueueLength(): { high: number; low: number; total: number } {
+		return {
+			high: this.highPriorityQueue.length,
+			low: this.lowPriorityQueue.length,
+			total: this.highPriorityQueue.length + this.lowPriorityQueue.length,
+		};
+	}
+
+	public clearQueue(rejectReason?: string): void {
+		const reason = new Error(rejectReason || "Queue cleared");
+		for (const task of this.highPriorityQueue) {
+			task.reject(reason);
+		}
+		for (const task of this.lowPriorityQueue) {
+			task.reject(reason);
+		}
+		this.highPriorityQueue = [];
+		this.lowPriorityQueue = [];
+	}
+
 	public async schedule<T>(
 		fn: () => Promise<T>,
-		customIntervalMs?: number,
+		optionsOrInterval?: number | ScheduleOptions,
 	): Promise<T> {
+		const { priority, customIntervalMs } =
+			parseScheduleOptions(optionsOrInterval);
+
 		return new Promise<T>((resolve, reject) => {
-			this.queue = this.queue
-				.then(async () => {
-					const isTestEnv =
-						process.env.NODE_ENV === "test" || process.env.BUN_ENV === "test";
-					const interval =
-						customIntervalMs ??
-						(isTestEnv
-							? 0
-							: (CONFIG.GEMINI_MIN_REQUEST_INTERVAL_MS ?? this.minIntervalMs));
-					const now = Date.now();
-					const elapsed = now - this.lastRequestEndTime;
-					if (
-						interval > 0 &&
-						this.lastRequestEndTime > 0 &&
-						elapsed < interval
-					) {
-						const waitMs = interval - elapsed;
-						logger.debug(
-							`[RateLimiter] Enforcing ${waitMs}ms artificial pacing delay before Gemini request...`,
-						);
-						await new Promise((r) => setTimeout(r, waitMs));
-					}
-					try {
-						const result = await fn();
-						this.lastRequestEndTime = Date.now();
-						resolve(result);
-					} catch (err) {
-						this.lastRequestEndTime = Date.now();
-						reject(err);
-					}
-				})
-				.catch(() => {});
+			const task: QueuedTask<T> = {
+				fn,
+				customIntervalMs,
+				priority,
+				resolve: resolve as (value: unknown) => void,
+				reject,
+			};
+
+			if (priority === "high") {
+				this.highPriorityQueue.push(task as QueuedTask);
+			} else {
+				this.lowPriorityQueue.push(task as QueuedTask);
+			}
+
+			this.processQueue();
 		});
+	}
+
+	private enforcePacingDelay(candidate: QueuedTask): Promise<void> | null {
+		const isTestEnv =
+			process.env.NODE_ENV === "test" || process.env.BUN_ENV === "test";
+		const interval =
+			candidate.customIntervalMs ??
+			(isTestEnv
+				? 0
+				: (CONFIG.GEMINI_MIN_REQUEST_INTERVAL_MS ?? this.minIntervalMs));
+
+		const now = Date.now();
+		const elapsed = now - this.lastRequestEndTime;
+
+		if (interval > 0 && this.lastRequestEndTime > 0 && elapsed < interval) {
+			const waitMs = interval - elapsed;
+			logger.debug(
+				`[RateLimiter] Enforcing ${waitMs}ms artificial pacing delay before Gemini request (${candidate.priority} priority)...`,
+			);
+			return new Promise((r) => setTimeout(r, waitMs));
+		}
+		return null;
+	}
+
+	private async executeTask(task: QueuedTask): Promise<void> {
+		try {
+			const result = await task.fn();
+			this.lastRequestEndTime = Date.now();
+			task.resolve(result);
+		} catch (err) {
+			this.lastRequestEndTime = Date.now();
+			task.reject(err);
+		}
+	}
+
+	private async processQueue(): Promise<void> {
+		if (this.isProcessing) return;
+		this.isProcessing = true;
+
+		try {
+			while (
+				this.highPriorityQueue.length > 0 ||
+				this.lowPriorityQueue.length > 0
+			) {
+				const nextCandidate =
+					this.highPriorityQueue[0] || this.lowPriorityQueue[0];
+				if (!nextCandidate) break;
+
+				const pacingPromise = this.enforcePacingDelay(nextCandidate);
+				if (pacingPromise) {
+					await pacingPromise;
+				}
+
+				const task =
+					this.highPriorityQueue.shift() || this.lowPriorityQueue.shift();
+				if (!task) continue;
+
+				await this.executeTask(task);
+			}
+		} finally {
+			this.isProcessing = false;
+			if (
+				this.highPriorityQueue.length > 0 ||
+				this.lowPriorityQueue.length > 0
+			) {
+				this.processQueue();
+			}
+		}
 	}
 }
 
@@ -200,34 +321,82 @@ const geminiRateLimiter = new GeminiRateLimiter(
 	CONFIG.GEMINI_MIN_REQUEST_INTERVAL_MS,
 );
 
+function parseRetryOptions(
+	retriesOrOptions: number | RunWithRetryOptions,
+	baseDelayMs: number,
+): {
+	retries: number;
+	currentDelayMs: number;
+	priority: RequestPriority;
+	customIntervalMs?: number;
+} {
+	let retries = 4;
+	let currentDelayMs = baseDelayMs;
+	let priority: RequestPriority = "high";
+	let customIntervalMs: number | undefined;
+
+	if (typeof retriesOrOptions === "number") {
+		retries = retriesOrOptions;
+	} else if (
+		typeof retriesOrOptions === "object" &&
+		retriesOrOptions !== null
+	) {
+		if (retriesOrOptions.retries !== undefined) {
+			retries = retriesOrOptions.retries;
+		}
+		if (retriesOrOptions.baseDelayMs !== undefined) {
+			currentDelayMs = retriesOrOptions.baseDelayMs;
+		}
+		if (retriesOrOptions.priority !== undefined) {
+			priority = retriesOrOptions.priority;
+		}
+		if (retriesOrOptions.customIntervalMs !== undefined) {
+			customIntervalMs = retriesOrOptions.customIntervalMs;
+		}
+	}
+
+	return { retries, currentDelayMs, priority, customIntervalMs };
+}
+
+function isTransientError(error: unknown): boolean {
+	const err = error as { message?: string; status?: number } | null;
+	const errorMessage = err?.message || String(error);
+	const status = err?.status || 0;
+
+	return (
+		status === 503 ||
+		status === 429 ||
+		errorMessage.includes("503") ||
+		errorMessage.includes("429") ||
+		errorMessage.includes("UNAVAILABLE") ||
+		errorMessage.includes("RESOURCE_EXHAUSTED") ||
+		errorMessage.includes("high demand") ||
+		errorMessage.includes("Quota exceeded")
+	);
+}
+
 export async function runWithRetry<T>(
 	fn: () => Promise<T>,
-	retries = 4,
+	retriesOrOptions: number | RunWithRetryOptions = 4,
 	baseDelayMs = 5000,
 ): Promise<T> {
+	const { retries, priority, customIntervalMs } = parseRetryOptions(
+		retriesOrOptions,
+		baseDelayMs,
+	);
+	let { currentDelayMs } = parseRetryOptions(retriesOrOptions, baseDelayMs);
 	let lastError: unknown;
-	let currentDelayMs = baseDelayMs;
 
 	for (let i = 0; i < retries; i++) {
 		try {
-			return await geminiRateLimiter.schedule(fn);
+			return await geminiRateLimiter.schedule(fn, {
+				priority,
+				customIntervalMs,
+			});
 		} catch (error) {
 			lastError = error;
-			const err = error as { message?: string; status?: number } | null;
-			const errorMessage = err?.message || String(error);
-			const status = err?.status || 0;
 
-			const isTransient =
-				status === 503 ||
-				status === 429 ||
-				errorMessage.includes("503") ||
-				errorMessage.includes("429") ||
-				errorMessage.includes("UNAVAILABLE") ||
-				errorMessage.includes("RESOURCE_EXHAUSTED") ||
-				errorMessage.includes("high demand") ||
-				errorMessage.includes("Quota exceeded");
-
-			if (isTransient && i < retries - 1) {
+			if (isTransientError(error) && i < retries - 1) {
 				const serverDelayMs = extractRetryDelayMs(error);
 				const waitMs =
 					serverDelayMs ?? currentDelayMs + Math.floor(Math.random() * 500);
