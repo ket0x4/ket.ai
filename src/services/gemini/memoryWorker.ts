@@ -48,7 +48,7 @@ function buildExtractionPrompt(recentMessages: MessageRow[]): string {
 
 	return `Analyze the following group chat conversation log.
 Identify any stated personal facts, user preferences, locations, plans, life updates, purchases, or events about users in the chat.
-Note: Entries marked as [Ses Kaydı] (voice transcription) and [Görsel] (image description) represent real user statements and media shared in the chat. Extract factual information from them as well (e.g. bought a new motorcycle, went to a concert, shared an event ticket/invoice).
+Note: Entries marked as [Ses Kaydı] (voice transcription) and [Image] (image description) represent real user statements and media shared in the chat. Extract factual information from them as well (e.g. bought a new motorcycle, went to a concert, shared an event ticket/invoice).
 Do NOT invent facts. Do NOT save jokes, sarcasm, or bot responses.
 
 Return ONLY a JSON array of extracted facts.

@@ -380,12 +380,12 @@ async function processBackgroundPhoto(
 		let updatedText = "";
 		if (description.trim()) {
 			updatedText = caption?.trim()
-				? `[Görsel - "${caption.trim()}"]: ${description.trim()}`
-				: `[Görsel]: ${description.trim()}`;
+				? `[Image - "${caption.trim()}"]: ${description.trim()}`
+				: `[Image]: ${description.trim()}`;
 		} else if (caption?.trim()) {
-			updatedText = `[Görsel]: ${caption.trim()}`;
+			updatedText = `[Image]: ${caption.trim()}`;
 		} else {
-			updatedText = `[Görsel]`;
+			updatedText = `[Image]`;
 		}
 
 		Repository.updateMessageText(chatIdStr, messageId, updatedText);
@@ -425,7 +425,7 @@ function extractMessageMediaInfo(msg?: Context["message"]): ExtractedMediaInfo {
 
 	let initialText: string | undefined = textContent || undefined;
 	if (!initialText) {
-		if (photoFileId) initialText = "[Görsel]";
+		if (photoFileId) initialText = "[Image]";
 		else if (voiceFileId) initialText = "[Ses Kaydı]";
 	}
 
