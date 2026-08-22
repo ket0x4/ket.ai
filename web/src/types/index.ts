@@ -112,10 +112,74 @@ export interface ToolTrace {
 	timestamp: string;
 }
 
+export interface SandboxMemoryDiagnostic {
+	id: number;
+	text: string;
+	category: MemoryCategory;
+	createdAt: number;
+	ageInDays: number;
+	cosSim: number;
+	recencyBoost: number;
+	finalScore: number;
+	passedThreshold: boolean;
+	selected: boolean;
+}
+
+export interface SandboxMemoryDiagnostics {
+	chatId: string;
+	originalQuery: string;
+	enrichedQuery: string;
+	embeddingDimensions: number;
+	embeddingTimeMs: number;
+	totalMemoriesInChat: number;
+	threshold: number;
+	topK: number;
+	evaluatedCount: number;
+	matchedCount: number;
+	retrievedMemories: string[];
+	details: SandboxMemoryDiagnostic[];
+}
+
+export interface SandboxVerboseData {
+	chatId?: string;
+	chatTitle?: string;
+	personaName?: string;
+	activeTopic?: string;
+	systemInstruction: string;
+	inputPayload: Record<string, unknown>;
+	rawModelResponse?: string;
+	extractedNewMemories?: Array<{
+		user_name: string;
+		fact: string;
+		category?: string;
+		ttl_days?: number;
+	}>;
+	memoryDiagnostics?: SandboxMemoryDiagnostics;
+	timings: {
+		embeddingMs: number;
+		inferenceMs: number;
+		totalMs: number;
+	};
+}
+
 export interface SandboxResponse {
 	reply: string;
 	executionTimeMs: number;
 	model: string;
+	verbose?: SandboxVerboseData;
+}
+
+export interface SandboxRunOptions {
+	prompt: string;
+	chatId?: string;
+	personaId?: string;
+	systemInstruction?: string;
+	enableMemory?: boolean;
+	activeTopic?: string;
+	topK?: number;
+	threshold?: number;
+	verbose?: boolean;
+	mode?: "full" | "retrieval_only";
 }
 
 export interface BaseTabProps<T = unknown> {

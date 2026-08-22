@@ -85,9 +85,53 @@ export const USER_ROLES: Record<UserRole, RoleMeta> = {
 	},
 };
 
-export const SANDBOX_SAMPLE_PROMPTS = [
-	"What is your identity and what group are we in?",
-	"Summarize what you know about the bot owner.",
-	"Search the web for the latest TypeScript release features.",
-	"Explain the difference between PROFILE and TEMPORARY memories.",
-] as const;
+export interface SandboxPromptTemplate {
+	category: "Memory Recall" | "Reasoning & Tools" | "Persona & Tone";
+	label: string;
+	prompt: string;
+}
+
+export const SANDBOX_PROMPT_TEMPLATES: SandboxPromptTemplate[] = [
+	{
+		category: "Memory Recall",
+		label: "Recall My Identity & Facts",
+		prompt:
+			"What personal details, preferences, or facts do you remember about me?",
+	},
+	{
+		category: "Memory Recall",
+		label: "Recall Bot Owner Info",
+		prompt:
+			"Who is the bot owner and what are their background, interests, or rules?",
+	},
+	{
+		category: "Memory Recall",
+		label: "Recall Group Knowledge",
+		prompt:
+			"Summarize everything you know from long-term memory about this group and its members.",
+	},
+	{
+		category: "Memory Recall",
+		label: "Recall Temporary Status",
+		prompt:
+			"Do I or anyone in this chat have any temporary events, tasks, or active status saved?",
+	},
+	{
+		category: "Reasoning & Tools",
+		label: "Agent Identity & Context",
+		prompt:
+			"What is your identity, what role do you play, and what context are we in?",
+	},
+	{
+		category: "Reasoning & Tools",
+		label: "Web Search Grounding",
+		prompt:
+			"Search the web for the latest TypeScript release features and summarize.",
+	},
+	{
+		category: "Persona & Tone",
+		label: "Explain Memory Hierarchy",
+		prompt:
+			"Explain how PROFILE, DYNAMIC, and TEMPORARY memories differ in your architecture.",
+	},
+];

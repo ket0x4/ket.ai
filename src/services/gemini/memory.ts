@@ -102,65 +102,199 @@ export async function processNewMemory(
 	handleMemoryConsolidationCounter(chatIdStr);
 }
 
-export async function getRelevantMemories(
+interface MemoryDiagnosticItem {
+	id: number;
+	text: string;
+	category: "PROFILE" | "DYNAMIC" | "TEMPORARY";
+	createdAt: number;
+	ageInDays: number;
+	cosSim: number;
+	recencyBoost: number;
+	finalScore: number;
+	passedThreshold: boolean;
+	selected: boolean;
+}
+
+function createDefaultDiagnosticItem(m: {
+	id: number;
+	text: string;
+	category: "PROFILE" | "DYNAMIC" | "TEMPORARY";
+	createdAt: number;
+}): MemoryDiagnosticItem {
+	return {
+		id: m.id,
+		text: m.text,
+		category: m.category,
+		createdAt: m.createdAt,
+		ageInDays: 0,
+		cosSim: 0,
+		recencyBoost: 0,
+		finalScore: -1,
+		passedThreshold: false,
+		selected: false,
+	};
+}
+
+export interface MemoryQueryDiagnostics {
+	chatId: string;
+	originalQuery: string;
+	enrichedQuery: string;
+	embeddingDimensions: number;
+	embeddingTimeMs: number;
+	totalMemoriesInChat: number;
+	threshold: number;
+	topK: number;
+	evaluatedCount: number;
+	matchedCount: number;
+	retrievedMemories: string[];
+	details: MemoryDiagnosticItem[];
+}
+
+export async function queryMemoriesWithDiagnostics(
 	chatId: string,
 	query: string,
-	activeTopic?: string,
-	topK = 5,
-): Promise<string[]> {
+	options?: {
+		activeTopic?: string;
+		topK?: number;
+		threshold?: number;
+	},
+): Promise<MemoryQueryDiagnostics> {
 	// Automatically clean up expired memories first
 	Repository.pruneExpiredMemories(chatId);
 
 	const allMemories = Repository.getMemories(chatId);
-	if (allMemories.length === 0) return [];
-
-	// Enrich query with active topic if available for better semantic matching
 	const cleanQuery = query.trim();
+	const activeTopic = options?.activeTopic;
 	const enrichedQuery =
 		activeTopic &&
 		activeTopic !== "General chat is going on, no specific topic."
 			? `${cleanQuery} | Topic: ${activeTopic}`
 			: cleanQuery;
 
+	const threshold = options?.threshold ?? 0.6;
+	const topK = options?.topK ?? 5;
+
+	if (allMemories.length === 0) {
+		return {
+			chatId,
+			originalQuery: cleanQuery,
+			enrichedQuery,
+			embeddingDimensions: 0,
+			embeddingTimeMs: 0,
+			totalMemoriesInChat: 0,
+			threshold,
+			topK,
+			evaluatedCount: 0,
+			matchedCount: 0,
+			retrievedMemories: [],
+			details: [],
+		};
+	}
+
+	const startTime = Date.now();
 	const queryEmbedding = await generateEmbedding(
 		enrichedQuery,
 		"RETRIEVAL_QUERY",
 	);
+	const embeddingTimeMs = Date.now() - startTime;
+
 	if (queryEmbedding.length === 0) {
 		logger.warn(
 			`[Memory RAG] Query embedding failed for chat ${chatId}. Skipping RAG retrieval.`,
 		);
-		return [];
+		return {
+			chatId,
+			originalQuery: cleanQuery,
+			enrichedQuery,
+			embeddingDimensions: 0,
+			embeddingTimeMs,
+			totalMemoriesInChat: allMemories.length,
+			threshold,
+			topK,
+			evaluatedCount: allMemories.length,
+			matchedCount: 0,
+			retrievedMemories: [],
+			details: allMemories.map(createDefaultDiagnosticItem),
+		};
 	}
 
 	const now = Math.floor(Date.now() / 1000);
 
 	// Calculate hybrid similarity score (85% Cosine Similarity + 15% Recency Decay)
-	const scored = allMemories.map((m) => {
-		if (m.embedding.length === 0) return { text: m.text, score: -1 };
+	const details: MemoryDiagnosticItem[] = allMemories.map((m) => {
+		if (!m.embedding || m.embedding.length === 0) {
+			return createDefaultDiagnosticItem(m);
+		}
 
 		const cosSim = cosineSimilarity(queryEmbedding, m.embedding);
 		const ageInDays = Math.max(0, (now - m.createdAt) / 86400);
 		const recencyBoost = Math.exp(-0.05 * ageInDays); // Exponential time-decay factor
-
 		const finalScore = 0.85 * cosSim + 0.15 * recencyBoost;
-		return { text: m.text, score: finalScore };
+
+		return {
+			id: m.id,
+			text: m.text,
+			category: m.category,
+			createdAt: m.createdAt,
+			ageInDays: Math.round(ageInDays * 100) / 100,
+			cosSim: Math.round(cosSim * 10000) / 10000,
+			recencyBoost: Math.round(recencyBoost * 10000) / 10000,
+			finalScore: Math.round(finalScore * 10000) / 10000,
+			passedThreshold: finalScore >= threshold,
+			selected: false,
+		};
 	});
 
-	scored.sort((a, b) => b.score - a.score);
-	const THRESHOLD = 0.6;
-	const topMemories = scored
-		.filter((s) => s.score >= THRESHOLD)
-		.slice(0, topK)
-		.map((s) => s.text);
+	details.sort((a, b) => b.finalScore - a.finalScore);
 
-	if (topMemories.length > 0) {
-		logger.debug(
-			`[Memory RAG] Retrieved ${topMemories.length} memories for query: "${enrichedQuery}"`,
-		);
-		logger.debug(`[Memory RAG] Memories:`, topMemories);
+	const retrievedMemories: string[] = [];
+	let matchedCount = 0;
+
+	for (const item of details) {
+		if (item.passedThreshold) {
+			matchedCount++;
+			if (retrievedMemories.length < topK) {
+				item.selected = true;
+				retrievedMemories.push(item.text);
+			}
+		}
 	}
-	return topMemories;
+
+	return {
+		chatId,
+		originalQuery: cleanQuery,
+		enrichedQuery,
+		embeddingDimensions: queryEmbedding.length,
+		embeddingTimeMs,
+		totalMemoriesInChat: allMemories.length,
+		threshold,
+		topK,
+		evaluatedCount: details.length,
+		matchedCount,
+		retrievedMemories,
+		details,
+	};
+}
+
+export async function getRelevantMemories(
+	chatId: string,
+	query: string,
+	activeTopic?: string,
+	topK = 5,
+): Promise<string[]> {
+	const diag = await queryMemoriesWithDiagnostics(chatId, query, {
+		activeTopic,
+		topK,
+		threshold: 0.6,
+	});
+
+	if (diag.retrievedMemories.length > 0) {
+		logger.debug(
+			`[Memory RAG] Retrieved ${diag.retrievedMemories.length} memories for query: "${diag.enrichedQuery}"`,
+		);
+		logger.debug(`[Memory RAG] Memories:`, diag.retrievedMemories);
+	}
+	return diag.retrievedMemories;
 }
 
 async function consolidateMemories(chatIdStr: string) {

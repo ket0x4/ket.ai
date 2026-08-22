@@ -7,6 +7,7 @@ import type {
 	MemoryCategory,
 	Persona,
 	SandboxResponse,
+	SandboxRunOptions,
 	StatsResponse,
 	TelegramUser,
 	ToolTrace,
@@ -262,7 +263,7 @@ export const api = {
 		get: () => apiFetch<{ traces: ToolTrace[] }>("/api/tool-traces"),
 	},
 	sandbox: {
-		run: (data: { prompt: string; systemInstruction?: string }) =>
+		run: (data: SandboxRunOptions) =>
 			apiFetch<SandboxResponse>("/api/sandbox", {
 				method: "POST",
 				body: JSON.stringify(data),

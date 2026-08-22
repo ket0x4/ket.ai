@@ -13,3 +13,4 @@ system.txt
 public/
 web/dist/
 *.tsbuildinfo
+/public

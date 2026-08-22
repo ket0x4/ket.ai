@@ -1,41 +1,31 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import type {
+	AuthContext,
+	SandboxRunOptions as SandboxRequestBody,
+	TelegramUser,
+	UserRole,
+} from "../../web/src/types";
 import { CONFIG, updateBotSettings } from "../config/index";
 import { db } from "../db/index";
 import { Repository } from "../db/repository";
 import { bot } from "../services/bot";
 import { ai } from "../services/gemini/client";
-import { generateEmbedding, processNewMemory } from "../services/gemini/memory";
+import {
+	generateEmbedding,
+	type MemoryQueryDiagnostics,
+	processNewMemory,
+	queryMemoriesWithDiagnostics,
+} from "../services/gemini/memory";
 import {
 	getSystemInstruction,
 	getThinkingConfig,
 	runWithRetry,
 } from "../services/gemini/utils";
-
 import logger from "../utils/logger";
 import { extractTelegramChatTitle } from "../utils/message";
 import { ToolTraceLogger } from "../utils/toolTrace";
-
-interface TelegramUser {
-	id: number;
-	first_name: string;
-	last_name?: string;
-	username?: string;
-	language_code?: string;
-	is_premium?: boolean;
-}
-
-type UserRole = "owner" | "admin" | "user";
-
-interface AuthContext {
-	valid: boolean;
-	user?: TelegramUser;
-	role: UserRole;
-	isOwner: boolean;
-	adminChatIds: string[];
-	memberChatIds: string[];
-}
 
 // In-memory cache for Telegram group administrator status (5 min TTL)
 const adminStatusCache = new Map<
@@ -874,6 +864,244 @@ async function handleMemoriesImport(
 	}
 }
 
+function resolveSandboxPersona(
+	chatId?: string,
+	personaId?: string,
+	customInstruction?: string,
+): { systemPrompt: string; personaName: string } {
+	let personaPrompt: string | undefined;
+	let personaName = "Default System Instruction";
+
+	if (personaId) {
+		const persona = Repository.getPersonaById(personaId);
+		if (persona) {
+			personaPrompt = persona.prompt;
+			personaName = persona.name;
+		}
+	} else if (chatId) {
+		const activePersona = Repository.getActivePersonaForChat(chatId);
+		if (activePersona) {
+			personaPrompt = activePersona.prompt;
+			personaName = activePersona.name;
+		}
+	}
+
+	const systemPrompt =
+		customInstruction?.trim() || getSystemInstruction(personaPrompt);
+	return { systemPrompt, personaName };
+}
+
+function parseSandboxOutput(rawText: string): {
+	reply: string;
+	extractedNewMemories?: Array<{
+		user_name: string;
+		fact: string;
+		category?: string;
+		ttl_days?: number;
+	}>;
+} {
+	const cleanedText = rawText.replace(/^```(?:json)?\n?|\n?```$/g, "").trim();
+
+	if (cleanedText.startsWith("{") || cleanedText.startsWith("[")) {
+		try {
+			const parsed = JSON.parse(cleanedText);
+			const reply =
+				typeof parsed.reply === "string" && parsed.reply.trim()
+					? parsed.reply.trim()
+					: rawText || "Empty response";
+			const extractedNewMemories =
+				Array.isArray(parsed.new_memory_updates) &&
+				parsed.new_memory_updates.length > 0
+					? parsed.new_memory_updates
+					: undefined;
+			return { reply, extractedNewMemories };
+		} catch {
+			return { reply: rawText || "Empty response" };
+		}
+	}
+	return { reply: rawText || "Empty response" };
+}
+
+async function runSandboxModelInference(
+	inputPayload: Record<string, unknown>,
+	systemPrompt: string,
+): Promise<string> {
+	const response = await runWithRetry(() =>
+		ai.models.generateContent({
+			model: CONFIG.GEMINI_MODEL,
+			contents: [
+				{ role: "user", parts: [{ text: JSON.stringify(inputPayload) }] },
+			],
+			config: {
+				systemInstruction: systemPrompt,
+				temperature: 0.8,
+				maxOutputTokens: 2048,
+				thinkingConfig: getThinkingConfig(CONFIG.GEMINI_MODEL),
+				responseMimeType: "application/json",
+				responseSchema: {
+					type: "OBJECT",
+					properties: {
+						reply: {
+							type: "STRING",
+							description:
+								"Direct conversational reply addressing the user message and utilizing memories when relevant.",
+						},
+						new_memory_updates: {
+							type: "ARRAY",
+							description:
+								"List of new facts extracted from the user's message to remember.",
+							items: {
+								type: "OBJECT",
+								properties: {
+									user_name: { type: "STRING" },
+									fact: { type: "STRING" },
+									category: { type: "STRING" },
+									ttl_days: { type: "INTEGER" },
+								},
+								required: ["user_name", "fact"],
+							},
+						},
+					},
+					required: ["reply"],
+				},
+			},
+		}),
+	);
+	return response.text?.trim() || "";
+}
+
+function buildRetrievalOnlyResponse(
+	chatId: string,
+	chatTitle: string | undefined,
+	prompt: string,
+	activeTopic: string,
+	threshold: number,
+	retrievedMemories: string[],
+	memoryDiagnostics: MemoryQueryDiagnostics | undefined,
+	durationMs: number,
+): Response {
+	const reply =
+		retrievedMemories.length > 0
+			? `Retrieved ${retrievedMemories.length} relevant memories for chat ${chatTitle || chatId}:\n\n` +
+				retrievedMemories.map((m, i) => `${i + 1}. ${m}`).join("\n")
+			: `No memories exceeded the similarity threshold (${threshold}) for chat ${chatTitle || chatId}.`;
+
+	return jsonResponse({
+		reply,
+		executionTimeMs: durationMs,
+		model: "gemini-embedding-2 (Retrieval Only)",
+		verbose: {
+			chatId: chatId || undefined,
+			chatTitle,
+			activeTopic: activeTopic || undefined,
+			systemInstruction: "N/A (Retrieval Only Mode)",
+			inputPayload: { prompt, chatId, retrievedMemories },
+			memoryDiagnostics,
+			timings: {
+				embeddingMs: memoryDiagnostics?.embeddingTimeMs || 0,
+				inferenceMs: 0,
+				totalMs: durationMs,
+			},
+		},
+	});
+}
+
+async function handleFullReasoningSandbox(
+	body: SandboxRequestBody,
+	chatId: string,
+	chatTitle: string | undefined,
+	activeTopic: string,
+	retrievedMemories: string[],
+	memoryDiagnostics: MemoryQueryDiagnostics | undefined,
+	auth: AuthContext,
+	totalStartTime: number,
+): Promise<Response> {
+	const { systemPrompt, personaName } = resolveSandboxPersona(
+		chatId,
+		body.personaId,
+		body.systemInstruction,
+	);
+
+	const senderName = `User: ${auth.user?.first_name || "Tester"}${auth.user?.username ? ` (@${auth.user.username})` : ""}`;
+	const inputPayload: Record<string, unknown> = {
+		active_topic: activeTopic || "General chat is going on, no specific topic.",
+		recent_messages: [],
+		memories: retrievedMemories,
+		interaction_type: "direct_reply",
+		current_message_to_reply: {
+			sender: senderName,
+			text: body.prompt.trim(),
+		},
+	};
+
+	const inferenceStart = Date.now();
+	const rawText = await runSandboxModelInference(inputPayload, systemPrompt);
+	const inferenceDurationMs = Date.now() - inferenceStart;
+	const totalDurationMs = Date.now() - totalStartTime;
+
+	const { reply, extractedNewMemories } = parseSandboxOutput(rawText);
+
+	return jsonResponse({
+		reply,
+		executionTimeMs: totalDurationMs,
+		model: CONFIG.GEMINI_MODEL,
+		verbose: {
+			chatId: chatId || undefined,
+			chatTitle,
+			personaName,
+			activeTopic: activeTopic || undefined,
+			systemInstruction: systemPrompt,
+			inputPayload,
+			rawModelResponse: rawText,
+			extractedNewMemories,
+			memoryDiagnostics,
+			timings: {
+				embeddingMs: memoryDiagnostics?.embeddingTimeMs || 0,
+				inferenceMs: inferenceDurationMs,
+				totalMs: totalDurationMs,
+			},
+		},
+	});
+}
+
+function extractSandboxOptions(body: SandboxRequestBody) {
+	const chatId = body.chatId?.trim() || "";
+	const enableMemory = body.enableMemory !== false && Boolean(chatId);
+	const topK =
+		typeof body.topK === "number" ? Math.max(1, Math.min(20, body.topK)) : 5;
+	const threshold =
+		typeof body.threshold === "number"
+			? Math.max(0, Math.min(1, body.threshold))
+			: 0.6;
+	const activeTopic = body.activeTopic?.trim() || "";
+	return { chatId, enableMemory, topK, threshold, activeTopic };
+}
+
+async function retrieveSandboxMemories(
+	enableMemory: boolean,
+	chatId: string,
+	prompt: string,
+	activeTopic: string,
+	topK: number,
+	threshold: number,
+): Promise<{
+	memoryDiagnostics?: MemoryQueryDiagnostics;
+	retrievedMemories: string[];
+}> {
+	if (!enableMemory || !chatId) {
+		return { retrievedMemories: [] };
+	}
+	const memoryDiagnostics = await queryMemoriesWithDiagnostics(chatId, prompt, {
+		activeTopic: activeTopic || undefined,
+		topK,
+		threshold,
+	});
+	return {
+		memoryDiagnostics,
+		retrievedMemories: memoryDiagnostics.retrievedMemories,
+	};
+}
+
 async function handleSandbox(
 	req: Request,
 	auth: AuthContext,
@@ -882,38 +1110,50 @@ async function handleSandbox(
 		return errorResponse("Forbidden: Only bot owner can access sandbox", 403);
 	}
 	try {
-		const body = (await req.json()) as {
-			prompt: string;
-			systemInstruction?: string;
-		};
-		if (!body.prompt?.trim()) {
-			return errorResponse("Prompt is required");
+		const body = (await req.json()) as SandboxRequestBody;
+		if (!body.prompt?.trim()) return errorResponse("Prompt is required");
+
+		const totalStartTime = Date.now();
+		const { chatId, enableMemory, topK, threshold, activeTopic } =
+			extractSandboxOptions(body);
+
+		const { memoryDiagnostics, retrievedMemories } =
+			await retrieveSandboxMemories(
+				enableMemory,
+				chatId,
+				body.prompt,
+				activeTopic,
+				topK,
+				threshold,
+			);
+
+		const chatTitle = chatId
+			? Repository.getChat(chatId)?.title || `Chat (${chatId})`
+			: undefined;
+
+		if (body.mode === "retrieval_only") {
+			return buildRetrievalOnlyResponse(
+				chatId,
+				chatTitle,
+				body.prompt,
+				activeTopic,
+				threshold,
+				retrievedMemories,
+				memoryDiagnostics,
+				Date.now() - totalStartTime,
+			);
 		}
 
-		const startTime = Date.now();
-		const systemPrompt = body.systemInstruction || getSystemInstruction();
-
-		const response = await runWithRetry(() =>
-			ai.models.generateContent({
-				model: CONFIG.GEMINI_MODEL,
-				contents: [{ role: "user", parts: [{ text: body.prompt }] }],
-				config: {
-					systemInstruction: systemPrompt,
-					temperature: 0.8,
-					maxOutputTokens: 2048,
-					thinkingConfig: getThinkingConfig(CONFIG.GEMINI_MODEL),
-				},
-			}),
+		return await handleFullReasoningSandbox(
+			body,
+			chatId,
+			chatTitle,
+			activeTopic,
+			retrievedMemories,
+			memoryDiagnostics,
+			auth,
+			totalStartTime,
 		);
-
-		const durationMs = Date.now() - startTime;
-		const replyText = response.text || "Empty response";
-
-		return jsonResponse({
-			reply: replyText,
-			executionTimeMs: durationMs,
-			model: CONFIG.GEMINI_MODEL,
-		});
 	} catch (e) {
 		logger.error("[Server] Error generating sandbox response:", e);
 		return errorResponse(

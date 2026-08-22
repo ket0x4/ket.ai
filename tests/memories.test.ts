@@ -106,3 +106,100 @@ test("Background memory worker counter logic", async () => {
 	await checkAndRunBackgroundMemoryExtraction(testChatId);
 	expect(true).toBe(true);
 });
+
+test("queryMemoriesWithDiagnostics returns comprehensive diagnostics", async () => {
+	const { queryMemoriesWithDiagnostics } = await import(
+		"../src/services/gemini/memory"
+	);
+	const { ai } = await import("../src/services/gemini/client");
+
+	const testChatId = "test_diagnostics_chat_101";
+	Repository.clearMemories(testChatId);
+
+	// 1. Empty chat test
+	const emptyResult = await queryMemoriesWithDiagnostics(
+		testChatId,
+		"What do you know about me?",
+	);
+	expect(emptyResult.totalMemoriesInChat).toBe(0);
+	expect(emptyResult.retrievedMemories.length).toBe(0);
+	expect(emptyResult.details.length).toBe(0);
+
+	// 2. Add memories with synthetic embeddings
+	Repository.addMemory(
+		testChatId,
+		"User loves writing TypeScript and React code",
+		[1.0, 0.0, 0.0],
+		{ category: "PROFILE" },
+	);
+	Repository.addMemory(
+		testChatId,
+		"User lives in Berlin, Germany",
+		[0.0, 1.0, 0.0],
+		{ category: "PROFILE" },
+	);
+	Repository.addMemory(
+		testChatId,
+		"User had lunch at an Italian restaurant",
+		[0.0, 0.0, 1.0],
+		{ category: "TEMPORARY", ttlDays: 3 },
+	);
+
+	// Mock ai.models.embedContent to return [1.0, 0.0, 0.0] for TypeScript query
+	const originalEmbed = ai.models.embedContent;
+	// biome-ignore lint/suspicious/noExplicitAny: mock
+	(ai.models as any).embedContent = async (opts: any) => {
+		const text = String(opts.contents);
+		if (text.includes("TypeScript") || text.includes("code")) {
+			return { embeddings: [{ values: [1.0, 0.0, 0.0] }] };
+		}
+		if (text.includes("Berlin") || text.includes("live")) {
+			return { embeddings: [{ values: [0.0, 1.0, 0.0] }] };
+		}
+		return { embeddings: [{ values: [0.5, 0.5, 0.0] }] };
+	};
+
+	try {
+		const result = await queryMemoriesWithDiagnostics(
+			testChatId,
+			"Tell me about user's TypeScript coding background",
+			{
+				activeTopic: "Developer discussion",
+				topK: 2,
+				threshold: 0.6,
+			},
+		);
+
+		expect(result.chatId).toBe(testChatId);
+		expect(result.originalQuery).toBe(
+			"Tell me about user's TypeScript coding background",
+		);
+		expect(result.enrichedQuery).toBe(
+			"Tell me about user's TypeScript coding background | Topic: Developer discussion",
+		);
+		expect(result.totalMemoriesInChat).toBe(3);
+		expect(result.evaluatedCount).toBe(3);
+		expect(result.embeddingDimensions).toBe(3);
+		expect(result.details.length).toBe(3);
+
+		// The TypeScript memory should be ranked #1 with highest score
+		const topMemory = result.details[0];
+		expect(topMemory.text).toContain("TypeScript");
+		expect(topMemory.cosSim).toBeCloseTo(1.0, 2);
+		expect(topMemory.passedThreshold).toBeTrue();
+		expect(topMemory.selected).toBeTrue();
+
+		// Memory list check
+		expect(result.retrievedMemories.length).toBeGreaterThanOrEqual(1);
+		expect(result.retrievedMemories[0]).toContain("TypeScript");
+
+		// Non-matching memories should have low similarity and not be selected
+		const lowMemory = result.details.find((m) => m.text.includes("lunch"));
+		expect(lowMemory?.cosSim).toBeCloseTo(0.0, 2);
+		expect(lowMemory?.selected).toBeFalse();
+	} finally {
+		// Restore mock
+		ai.models.embedContent = originalEmbed;
+		Repository.clearMemories(testChatId);
+	}
+});

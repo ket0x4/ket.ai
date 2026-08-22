@@ -259,7 +259,7 @@ export default function App() {
 					{/* Tab 6: AI Sandbox (Owner) */}
 					{role === "owner" && (
 						<TabsContent value="sandbox">
-							<SandboxTab />
+							<SandboxTab chats={chats} personas={personas} />
 						</TabsContent>
 					)}
 				</Tabs>
