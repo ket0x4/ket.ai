@@ -1,24 +1,18 @@
 import { Edit3, PlusCircle } from "lucide-react";
 import { type FC, type FormEvent, useEffect, useState } from "react";
 import { toast } from "sonner";
-import { ModalFooter } from "@/components/common";
+import { CategorySelect, ChatSelect, ModalFooter } from "@/components/common";
 import {
 	Dialog,
 	DialogContent,
 	DialogDescription,
 	DialogHeader,
 	DialogTitle,
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
 	Textarea,
 } from "@/components/ui";
 import { useAsyncAction } from "@/hooks/useAsyncAction";
 import { api } from "@/lib/api";
-import { MEMORY_CATEGORY_LIST } from "@/lib/constants";
-import { cleanMemoryText, getChatDisplayName } from "@/lib/utils";
+import { cleanMemoryText } from "@/lib/utils";
 import type {
 	Chat,
 	Memory,
@@ -150,40 +144,15 @@ export const MemoryModal: FC<MemoryModalProps> = ({
 								>
 									Target Chat / Group
 								</label>
-								<Select value={chatId} onValueChange={setChatId}>
-									<SelectTrigger
-										id="target-chat-select"
-										className="w-full text-xs"
-									>
-										<SelectValue placeholder="Select destination..." />
-									</SelectTrigger>
-									<SelectContent>
-										{currentUser && (
-											<SelectItem
-												value={currentUser.id.toString()}
-												className="text-xs"
-											>
-												Personal Profile ({currentUser.first_name || "Me"})
-											</SelectItem>
-										)}
-										{availableChats
-											.filter((c) => c.chat_id !== currentUser?.id.toString())
-											.map((c) => (
-												<SelectItem
-													key={c.chat_id}
-													value={c.chat_id}
-													className="text-xs"
-												>
-													<span
-														dir="auto"
-														className="truncate block max-w-[240px]"
-													>
-														{getChatDisplayName(c)}
-													</span>
-												</SelectItem>
-											))}
-									</SelectContent>
-								</Select>
+								<ChatSelect
+									id="target-chat-select"
+									value={chatId}
+									onValueChange={setChatId}
+									chats={availableChats}
+									currentUser={currentUser}
+									includePersonalOption={true}
+									placeholder="Select destination..."
+								/>
 							</div>
 						)}
 
@@ -194,31 +163,12 @@ export const MemoryModal: FC<MemoryModalProps> = ({
 							>
 								Category
 							</label>
-							<Select
+							<CategorySelect
+								id="memory-category-select"
 								value={category}
 								onValueChange={(val) => setCategory(val as MemoryCategory)}
-							>
-								<SelectTrigger
-									id="memory-category-select"
-									className="w-full text-xs"
-								>
-									<SelectValue />
-								</SelectTrigger>
-								<SelectContent>
-									{MEMORY_CATEGORY_LIST.map((cat) => (
-										<SelectItem
-											key={cat.value}
-											value={cat.value}
-											className="text-xs"
-										>
-											<span className={`font-medium ${cat.textColor}`}>
-												{cat.label}
-											</span>{" "}
-											— {cat.description}
-										</SelectItem>
-									))}
-								</SelectContent>
-							</Select>
+								showDescription={true}
+							/>
 						</div>
 
 						<div className="space-y-1.5">

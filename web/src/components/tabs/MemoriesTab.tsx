@@ -3,7 +3,6 @@ import {
 	Edit2,
 	Inbox,
 	Plus,
-	Search,
 	Sparkles,
 	Trash2,
 	Upload,
@@ -11,11 +10,17 @@ import {
 	Users,
 } from "lucide-react";
 import { type ChangeEvent, type FC, useMemo, useRef, useState } from "react";
-import { CopyButton, EmptyState, LoadingState } from "@/components/common";
-import { Badge } from "@/components/ui/badge";
+import {
+	CategoryBadge,
+	CategorySelect,
+	ChatSelect,
+	CopyButton,
+	EmptyState,
+	LoadingState,
+	SearchInput,
+} from "@/components/common";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import {
 	Select,
 	SelectContent,
@@ -25,7 +30,6 @@ import {
 } from "@/components/ui/select";
 import { useAsyncAction } from "@/hooks/useAsyncAction";
 import { api } from "@/lib/api";
-import { MEMORY_CATEGORIES, MEMORY_CATEGORY_LIST } from "@/lib/constants";
 import {
 	cleanMemoryText,
 	formatDate,
@@ -58,9 +62,6 @@ const MemoryCard: FC<MemoryCardProps> = ({
 	const isMyMemory = currentUser && memory.user_id === currentUser.id;
 	const canEditDelete = isOwner || isAdminOfChat || isMyMemory;
 
-	const catMeta =
-		MEMORY_CATEGORIES[memory.category] || MEMORY_CATEGORIES.PROFILE;
-
 	const userName = memory.user_first_name
 		? `${memory.user_first_name}${memory.user_username ? ` (@${memory.user_username})` : ""}`
 		: memory.user_username
@@ -74,9 +75,7 @@ const MemoryCard: FC<MemoryCardProps> = ({
 			<div className="p-3.5 sm:p-4 space-y-2.5">
 				<div className="flex items-center justify-between gap-2 flex-wrap text-xs">
 					<div className="flex items-center gap-1.5 flex-wrap min-w-0 max-w-full">
-						<Badge variant={catMeta.badgeVariant} className="text-[10px]">
-							{memory.category || "PROFILE"}
-						</Badge>
+						<CategoryBadge category={memory.category} />
 						<span className="px-2 py-0.5 rounded-md bg-secondary/80 text-muted-foreground text-[11px] font-medium truncate max-w-[200px] sm:max-w-[280px] flex items-center gap-1">
 							<Users className="w-3 h-3 shrink-0" />
 							<span className="truncate" dir="auto">
@@ -325,15 +324,11 @@ export const MemoriesTab: FC<MemoriesTabProps> = ({
 	return (
 		<div className="space-y-4 animate-in fade-in duration-200">
 			<div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
-				<div className="relative flex-1">
-					<Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-					<Input
-						placeholder="Search facts and knowledge in memory..."
-						value={searchQuery}
-						onChange={(e) => setSearchQuery(e.target.value)}
-						className="pl-9 bg-card/60 text-xs sm:text-sm h-9"
-					/>
-				</div>
+				<SearchInput
+					placeholder="Search facts and knowledge in memory..."
+					value={searchQuery}
+					onChange={setSearchQuery}
+				/>
 
 				<div className="flex items-center gap-2">
 					<Button
@@ -409,39 +404,22 @@ export const MemoriesTab: FC<MemoriesTabProps> = ({
 					</SelectContent>
 				</Select>
 
-				<Select value={chatFilter} onValueChange={setChatFilter}>
-					<SelectTrigger className="w-full bg-card/60 text-xs h-9">
-						<SelectValue placeholder="All Groups" />
-					</SelectTrigger>
-					<SelectContent>
-						<SelectItem value="all" className="text-xs">
-							All Groups & Chats
-						</SelectItem>
-						{chats.map((c) => (
-							<SelectItem key={c.chat_id} value={c.chat_id} className="text-xs">
-								<span dir="auto" className="truncate block max-w-[260px]">
-									{getChatDisplayName(c)}
-								</span>
-							</SelectItem>
-						))}
-					</SelectContent>
-				</Select>
+				<ChatSelect
+					value={chatFilter}
+					onValueChange={setChatFilter}
+					chats={chats}
+					includeAllOption={true}
+					allOptionLabel="All Groups & Chats"
+					placeholder="All Groups"
+				/>
 
-				<Select value={categoryFilter} onValueChange={setCategoryFilter}>
-					<SelectTrigger className="w-full bg-card/60 text-xs h-9">
-						<SelectValue placeholder="All Categories" />
-					</SelectTrigger>
-					<SelectContent>
-						<SelectItem value="all" className="text-xs">
-							All Categories
-						</SelectItem>
-						{MEMORY_CATEGORY_LIST.map((cat) => (
-							<SelectItem key={cat.value} value={cat.value} className="text-xs">
-								{cat.label}
-							</SelectItem>
-						))}
-					</SelectContent>
-				</Select>
+				<CategorySelect
+					value={categoryFilter}
+					onValueChange={setCategoryFilter}
+					includeAllOption={true}
+					allOptionLabel="All Categories"
+					placeholder="All Categories"
+				/>
 			</div>
 
 			<div className="space-y-3 pt-2">

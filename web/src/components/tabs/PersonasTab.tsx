@@ -4,17 +4,16 @@ import {
 	CheckCircle2,
 	Edit3,
 	Plus,
-	Search,
 	Sparkles,
 	Trash2,
 	Users,
 } from "lucide-react";
 import { type FC, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { SearchInput } from "@/components/common";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import {
 	Select,
 	SelectContent,
@@ -391,15 +390,12 @@ export const PersonasTab: FC<PersonasTabProps> = ({
 
 			{/* Search & Stats Bar */}
 			<div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-				<div className="relative flex-1 max-w-md">
-					<Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-					<Input
-						placeholder="Search personas (name, description, prompt)..."
-						value={searchQuery}
-						onChange={(e) => setSearchQuery(e.target.value)}
-						className="pl-9 bg-card border-border/80 text-xs h-9"
-					/>
-				</div>
+				<SearchInput
+					placeholder="Search personas (name, description, prompt)..."
+					value={searchQuery}
+					onChange={setSearchQuery}
+					containerClassName="max-w-md"
+				/>
 				<div className="flex items-center gap-2 shrink-0">
 					<div className="px-3 py-1.5 rounded-xl bg-card border border-border/80 flex items-center gap-1.5 text-xs text-muted-foreground shadow-sm">
 						<Bot className="w-3.5 h-3.5 text-primary shrink-0" />
