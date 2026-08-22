@@ -1,17 +1,35 @@
+# Dependencies
 node_modules/
-**/node_modules/
-*.exe
-*.db
-.env
-config.json
+
+# Production builds & compile artifacts
 dist/
-system.txt
-.DS_Store
-/logs
-*.db-shm
-*.db-wal
 public/
-web/dist/
+*.exe
 *.tsbuildinfo
-/public
-*/*tsbuildinfo
+
+# Environment & Local Configuration
+.env
+.env.*
+!.env.example
+config.json
+system.txt
+
+# Databases & SQLite files
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+
+# Logs
+logs/
+*.log
+
+# Editor & OS artifacts
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
