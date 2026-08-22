@@ -923,6 +923,14 @@ export const Repository = {
 	},
 
 	/**
+	 * Returns the total count of memories stored for a given chat ID.
+	 */
+	getMemoryCount(chatId: string): number {
+		const result = stmts.getMemoryCount.get(chatId) as { count: number } | null;
+		return result?.count || 0;
+	},
+
+	/**
 	 * Retrieves a single memory row by ID.
 	 */
 	getMemoryById(id: number): {
