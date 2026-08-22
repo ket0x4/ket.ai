@@ -2,7 +2,10 @@
  * Calculates the cosine similarity between two vectors.
  * Returns a score between -1 and 1, where 1 means identical direction.
  */
-export function cosineSimilarity(vecA: number[], vecB: number[]): number {
+export function cosineSimilarity(
+	vecA: ArrayLike<number>,
+	vecB: ArrayLike<number>,
+): number {
 	if (vecA.length !== vecB.length || vecA.length === 0) {
 		return 0;
 	}

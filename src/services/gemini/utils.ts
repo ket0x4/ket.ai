@@ -253,9 +253,10 @@ export function buildHistoryList(history: MessageRow[]) {
 		const usernameSuffix = msg.username ? ` (@${msg.username})` : "";
 		const senderName = msg.is_bot_reply
 			? "You (ket.ai)"
-			: `User: ${msg.first_name || "Unnamed"}${usernameSuffix}`;
+			: `User_${msg.user_id} (${msg.first_name || "Unnamed"}${usernameSuffix})`;
 		const fallback = msg.photo_file_id ? "[Photo]" : "[Media]";
 		return {
+			user_id: msg.is_bot_reply ? undefined : msg.user_id,
 			sender: senderName,
 			reply_to_message_id: msg.reply_to_message_id || undefined,
 			text: msg.is_bot_reply

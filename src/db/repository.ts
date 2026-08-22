@@ -159,6 +159,12 @@ const stmts = {
 	getTodayMessageCount: db.prepare(
 		`SELECT COUNT(*) as count FROM messages WHERE chat_id = ? AND sent_at >= ?`,
 	),
+	updateMemoryWithEmbedding: db.prepare(
+		"UPDATE memories SET memory_text = ?, category = ?, embedding = ? WHERE id = ?",
+	),
+	updateMemoryWithoutEmbedding: db.prepare(
+		"UPDATE memories SET memory_text = ?, category = ? WHERE id = ?",
+	),
 	updateMessageText: db.prepare(
 		"UPDATE messages SET text = ? WHERE chat_id = ? AND message_id = ?",
 	),
@@ -173,10 +179,10 @@ const stmts = {
 	),
 };
 
-interface MemoryItem {
+export interface MemoryItem {
 	id: number;
 	text: string;
-	embedding: number[];
+	embedding: Float32Array;
 	createdAt: number;
 	userId: number | null;
 	category: "PROFILE" | "DYNAMIC" | "TEMPORARY";
@@ -184,7 +190,16 @@ interface MemoryItem {
 }
 
 // In-memory cache for parsed memory embeddings per chat to optimize RAG lookups
+const MAX_CACHED_CHATS = 500;
 const memoryCache = new Map<string, MemoryItem[]>();
+
+function setMemoryCache(chatId: string, items: MemoryItem[]): void {
+	if (memoryCache.size >= MAX_CACHED_CHATS && !memoryCache.has(chatId)) {
+		const oldestKey = memoryCache.keys().next().value;
+		if (oldestKey) memoryCache.delete(oldestKey);
+	}
+	memoryCache.set(chatId, items);
+}
 
 export const Repository = {
 	/**
@@ -444,7 +459,7 @@ export const Repository = {
 	addMemory(
 		chatId: string,
 		memoryText: string,
-		embedding: number[],
+		embedding: number[] | Float32Array,
 		options?: {
 			userId?: number | null;
 			category?: "PROFILE" | "DYNAMIC" | "TEMPORARY";
@@ -471,13 +486,20 @@ export const Repository = {
 				? now + options.ttlDays * 86400
 				: null;
 
-		// Convert number[] to binary BLOB via Float32Array
-		const buffer = Buffer.from(new Float32Array(embedding).buffer);
+		const floatArray =
+			embedding instanceof Float32Array
+				? embedding
+				: new Float32Array(embedding);
+		const buffer = Buffer.from(
+			floatArray.buffer,
+			floatArray.byteOffset,
+			floatArray.byteLength,
+		);
 
 		stmts.insertMemory.run(
 			chatId,
 			memoryText,
-			buffer, // using BLOB
+			buffer,
 			now,
 			userId,
 			category,
@@ -506,16 +528,27 @@ export const Repository = {
 		}[];
 
 		const parsed: MemoryItem[] = rows.map((row) => {
-			let embeddingArray: number[] = [];
-			if (row.embedding) {
-				// Convert BLOB back to number[]
-				const floatArray = new Float32Array(
-					row.embedding.buffer,
-					row.embedding.byteOffset,
-					row.embedding.byteLength / 4,
-				);
-				embeddingArray = Array.from(floatArray);
+			let embeddingArray: Float32Array;
+			if (row.embedding && row.embedding.byteLength > 0) {
+				if (row.embedding.byteOffset % 4 === 0) {
+					embeddingArray = new Float32Array(
+						row.embedding.buffer,
+						row.embedding.byteOffset,
+						row.embedding.byteLength / 4,
+					);
+				} else {
+					const alignedBuffer = new ArrayBuffer(row.embedding.byteLength);
+					new Uint8Array(alignedBuffer).set(row.embedding);
+					embeddingArray = new Float32Array(
+						alignedBuffer,
+						0,
+						row.embedding.byteLength / 4,
+					);
+				}
+			} else {
+				embeddingArray = new Float32Array(0);
 			}
+
 			return {
 				id: row.id,
 				text: row.memory_text,
@@ -528,7 +561,7 @@ export const Repository = {
 			};
 		});
 
-		memoryCache.set(chatId, parsed);
+		setMemoryCache(chatId, parsed);
 		return parsed;
 	},
 
@@ -572,21 +605,23 @@ export const Repository = {
 		id: number,
 		text: string,
 		category?: string,
-		embedding?: number[],
+		embedding?: number[] | Float32Array,
 		chatId?: string,
 	): void {
+		const cat = category || "PROFILE";
 		if (embedding && embedding.length > 0) {
-			const buffer = Buffer.from(new Float32Array(embedding).buffer);
-			db.run(
-				"UPDATE memories SET memory_text = ?, category = ?, embedding = ? WHERE id = ?",
-				[text, category || "PROFILE", buffer, id],
+			const floatArray =
+				embedding instanceof Float32Array
+					? embedding
+					: new Float32Array(embedding);
+			const buffer = Buffer.from(
+				floatArray.buffer,
+				floatArray.byteOffset,
+				floatArray.byteLength,
 			);
+			stmts.updateMemoryWithEmbedding.run(text, cat, buffer, id);
 		} else {
-			db.run("UPDATE memories SET memory_text = ?, category = ? WHERE id = ?", [
-				text,
-				category || "PROFILE",
-				id,
-			]);
+			stmts.updateMemoryWithoutEmbedding.run(text, cat, id);
 		}
 		if (chatId) {
 			memoryCache.delete(chatId);

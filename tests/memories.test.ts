@@ -203,3 +203,104 @@ test("queryMemoriesWithDiagnostics returns comprehensive diagnostics", async () 
 		Repository.clearMemories(testChatId);
 	}
 });
+
+test("Category-aware scoring preserves PROFILE facts and decays TEMPORARY facts", async () => {
+	const { queryMemoriesWithDiagnostics } = await import(
+		"../src/services/gemini/memory"
+	);
+	const { ai } = await import("../src/services/gemini/client");
+
+	const testChatId = "test_category_scoring_chat_202";
+	Repository.clearMemories(testChatId);
+
+	// Add a 90-day-old PROFILE fact
+	Repository.addMemory(testChatId, "Alice: Born on May 15th", [1.0, 0.0], {
+		category: "PROFILE",
+		ttlDays: null,
+	});
+
+	// Add a 90-day-old TEMPORARY fact
+	Repository.addMemory(testChatId, "Bob: Going to hospital today", [1.0, 0.0], {
+		category: "TEMPORARY",
+		ttlDays: 120,
+	});
+
+	// Manually age the memories to 90 days ago in SQLite
+	const { db } = await import("../src/db/index");
+	const ninetyDaysAgo = Math.floor(Date.now() / 1000) - 90 * 86400;
+	db.run("UPDATE memories SET created_at = ? WHERE chat_id = ?", [
+		ninetyDaysAgo,
+		testChatId,
+	]);
+	Repository.clearMemoryCache(testChatId);
+
+	const originalEmbed = ai.models.embedContent;
+	// biome-ignore lint/suspicious/noExplicitAny: mock
+	(ai.models as any).embedContent = async () => ({
+		embeddings: [{ values: [1.0, 0.0] }],
+	});
+
+	try {
+		const diag = await queryMemoriesWithDiagnostics(
+			testChatId,
+			"When is Alice birthday?",
+			{ threshold: 0.6 },
+		);
+
+		const profileMemory = diag.details.find((m) => m.text.includes("Alice"));
+		const tempMemory = diag.details.find((m) => m.text.includes("Bob"));
+
+		expect(profileMemory).toBeDefined();
+		expect(tempMemory).toBeDefined();
+
+		// PROFILE fact should maintain full score and pass threshold despite 90 days age
+		expect(profileMemory?.finalScore).toBeGreaterThanOrEqual(1.0);
+		expect(profileMemory?.passedThreshold).toBeTrue();
+
+		// TEMPORARY fact should have suffered heavy exponential decay (< 0.75)
+		expect(tempMemory?.finalScore).toBeLessThan(0.75);
+	} finally {
+		ai.models.embedContent = originalEmbed;
+		Repository.clearMemories(testChatId);
+	}
+});
+
+test("Exact text duplicate and Float32Array embedding storage", async () => {
+	const { processNewMemory } = await import("../src/services/gemini/memory");
+	const testChatId = "test_exact_dedup_chat_303";
+	Repository.clearMemories(testChatId);
+
+	// Add with Float32Array directly
+	Repository.addMemory(
+		testChatId,
+		"Alice: Software engineer",
+		new Float32Array([0.5, 0.5]),
+		{ userId: 101, category: "PROFILE" },
+	);
+
+	const memories1 = Repository.getMemories(testChatId);
+	expect(memories1.length).toBe(1);
+	expect(memories1[0].embedding instanceof Float32Array).toBeTrue();
+	expect(memories1[0].embedding[0]).toBeCloseTo(0.5, 2);
+
+	// Process exact duplicate text — should not insert duplicate
+	await processNewMemory(testChatId, "Alice: Software engineer", {
+		userId: 101,
+	});
+	const memories2 = Repository.getMemories(testChatId);
+	expect(memories2.length).toBe(1);
+
+	// Update memory text and verify prepared statement update
+	Repository.updateMemory(
+		memories2[0].id,
+		"Alice: Senior software engineer",
+		"PROFILE",
+		new Float32Array([0.6, 0.6]),
+		testChatId,
+	);
+	const updated = Repository.getMemories(testChatId);
+	expect(updated[0].text).toBe("Alice: Senior software engineer");
+	expect(updated[0].embedding[0]).toBeCloseTo(0.6, 2);
+
+	Repository.clearMemories(testChatId);
+});

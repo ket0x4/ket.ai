@@ -177,6 +177,16 @@ function runMigrations() {
     ON memories(chat_id, expires_at);
   `);
 
+	db.run(`
+    CREATE INDEX IF NOT EXISTS idx_memories_chat_created
+    ON memories(chat_id, created_at ASC);
+  `);
+
+	db.run(`
+    CREATE INDEX IF NOT EXISTS idx_memories_user_created
+    ON memories(user_id, created_at DESC);
+  `);
+
 	seedDefaultPersonas();
 }
 

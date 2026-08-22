@@ -33,13 +33,22 @@ export async function generateEmbedding(
 }
 
 function isDuplicateMemory(
-	emb: number[],
-	existing: Array<{ embedding: number[] }>,
+	emb: Float32Array | number[],
+	existing: Array<{ embedding: Float32Array; userId?: number | null }>,
+	newUserId?: number | null,
 ): boolean {
 	for (const m of existing) {
-		if (m.embedding.length === 0) continue;
+		if (!m.embedding || m.embedding.length === 0) continue;
+		// If userIds are explicitly known and different, they belong to different users
+		if (
+			typeof newUserId === "number" &&
+			typeof m.userId === "number" &&
+			newUserId !== m.userId
+		) {
+			continue;
+		}
 		const sim = cosineSimilarity(emb, m.embedding);
-		if (sim > 0.85) return true;
+		if (sim > 0.88) return true;
 	}
 	return false;
 }
@@ -72,6 +81,21 @@ export async function processNewMemory(
 	if (!memoryText?.trim() || !chatIdStr) return;
 
 	const memText = memoryText.trim();
+	const existing = Repository.getMemories(chatIdStr);
+
+	// Fast exact text deduplication before invoking embedding API
+	const normalizedText = memText.toLowerCase();
+	const exactMatch = existing.find(
+		(m) => m.text.trim().toLowerCase() === normalizedText,
+	);
+	if (exactMatch) {
+		logger.debug(
+			`[Memory Store] Skipped exact duplicate memory for chat ${chatIdStr}:`,
+			memText,
+		);
+		return;
+	}
+
 	const emb = await generateEmbedding(memText, "RETRIEVAL_DOCUMENT");
 	if (emb.length === 0) {
 		logger.warn(
@@ -81,10 +105,9 @@ export async function processNewMemory(
 		return;
 	}
 
-	const existing = Repository.getMemories(chatIdStr);
-	if (isDuplicateMemory(emb, existing)) {
+	if (isDuplicateMemory(emb, existing, options?.userId)) {
 		logger.debug(
-			`[Memory Store] Skipped duplicate memory for chat ${chatIdStr}:`,
+			`[Memory Store] Skipped semantically duplicate memory for chat ${chatIdStr}:`,
 			memText,
 		);
 		return;
@@ -213,7 +236,7 @@ export async function queryMemoriesWithDiagnostics(
 
 	const now = Math.floor(Date.now() / 1000);
 
-	// Calculate hybrid similarity score (85% Cosine Similarity + 15% Recency Decay)
+	// Calculate hybrid similarity score (Category-aware: PROFILE facts never decay, TEMPORARY decays fast)
 	const details: MemoryDiagnosticItem[] = allMemories.map((m) => {
 		if (!m.embedding || m.embedding.length === 0) {
 			return createDefaultDiagnosticItem(m);
@@ -221,8 +244,23 @@ export async function queryMemoriesWithDiagnostics(
 
 		const cosSim = cosineSimilarity(queryEmbedding, m.embedding);
 		const ageInDays = Math.max(0, (now - m.createdAt) / 86400);
-		const recencyBoost = Math.exp(-0.05 * ageInDays); // Exponential time-decay factor
-		const finalScore = 0.85 * cosSim + 0.15 * recencyBoost;
+
+		let recencyBoost = 1.0;
+		let finalScore = cosSim;
+
+		if (m.category === "TEMPORARY") {
+			// Temporary events decay quickly (e.g. half-life 3 days)
+			recencyBoost = Math.exp(-0.25 * ageInDays);
+			finalScore = 0.7 * cosSim + 0.3 * recencyBoost;
+		} else if (m.category === "DYNAMIC") {
+			// Medium-term updates decay moderately (half-life 14 days)
+			recencyBoost = Math.exp(-0.05 * ageInDays);
+			finalScore = 0.85 * cosSim + 0.15 * recencyBoost;
+		} else {
+			// PROFILE: permanent traits (birthday, job, likes, etc.) do NOT decay with age!
+			recencyBoost = Math.exp(-0.01 * ageInDays);
+			finalScore = Math.max(cosSim, 0.95 * cosSim + 0.05 * recencyBoost);
+		}
 
 		return {
 			id: m.id,

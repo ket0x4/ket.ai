@@ -51,7 +51,7 @@ function resolveSenderDescription(lastMsg?: MessageRow): string {
 	if (!lastMsg) return "User: unnamed";
 	if (lastMsg.is_bot_reply) return "You (ket.ai)";
 	const suffix = lastMsg.username ? ` (@${lastMsg.username})` : "";
-	return `User: ${lastMsg.first_name || "Unnamed"}${suffix}`;
+	return `User_${lastMsg.user_id} (${lastMsg.first_name || "Unnamed"}${suffix})`;
 }
 
 function buildInputPayload(
@@ -116,10 +116,14 @@ function buildResponseSchemaProperties(
 			items: {
 				type: "OBJECT",
 				properties: {
+					user_id: {
+						type: "INTEGER",
+						description:
+							"The integer user_id extracted from User_ID field if available.",
+					},
 					user_name: {
 						type: "STRING",
-						description:
-							"The EXACT name of the user who stated the fact (look at the 'sender' field).",
+						description: "The first name of the user who stated the fact.",
 					},
 					fact: {
 						type: "STRING",
@@ -230,14 +234,51 @@ async function handleToolExecution(
 	return toolResponseParts;
 }
 
+function resolveTargetUserId(
+	userName: string,
+	explicitUserId?: number,
+	history: MessageRow[] = [],
+	fallbackUserId?: number,
+): number | null {
+	if (typeof explicitUserId === "number" && explicitUserId > 0) {
+		return explicitUserId;
+	}
+
+	if (history.length > 0 && userName) {
+		const cleanName = userName.toLowerCase().trim();
+		const matchedMsg = history
+			.slice()
+			.reverse()
+			.find(
+				(m) =>
+					!m.is_bot_reply &&
+					((m.first_name && m.first_name.toLowerCase() === cleanName) ||
+						(m.username && m.username.toLowerCase() === cleanName)),
+			);
+		if (matchedMsg) {
+			return matchedMsg.user_id;
+		}
+	}
+
+	return fallbackUserId ?? null;
+}
+
 async function processExtractedMemories(
 	chatIdStr: string,
 	memoryUpdates: unknown[],
+	history: MessageRow[] = [],
 	senderUserId?: number,
 ): Promise<void> {
-	if (!Array.isArray(memoryUpdates) || !chatIdStr) return;
+	if (
+		!Array.isArray(memoryUpdates) ||
+		!chatIdStr ||
+		memoryUpdates.length === 0
+	) {
+		return;
+	}
 
 	for (const mem of memoryUpdates as Array<{
+		user_id?: number;
 		user_name?: string;
 		fact?: string;
 		category?: string;
@@ -254,8 +295,15 @@ async function processExtractedMemories(
 					? 3
 					: null;
 
+		const targetUserId = resolveTargetUserId(
+			mem.user_name,
+			mem.user_id,
+			history,
+			senderUserId,
+		);
+
 		await processNewMemory(chatIdStr, combinedFact, {
-			userId: senderUserId,
+			userId: targetUserId,
 			category: cat,
 			ttlDays: ttl,
 		});
@@ -370,6 +418,7 @@ async function parseAndProcessReply(
 	responseText: string,
 	chatIdStr: string,
 	fsm: AgentStateMachine,
+	history: MessageRow[] = [],
 	lastMsg?: MessageRow,
 ): Promise<string> {
 	if (!responseText?.trim()) {
@@ -403,11 +452,24 @@ async function parseAndProcessReply(
 			fsm.transition("PERSISTING_DATA");
 			const senderUserId =
 				lastMsg && !lastMsg.is_bot_reply ? lastMsg.user_id : undefined;
-			await processExtractedMemories(
-				chatIdStr,
-				parsed.new_memory_updates,
-				senderUserId,
-			);
+
+			// Asynchronously persist memories in the background so Telegram reply latency is zero
+			if (
+				Array.isArray(parsed.new_memory_updates) &&
+				parsed.new_memory_updates.length > 0
+			) {
+				processExtractedMemories(
+					chatIdStr,
+					parsed.new_memory_updates,
+					history,
+					senderUserId,
+				).catch((err) => {
+					logger.error(
+						`[Gemini:${fsm.getTraceId()}] Error persisting extracted memories:`,
+						err,
+					);
+				});
+			}
 
 			fsm.transition("COMPLETED");
 			return typeof parsed.reply === "string" ? parsed.reply.trim() : "";
@@ -500,6 +562,7 @@ export const GeminiService = {
 				responseText,
 				chatIdStr,
 				fsm,
+				history,
 				lastMsg,
 			);
 			// If reply is empty (e.g. suppressed due to parse error), do not send fallback message
