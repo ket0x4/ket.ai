@@ -304,3 +304,108 @@ test("Exact text duplicate and Float32Array embedding storage", async () => {
 
 	Repository.clearMemories(testChatId);
 });
+
+test("Vector math utilities correctness and normalization", async () => {
+	const { dotProduct, normalizeVector } = await import("../src/utils/vector");
+
+	const vecA = [3, 4];
+	const normA = normalizeVector(vecA);
+	expect(normA[0]).toBeCloseTo(0.6, 4);
+	expect(normA[1]).toBeCloseTo(0.8, 4);
+
+	const dot = dotProduct([1, 2, 3, 4, 5], [2, 3, 4, 5, 6]);
+	// 1*2 + 2*3 + 3*4 + 4*5 + 5*6 = 2 + 6 + 12 + 20 + 30 = 70
+	expect(dot).toBe(70);
+
+	// Unit dot product as cosine similarity
+	const norm1 = normalizeVector([1, 0]);
+	const norm2 = normalizeVector([0, 1]);
+	expect(dotProduct(norm1, norm2)).toBe(0);
+
+	const normSame1 = normalizeVector([2, 2]);
+	const normSame2 = normalizeVector([5, 5]);
+	expect(dotProduct(normSame1, normSame2)).toBeCloseTo(1.0, 4);
+});
+
+test("Fast path RAG retrieval efficiency and ranking", async () => {
+	const { getRelevantMemories } = await import("../src/services/gemini/memory");
+	const { ai } = await import("../src/services/gemini/client");
+
+	const testChatId = "test_fast_rag_bench_888";
+	Repository.clearMemories(testChatId);
+
+	const originalEmbed = ai.models.embedContent;
+	// biome-ignore lint/suspicious/noExplicitAny: mock
+	(ai.models as any).embedContent = async (opts: any) => {
+		const text = String(opts.contents);
+		if (text.includes("sports") || text.includes("football")) {
+			return { embeddings: [{ values: [1.0, 0.0, 0.0] }] };
+		}
+		if (text.includes("cinema") || text.includes("movie")) {
+			return { embeddings: [{ values: [0.0, 1.0, 0.0] }] };
+		}
+		return { embeddings: [{ values: [0.0, 0.0, 1.0] }] };
+	};
+
+	try {
+		// Insert 20 memories
+		for (let i = 0; i < 20; i++) {
+			const cat = i % 2 === 0 ? "PROFILE" : "DYNAMIC";
+			const emb = i === 5 ? [1.0, 0.0, 0.0] : [0.0, 0.0, 1.0];
+			const text =
+				i === 5 ? "User loves football matches" : `Generic fact #${i}`;
+			Repository.addMemory(testChatId, text, emb, { category: cat });
+		}
+
+		// Fast path getRelevantMemories
+		const results = await getRelevantMemories(
+			testChatId,
+			"Which sports does user follow?",
+			undefined,
+			3,
+		);
+
+		expect(results.length).toBeGreaterThanOrEqual(1);
+		expect(results[0]).toBe("User loves football matches");
+	} finally {
+		ai.models.embedContent = originalEmbed;
+		Repository.clearMemories(testChatId);
+	}
+});
+
+test("Memory LRU cache incremental updates and memory bounds", () => {
+	const testChatId = "test_lru_bounds_999";
+	Repository.clearMemories(testChatId);
+
+	// Add memory 1
+	Repository.addMemory(testChatId, "Fact 1", [1, 0]);
+	const cached1 = Repository.getMemories(testChatId);
+	expect(cached1.length).toBe(1);
+	expect(cached1[0].text).toBe("Fact 1");
+
+	// Add memory 2 (incremental append, new reference returned)
+	Repository.addMemory(testChatId, "Fact 2", [0, 1]);
+	const cached2 = Repository.getMemories(testChatId);
+	expect(cached2.length).toBe(2);
+	expect(cached2).not.toBe(cached1);
+
+	// Update memory 1
+	Repository.updateMemory(
+		cached2[0].id,
+		"Updated Fact 1",
+		"DYNAMIC",
+		new Float32Array([0.5, 0.5]),
+		testChatId,
+	);
+	const cached3 = Repository.getMemories(testChatId);
+	expect(cached3[0].text).toBe("Updated Fact 1");
+	expect(cached3[0].category).toBe("DYNAMIC");
+
+	// Delete memory 2
+	Repository.deleteMemoriesByIds([cached2[1].id], testChatId);
+	const cached4 = Repository.getMemories(testChatId);
+	expect(cached4.length).toBe(1);
+	expect(cached4[0].text).toBe("Updated Fact 1");
+
+	Repository.clearMemories(testChatId);
+});

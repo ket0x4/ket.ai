@@ -1,7 +1,7 @@
 import { CONFIG } from "../../config/index";
-import { Repository } from "../../db/repository";
+import { type MemoryItem, Repository } from "../../db/repository";
 import logger from "../../utils/logger";
-import { cosineSimilarity } from "../../utils/vector";
+import { dotProduct, normalizeVector } from "../../utils/vector";
 import { ai } from "./client";
 import { getThinkingConfig, type RequestPriority, runWithRetry } from "./utils";
 
@@ -37,9 +37,10 @@ export async function generateEmbedding(
 
 function isDuplicateMemory(
 	emb: Float32Array | number[],
-	existing: Array<{ embedding: Float32Array; userId?: number | null }>,
+	existing: MemoryItem[],
 	newUserId?: number | null,
 ): boolean {
+	const normEmb = emb instanceof Float32Array ? emb : normalizeVector(emb);
 	for (const m of existing) {
 		if (!m.embedding || m.embedding.length === 0) continue;
 		// If userIds are explicitly known and different, they belong to different users
@@ -50,7 +51,8 @@ function isDuplicateMemory(
 		) {
 			continue;
 		}
-		const sim = cosineSimilarity(emb, m.embedding);
+		const targetEmb = m.normalizedEmbedding || normalizeVector(m.embedding);
+		const sim = dotProduct(normEmb, targetEmb);
 		if (sim > 0.88) return true;
 	}
 	return false;
@@ -101,14 +103,20 @@ export async function processNewMemory(
 	}
 
 	const priority = options?.priority ?? "low";
-	const emb = await generateEmbedding(memText, "RETRIEVAL_DOCUMENT", priority);
-	if (emb.length === 0) {
+	const rawEmb = await generateEmbedding(
+		memText,
+		"RETRIEVAL_DOCUMENT",
+		priority,
+	);
+	if (rawEmb.length === 0) {
 		logger.warn(
 			`[Memory Store] Skipped memory for chat ${chatIdStr} due to embedding failure:`,
 			memText,
 		);
 		return;
 	}
+
+	const emb = normalizeVector(rawEmb);
 
 	if (isDuplicateMemory(emb, existing, options?.userId)) {
 		logger.debug(
@@ -121,6 +129,53 @@ export async function processNewMemory(
 	logger.info(`[Memory Store] Adding memory to chat ${chatIdStr}:`, memText);
 	Repository.addMemory(chatIdStr, memText, emb, options);
 	handleMemoryConsolidationCounter(chatIdStr);
+}
+
+function computeHybridScore(
+	cosSim: number,
+	createdAt: number,
+	category: "PROFILE" | "DYNAMIC" | "TEMPORARY",
+	now: number,
+): { ageInDays: number; recencyBoost: number; finalScore: number } {
+	const ageInDays = Math.max(0, (now - createdAt) / 86400);
+	let recencyBoost = 1.0;
+	let finalScore = cosSim;
+
+	if (category === "TEMPORARY") {
+		recencyBoost = Math.exp(-0.25 * ageInDays);
+		finalScore = 0.7 * cosSim + 0.3 * recencyBoost;
+	} else if (category === "DYNAMIC") {
+		recencyBoost = Math.exp(-0.05 * ageInDays);
+		finalScore = 0.85 * cosSim + 0.15 * recencyBoost;
+	} else {
+		recencyBoost = Math.exp(-0.01 * ageInDays);
+		finalScore = Math.max(cosSim, 0.95 * cosSim + 0.05 * recencyBoost);
+	}
+
+	return { ageInDays, recencyBoost, finalScore };
+}
+
+function updateTopCandidates(
+	topCandidates: Array<{ text: string; score: number }>,
+	text: string,
+	score: number,
+	topK: number,
+	minScore: number,
+): number {
+	if (topCandidates.length < topK) {
+		topCandidates.push({ text, score });
+		if (topCandidates.length === topK) {
+			topCandidates.sort((a, b) => b.score - a.score);
+			return topCandidates[topK - 1].score;
+		}
+		return minScore;
+	}
+	if (score > minScore) {
+		topCandidates[topK - 1] = { text, score };
+		topCandidates.sort((a, b) => b.score - a.score);
+		return topCandidates[topK - 1].score;
+	}
+	return minScore;
 }
 
 interface MemoryDiagnosticItem {
@@ -240,6 +295,7 @@ export async function queryMemoriesWithDiagnostics(
 		};
 	}
 
+	const normQuery = normalizeVector(queryEmbedding);
 	const now = Math.floor(Date.now() / 1000);
 
 	// Calculate hybrid similarity score (Category-aware: PROFILE facts never decay, TEMPORARY decays fast)
@@ -248,25 +304,14 @@ export async function queryMemoriesWithDiagnostics(
 			return createDefaultDiagnosticItem(m);
 		}
 
-		const cosSim = cosineSimilarity(queryEmbedding, m.embedding);
-		const ageInDays = Math.max(0, (now - m.createdAt) / 86400);
-
-		let recencyBoost = 1.0;
-		let finalScore = cosSim;
-
-		if (m.category === "TEMPORARY") {
-			// Temporary events decay quickly (e.g. half-life 3 days)
-			recencyBoost = Math.exp(-0.25 * ageInDays);
-			finalScore = 0.7 * cosSim + 0.3 * recencyBoost;
-		} else if (m.category === "DYNAMIC") {
-			// Medium-term updates decay moderately (half-life 14 days)
-			recencyBoost = Math.exp(-0.05 * ageInDays);
-			finalScore = 0.85 * cosSim + 0.15 * recencyBoost;
-		} else {
-			// PROFILE: permanent traits (birthday, job, likes, etc.) do NOT decay with age!
-			recencyBoost = Math.exp(-0.01 * ageInDays);
-			finalScore = Math.max(cosSim, 0.95 * cosSim + 0.05 * recencyBoost);
-		}
+		const targetEmb = m.normalizedEmbedding || normalizeVector(m.embedding);
+		const cosSim = dotProduct(normQuery, targetEmb);
+		const { ageInDays, recencyBoost, finalScore } = computeHybridScore(
+			cosSim,
+			m.createdAt,
+			m.category,
+			now,
+		);
 
 		return {
 			id: m.id,
@@ -313,25 +358,94 @@ export async function queryMemoriesWithDiagnostics(
 	};
 }
 
+function scanTopMatchingMemories(
+	memories: MemoryItem[],
+	normQuery: Float32Array,
+	now: number,
+	threshold = 0.6,
+	topK = 5,
+): string[] {
+	const topCandidates: Array<{ text: string; score: number }> = [];
+	let minCandidateScore = threshold;
+
+	for (const m of memories) {
+		if (!m.embedding || m.embedding.length === 0) continue;
+		if (m.expiresAt !== null && m.expiresAt <= now) continue;
+
+		const targetEmb = m.normalizedEmbedding || normalizeVector(m.embedding);
+		const cosSim = dotProduct(normQuery, targetEmb);
+		const { finalScore } = computeHybridScore(
+			cosSim,
+			m.createdAt,
+			m.category,
+			now,
+		);
+
+		if (finalScore >= minCandidateScore) {
+			minCandidateScore = updateTopCandidates(
+				topCandidates,
+				m.text,
+				finalScore,
+				topK,
+				minCandidateScore,
+			);
+		}
+	}
+
+	if (topCandidates.length === 0) return [];
+	topCandidates.sort((a, b) => b.score - a.score);
+	return topCandidates.map((c) => c.text);
+}
+
 export async function getRelevantMemories(
 	chatId: string,
 	query: string,
 	activeTopic?: string,
 	topK = 5,
 ): Promise<string[]> {
-	const diag = await queryMemoriesWithDiagnostics(chatId, query, {
-		activeTopic,
-		topK,
-		threshold: 0.6,
-	});
-
-	if (diag.retrievedMemories.length > 0) {
-		logger.debug(
-			`[Memory RAG] Retrieved ${diag.retrievedMemories.length} memories for query: "${diag.enrichedQuery}"`,
-		);
-		logger.debug(`[Memory RAG] Memories:`, diag.retrievedMemories);
+	const allMemories = Repository.getMemories(chatId);
+	const cleanQuery = query.trim();
+	if (allMemories.length === 0 || !cleanQuery) {
+		return [];
 	}
-	return diag.retrievedMemories;
+
+	const enrichedQuery =
+		activeTopic &&
+		activeTopic !== "General chat is going on, no specific topic."
+			? `${cleanQuery} | Topic: ${activeTopic}`
+			: cleanQuery;
+
+	const queryEmbedding = await generateEmbedding(
+		enrichedQuery,
+		"RETRIEVAL_QUERY",
+		"high",
+	);
+
+	if (queryEmbedding.length === 0) {
+		logger.warn(
+			`[Memory RAG] Query embedding failed for chat ${chatId}. Skipping RAG retrieval.`,
+		);
+		return [];
+	}
+
+	const normQuery = normalizeVector(queryEmbedding);
+	const now = Math.floor(Date.now() / 1000);
+	const retrieved = scanTopMatchingMemories(
+		allMemories,
+		normQuery,
+		now,
+		0.6,
+		topK,
+	);
+
+	if (retrieved.length > 0) {
+		logger.debug(
+			`[Memory RAG] Retrieved ${retrieved.length} memories for query: "${enrichedQuery}"`,
+		);
+		logger.debug(`[Memory RAG] Memories:`, retrieved);
+	}
+
+	return retrieved;
 }
 
 async function consolidateMemories(chatIdStr: string) {

@@ -1,5 +1,6 @@
 import { CONFIG } from "../config/index";
 import logger from "../utils/logger";
+import { normalizeVector } from "../utils/vector";
 import { db } from "./index";
 
 interface ChatRow {
@@ -183,23 +184,154 @@ export interface MemoryItem {
 	id: number;
 	text: string;
 	embedding: Float32Array;
+	normalizedEmbedding?: Float32Array;
 	createdAt: number;
 	userId: number | null;
 	category: "PROFILE" | "DYNAMIC" | "TEMPORARY";
 	expiresAt: number | null;
 }
 
-// In-memory cache for parsed memory embeddings per chat to optimize RAG lookups
-const MAX_CACHED_CHATS = 500;
-const memoryCache = new Map<string, MemoryItem[]>();
+// High-performance bounded LRU cache for parsed memory embeddings per chat
+class MemoryLRUCache {
+	private readonly maxChats: number;
+	private readonly maxTotalItems: number;
+	private readonly cache: Map<string, MemoryItem[]>;
+	private totalItems: number;
 
-function setMemoryCache(chatId: string, items: MemoryItem[]): void {
-	if (memoryCache.size >= MAX_CACHED_CHATS && !memoryCache.has(chatId)) {
-		const oldestKey = memoryCache.keys().next().value;
-		if (oldestKey) memoryCache.delete(oldestKey);
+	constructor(maxChats = 200, maxTotalItems = 30000) {
+		this.maxChats = maxChats;
+		this.maxTotalItems = maxTotalItems;
+		this.cache = new Map();
+		this.totalItems = 0;
 	}
-	memoryCache.set(chatId, items);
+
+	get(chatId: string): MemoryItem[] | undefined {
+		const items = this.cache.get(chatId);
+		if (items) {
+			// Refresh LRU order
+			this.cache.delete(chatId);
+			this.cache.set(chatId, items);
+		}
+		return items;
+	}
+
+	has(chatId: string): boolean {
+		return this.cache.has(chatId);
+	}
+
+	set(chatId: string, items: MemoryItem[]): void {
+		const old = this.cache.get(chatId);
+		if (old) {
+			this.totalItems -= old.length;
+			this.cache.delete(chatId);
+		}
+		this.cache.set(chatId, items);
+		this.totalItems += items.length;
+		this.evictIfNeeded();
+	}
+
+	addMemory(chatId: string, item: MemoryItem): void {
+		const items = this.cache.get(chatId);
+		if (!items) return; // Not cached yet; will be populated on demand
+
+		const updated = [...items, item];
+		if (updated.length > 10000) {
+			updated.shift();
+		}
+		this.set(chatId, updated);
+	}
+
+	deleteMemories(ids: number[], chatId?: string): void {
+		const idSet = new Set(ids);
+		if (chatId) {
+			const items = this.cache.get(chatId);
+			if (items) {
+				const filtered = items.filter((m) => !idSet.has(m.id));
+				this.set(chatId, filtered);
+			}
+		} else {
+			for (const [cId, items] of this.cache.entries()) {
+				const filtered = items.filter((m) => !idSet.has(m.id));
+				this.set(cId, filtered);
+			}
+		}
+	}
+
+	updateMemory(
+		id: number,
+		text: string,
+		category: "PROFILE" | "DYNAMIC" | "TEMPORARY",
+		embedding?: Float32Array,
+		chatId?: string,
+	): void {
+		const updateItem = (m: MemoryItem): MemoryItem => {
+			if (m.id !== id) return m;
+			const newEmbedding =
+				embedding && embedding.length > 0 ? embedding : m.embedding;
+			return {
+				...m,
+				text,
+				category,
+				embedding: newEmbedding,
+				normalizedEmbedding:
+					embedding && embedding.length > 0
+						? normalizeVector(newEmbedding)
+						: m.normalizedEmbedding,
+			};
+		};
+
+		if (chatId) {
+			const items = this.cache.get(chatId);
+			if (items) {
+				this.set(chatId, items.map(updateItem));
+			}
+		} else {
+			for (const [cId, items] of this.cache.entries()) {
+				this.set(cId, items.map(updateItem));
+			}
+		}
+	}
+
+	pruneExpired(chatId: string, now: number): void {
+		const items = this.cache.get(chatId);
+		if (items) {
+			const filtered = items.filter(
+				(m) => m.expiresAt === null || m.expiresAt > now,
+			);
+			this.set(chatId, filtered);
+		}
+	}
+
+	delete(chatId: string): void {
+		const items = this.cache.get(chatId);
+		if (items) {
+			this.totalItems -= items.length;
+			this.cache.delete(chatId);
+		}
+	}
+
+	clear(): void {
+		this.cache.clear();
+		this.totalItems = 0;
+	}
+
+	private evictIfNeeded(): void {
+		while (
+			(this.cache.size > this.maxChats ||
+				this.totalItems > this.maxTotalItems) &&
+			this.cache.size > 0
+		) {
+			const oldestKey = this.cache.keys().next().value;
+			if (oldestKey) {
+				this.delete(oldestKey);
+			} else {
+				break;
+			}
+		}
+	}
 }
+
+const memoryCache = new MemoryLRUCache();
 
 export const Repository = {
 	/**
@@ -488,15 +620,16 @@ export const Repository = {
 
 		const floatArray =
 			embedding instanceof Float32Array
-				? embedding
+				? new Float32Array(embedding)
 				: new Float32Array(embedding);
+
 		const buffer = Buffer.from(
 			floatArray.buffer,
 			floatArray.byteOffset,
 			floatArray.byteLength,
 		);
 
-		stmts.insertMemory.run(
+		const insertResult = stmts.insertMemory.run(
 			chatId,
 			memoryText,
 			buffer,
@@ -505,7 +638,19 @@ export const Repository = {
 			category,
 			expiresAt,
 		);
-		memoryCache.delete(chatId);
+
+		const insertedId = Number(insertResult.lastInsertRowid);
+		const normalized = normalizeVector(floatArray);
+		memoryCache.addMemory(chatId, {
+			id: insertedId,
+			text: memoryText,
+			embedding: floatArray,
+			normalizedEmbedding: normalized,
+			createdAt: now,
+			userId,
+			category,
+			expiresAt,
+		});
 	},
 
 	/**
@@ -529,6 +674,7 @@ export const Repository = {
 
 		const parsed: MemoryItem[] = rows.map((row) => {
 			let embeddingArray: Float32Array;
+			let normalizedArray: Float32Array;
 			if (row.embedding && row.embedding.byteLength > 0) {
 				if (row.embedding.byteOffset % 4 === 0) {
 					embeddingArray = new Float32Array(
@@ -545,14 +691,17 @@ export const Repository = {
 						row.embedding.byteLength / 4,
 					);
 				}
+				normalizedArray = normalizeVector(embeddingArray);
 			} else {
 				embeddingArray = new Float32Array(0);
+				normalizedArray = new Float32Array(0);
 			}
 
 			return {
 				id: row.id,
 				text: row.memory_text,
 				embedding: embeddingArray,
+				normalizedEmbedding: normalizedArray,
 				createdAt: row.created_at,
 				userId: row.user_id,
 				category:
@@ -561,7 +710,7 @@ export const Repository = {
 			};
 		});
 
-		setMemoryCache(chatId, parsed);
+		memoryCache.set(chatId, parsed);
 		return parsed;
 	},
 
@@ -572,7 +721,7 @@ export const Repository = {
 		const now = Math.floor(Date.now() / 1000);
 		const result = stmts.pruneExpiredMemories.run(chatId, now);
 		if (result.changes > 0) {
-			memoryCache.delete(chatId);
+			memoryCache.pruneExpired(chatId, now);
 			logger.info(
 				`[Memory] Pruned ${result.changes} expired memories for chat ${chatId}.`,
 			);
@@ -581,7 +730,7 @@ export const Repository = {
 	},
 
 	/**
-	 * Deletes specific memories by their IDs and invalidates cache.
+	 * Deletes specific memories by their IDs and updates cache.
 	 */
 	deleteMemoriesByIds(ids: number[], chatId?: string): void {
 		if (ids.length === 0) return;
@@ -591,11 +740,7 @@ export const Repository = {
 			}
 		});
 		deleteMany(ids);
-		if (chatId) {
-			memoryCache.delete(chatId);
-		} else {
-			memoryCache.clear();
-		}
+		memoryCache.deleteMemories(ids, chatId);
 	},
 
 	/**
@@ -608,11 +753,12 @@ export const Repository = {
 		embedding?: number[] | Float32Array,
 		chatId?: string,
 	): void {
-		const cat = category || "PROFILE";
+		const cat = (category as "PROFILE" | "DYNAMIC" | "TEMPORARY") || "PROFILE";
+		let floatArray: Float32Array | undefined;
 		if (embedding && embedding.length > 0) {
-			const floatArray =
+			floatArray =
 				embedding instanceof Float32Array
-					? embedding
+					? new Float32Array(embedding)
 					: new Float32Array(embedding);
 			const buffer = Buffer.from(
 				floatArray.buffer,
@@ -623,11 +769,7 @@ export const Repository = {
 		} else {
 			stmts.updateMemoryWithoutEmbedding.run(text, cat, id);
 		}
-		if (chatId) {
-			memoryCache.delete(chatId);
-		} else {
-			memoryCache.clear();
-		}
+		memoryCache.updateMemory(id, text, cat, floatArray, chatId);
 	},
 
 	/**

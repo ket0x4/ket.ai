@@ -1266,7 +1266,7 @@ async function handleChatsGet(auth: AuthContext): Promise<Response> {
 		const result = await Promise.all(
 			chats.map(async (c) => {
 				const stats = Repository.getChatStats(c.chat_id);
-				const memCount = Repository.getMemories(c.chat_id).length;
+				const memCount = Repository.getMemoryCount(c.chat_id);
 				const isAdmin = auth.isOwner || auth.adminChatIds.includes(c.chat_id);
 
 				const displayTitle = await resolveChatDisplayTitle(

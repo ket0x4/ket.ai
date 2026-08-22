@@ -145,7 +145,7 @@ interface ScheduleOptions {
 	customIntervalMs?: number;
 }
 
-export interface RunWithRetryOptions {
+interface RunWithRetryOptions {
 	retries?: number;
 	baseDelayMs?: number;
 	priority?: RequestPriority;
