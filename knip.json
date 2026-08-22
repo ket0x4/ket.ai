@@ -1,3 +1,10 @@
 {
-	"$schema": "https://unpkg.com/knip@latest/schema.json"
+	"$schema": "https://unpkg.com/knip@latest/schema.json",
+	"ignoreDependencies": ["oxlint"],
+	"workspaces": {
+		".": {
+			"project": ["src/**/*.ts!"]
+		},
+		"web": {}
+	}
 }

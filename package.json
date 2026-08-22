@@ -2,6 +2,7 @@
 	"name": "ket-ai",
 	"version": "7.4.0",
 	"type": "module",
+	"main": "src/index.ts",
 	"workspaces": [
 		"web"
 	],

@@ -1,6 +1,6 @@
 import logger from "../utils/logger";
 import type { AgentTool, FunctionDeclaration } from "./types";
-
+/** @internal */
 export class ToolRegistry {
 	private tools: Map<string, AgentTool> = new Map();
 

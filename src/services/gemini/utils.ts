@@ -120,6 +120,7 @@ function tryParseJsonObject(raw: unknown): unknown {
 
 /**
  * Extracts recommended retry delay in milliseconds from Gemini API errors or error messages.
+ * @internal
  */
 export function extractRetryDelayMs(error: unknown): number | null {
 	if (!error) return null;
@@ -139,6 +140,7 @@ export function extractRetryDelayMs(error: unknown): number | null {
 
 /**
  * Pacing rate limiter to enforce minimum time interval between consecutive Gemini API requests.
+ * @internal
  */
 export class GeminiRateLimiter {
 	private lastRequestEndTime = 0;

@@ -7,7 +7,7 @@ import type {
 	SandboxMemoryDiagnostics,
 } from "@/types";
 
-export const MemoryDiagnosticCard: FC<{
+const MemoryDiagnosticCard: FC<{
 	memory: SandboxMemoryDiagnostic;
 	rank: number;
 }> = ({ memory, rank }) => {
