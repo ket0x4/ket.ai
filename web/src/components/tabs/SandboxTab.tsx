@@ -41,6 +41,7 @@ import {
 import { useAsyncAction } from "@/hooks/useAsyncAction";
 import { api } from "@/lib/api";
 import { MEMORY_CATEGORIES, SANDBOX_PROMPT_TEMPLATES } from "@/lib/constants";
+import { handleHorizontalWheelScroll } from "@/lib/utils";
 import type {
 	Chat,
 	Persona,
@@ -473,14 +474,17 @@ const ContextControlBar: FC<{
 				<SelectContent>
 					<SelectItem value="default">
 						<div className="flex items-center gap-1.5 text-xs">
-							<span>🤖 Default Persona</span>
+							<Bot className="w-3.5 h-3.5 text-primary" />
+							<span>Default Persona</span>
 						</div>
 					</SelectItem>
 					{personas.map((p) => (
 						<SelectItem key={p.id} value={p.id}>
 							<div className="flex items-center gap-1.5 text-xs">
-								<span>{p.emoji || "🎭"}</span>
-								<span className="font-medium">{p.name}</span>
+								<Bot className="w-3.5 h-3.5 text-blue-400" />
+								<span className="font-medium" dir="auto">
+									{p.name}
+								</span>
 							</div>
 						</SelectItem>
 					))}
@@ -855,15 +859,7 @@ export const SandboxTab: FC<SandboxTabProps> = ({
 								<Sparkles className="w-5 h-5" />
 							</div>
 							<div>
-								<div className="flex items-center gap-2">
-									<span>AI Sandbox & Long-Term Memory Suite</span>
-									<Badge
-										variant="outline"
-										className="bg-primary/5 text-primary border-primary/20 font-mono text-[10px] uppercase"
-									>
-										RAG Grounded
-									</Badge>
-								</div>
+								<span>AI Sandbox & Long-Term Memory Suite</span>
 								<CardDescription className="text-xs text-muted-foreground mt-0.5">
 									Test agent reasoning, long-term memory retrieval, persona
 									tone, and inspect verbose RAG vectors.
@@ -900,7 +896,7 @@ export const SandboxTab: FC<SandboxTabProps> = ({
 							{selectedChat && (
 								<span className="text-[11px] text-muted-foreground">
 									Testing with:{" "}
-									<span className="text-foreground font-medium">
+									<span className="text-foreground font-medium" dir="auto">
 										{selectedChat.title || selectedChat.chat_id}
 									</span>{" "}
 									({selectedChat.memoryCount || 0} stored memories)
@@ -917,29 +913,43 @@ export const SandboxTab: FC<SandboxTabProps> = ({
 						/>
 					</div>
 
-					<div className="space-y-2">
-						<div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
-							<Zap className="w-3 h-3 text-amber-400" />
-							<span>Quick Test Templates:</span>
+					<div className="space-y-2 p-3 rounded-xl bg-secondary/20 border border-border/40">
+						<div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center justify-between">
+							<div className="flex items-center gap-1.5">
+								<Zap className="w-3.5 h-3.5 text-amber-400" />
+								<span>Quick Test Templates</span>
+							</div>
+							<span className="text-[10px] text-muted-foreground">
+								Click to load
+							</span>
 						</div>
-						<div className="flex flex-wrap gap-1.5">
+						<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
 							{SANDBOX_PROMPT_TEMPLATES.map((item) => {
 								const isMemory = item.category === "Memory Recall";
+								const isPersona = item.category === "Persona & Tone";
+								const Icon = isMemory ? Brain : isPersona ? Bot : Sparkles;
+								const colorClass = isMemory
+									? "text-blue-400 bg-blue-500/10 border-blue-500/20 hover:bg-blue-500/20"
+									: isPersona
+										? "text-emerald-400 bg-emerald-500/10 border-emerald-500/20 hover:bg-emerald-500/20"
+										: "text-purple-400 bg-purple-500/10 border-purple-500/20 hover:bg-purple-500/20";
+
 								return (
 									<button
 										type="button"
 										key={item.label}
 										onClick={() => setPrompt(item.prompt)}
-										className={`px-2.5 py-1 rounded-lg text-xs transition-all border text-left flex items-center gap-1.5 ${
-											isMemory
-												? "bg-blue-500/10 hover:bg-blue-500/20 text-blue-300 border-blue-500/30"
-												: "bg-secondary/70 hover:bg-secondary text-secondary-foreground border-border/50"
-										}`}
+										className={`p-2.5 rounded-lg text-xs transition-all border text-left flex items-start gap-2 group ${colorClass}`}
 									>
-										{isMemory && (
-											<Brain className="w-3 h-3 text-blue-400 shrink-0" />
-										)}
-										<span>{item.label}</span>
+										<Icon className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+										<div className="min-w-0 flex-1">
+											<div className="font-semibold text-foreground truncate group-hover:text-primary transition-colors">
+												{item.label}
+											</div>
+											<div className="text-[10px] text-muted-foreground truncate mt-0.5">
+												{item.prompt}
+											</div>
+										</div>
 									</button>
 								);
 							})}
@@ -1044,41 +1054,46 @@ export const SandboxTab: FC<SandboxTabProps> = ({
 						<Tabs
 							value={activeResultTab}
 							onValueChange={setActiveResultTab}
-							className="w-auto"
+							className="w-full sm:w-auto min-w-0"
 						>
-							<TabsList className="h-8 bg-secondary/60 p-0.5 rounded-lg">
-								<TabsTrigger
-									value="reply"
-									className="text-xs h-7 px-3 gap-1.5 data-[state=active]:bg-background"
-								>
-									<Bot className="w-3.5 h-3.5" />
-									<span>Model Response</span>
-								</TabsTrigger>
-								<TabsTrigger
-									value="memory"
-									className="text-xs h-7 px-3 gap-1.5 data-[state=active]:bg-background"
-								>
-									<Brain className="w-3.5 h-3.5 text-blue-400" />
-									<span>Memory Diagnostics</span>
-									{memoryDiagnostics && (
-										<Badge
-											variant="secondary"
-											className="text-[10px] px-1 h-3.5 bg-blue-500/20 text-blue-300"
-										>
-											{memoryDiagnostics.retrievedMemories.length}
-										</Badge>
-									)}
-								</TabsTrigger>
-								{verbose && (
+							<div
+								className="overflow-x-auto pb-1 sm:pb-0 no-scrollbar touch-pan-x"
+								onWheel={handleHorizontalWheelScroll}
+							>
+								<TabsList className="h-8 bg-secondary/60 p-0.5 rounded-lg inline-flex w-max gap-0.5">
 									<TabsTrigger
-										value="payload"
-										className="text-xs h-7 px-3 gap-1.5 data-[state=active]:bg-background"
+										value="reply"
+										className="text-xs h-7 px-3 gap-1.5 shrink-0 whitespace-nowrap data-[state=active]:bg-background"
 									>
-										<Code2 className="w-3.5 h-3.5 text-purple-400" />
-										<span>Prompt & Payload</span>
+										<Bot className="w-3.5 h-3.5" />
+										<span>Model Response</span>
 									</TabsTrigger>
-								)}
-							</TabsList>
+									<TabsTrigger
+										value="memory"
+										className="text-xs h-7 px-3 gap-1.5 shrink-0 whitespace-nowrap data-[state=active]:bg-background"
+									>
+										<Brain className="w-3.5 h-3.5 text-blue-400" />
+										<span>Memory Diagnostics</span>
+										{memoryDiagnostics && (
+											<Badge
+												variant="secondary"
+												className="text-[10px] px-1 h-3.5 bg-blue-500/20 text-blue-300 ml-0.5"
+											>
+												{memoryDiagnostics.retrievedMemories.length}
+											</Badge>
+										)}
+									</TabsTrigger>
+									{verbose && (
+										<TabsTrigger
+											value="payload"
+											className="text-xs h-7 px-3 gap-1.5 shrink-0 whitespace-nowrap data-[state=active]:bg-background"
+										>
+											<Code2 className="w-3.5 h-3.5 text-purple-400" />
+											<span>Prompt & Payload</span>
+										</TabsTrigger>
+									)}
+								</TabsList>
+							</div>
 						</Tabs>
 					</div>
 				</CardHeader>

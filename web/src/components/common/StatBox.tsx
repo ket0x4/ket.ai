@@ -40,17 +40,17 @@ export const StatBox: FC<StatBoxProps> = ({
 	return (
 		<div
 			className={cn(
-				"flex items-center gap-2.5 p-2 rounded-lg bg-background/50 border border-border/40 min-w-0",
+				"flex items-center gap-2.5 p-2.5 rounded-lg bg-background/50 border border-border/40 min-w-0 flex-1",
 				className,
 			)}
 		>
 			{Icon && <Icon className={cn("w-4 h-4 shrink-0", iconColor)} />}
-			<div className="min-w-0">
+			<div className="min-w-0 flex-1">
 				<div className="text-[10px] text-muted-foreground uppercase font-medium truncate">
 					{label}
 				</div>
 				<div
-					className="font-semibold font-mono text-foreground truncate max-w-[110px]"
+					className="font-semibold font-mono text-foreground truncate"
 					title={title}
 				>
 					{value}

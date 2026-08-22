@@ -71,14 +71,7 @@ export async function processNewMemory(
 ) {
 	if (!memoryText?.trim() || !chatIdStr) return;
 
-	const dateStr = new Date().toLocaleString("tr-TR", {
-		day: "2-digit",
-		month: "2-digit",
-		year: "numeric",
-		hour: "2-digit",
-		minute: "2-digit",
-	});
-	const memText = `[${dateStr}] ${memoryText.trim()}`;
+	const memText = memoryText.trim();
 	const emb = await generateEmbedding(memText, "RETRIEVAL_DOCUMENT");
 	if (emb.length === 0) {
 		logger.warn(

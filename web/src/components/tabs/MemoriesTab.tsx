@@ -26,7 +26,12 @@ import {
 import { useAsyncAction } from "@/hooks/useAsyncAction";
 import { api } from "@/lib/api";
 import { MEMORY_CATEGORIES, MEMORY_CATEGORY_LIST } from "@/lib/constants";
-import { formatDate, getChatDisplayName } from "@/lib/utils";
+import {
+	cleanMemoryText,
+	formatDate,
+	getChatDisplayName,
+	normalizeSearchText,
+} from "@/lib/utils";
 import type { BaseTabProps, Memory, TelegramUser, UserRole } from "@/types";
 
 interface MemoryCardProps {
@@ -62,6 +67,8 @@ const MemoryCard: FC<MemoryCardProps> = ({
 			? `@${memory.user_username}`
 			: null;
 
+	const cleanedText = cleanMemoryText(memory.memory_text);
+
 	return (
 		<Card className="glass-card hover:border-primary/40 transition-all duration-200">
 			<div className="p-3.5 sm:p-4 space-y-2.5">
@@ -72,12 +79,16 @@ const MemoryCard: FC<MemoryCardProps> = ({
 						</Badge>
 						<span className="px-2 py-0.5 rounded-md bg-secondary/80 text-muted-foreground text-[11px] font-medium truncate max-w-[200px] sm:max-w-[280px] flex items-center gap-1">
 							<Users className="w-3 h-3 shrink-0" />
-							<span className="truncate">{chatLabel}</span>
+							<span className="truncate" dir="auto">
+								{chatLabel}
+							</span>
 						</span>
 						{userName && (
 							<span className="px-2 py-0.5 rounded-md bg-primary/10 text-primary border border-primary/20 text-[11px] font-medium truncate max-w-[160px] flex items-center gap-1">
 								<User className="w-3 h-3 shrink-0" />
-								<span className="truncate">{userName}</span>
+								<span className="truncate" dir="auto">
+									{userName}
+								</span>
 							</span>
 						)}
 					</div>
@@ -86,13 +97,16 @@ const MemoryCard: FC<MemoryCardProps> = ({
 					</span>
 				</div>
 
-				<p className="text-xs sm:text-sm text-foreground/90 leading-relaxed break-words font-sans">
-					{memory.memory_text}
+				<p
+					className="text-xs sm:text-sm text-foreground/90 leading-relaxed break-words font-sans"
+					dir="auto"
+				>
+					{cleanedText}
 				</p>
 
 				<div className="flex items-center justify-between pt-2 border-t border-border/40 text-xs">
 					<CopyButton
-						text={memory.memory_text}
+						text={cleanedText}
 						successMessage="Fact copied to clipboard!"
 					/>
 
@@ -128,6 +142,33 @@ interface MemoriesTabProps extends BaseTabProps<Memory> {
 	memories: Memory[];
 }
 
+function matchesScope(
+	m: Memory,
+	scope: string,
+	user: TelegramUser | null,
+): boolean {
+	if (scope === "mine") {
+		return Boolean(user && m.user_id === user.id);
+	}
+	if (scope === "group") {
+		return !user || m.user_id !== user.id;
+	}
+	return true;
+}
+
+function matchesQuery(m: Memory, query: string): boolean {
+	const trimmed = query.trim();
+	if (!trimmed) return true;
+
+	const normQ = normalizeSearchText(trimmed);
+	const cleaned = cleanMemoryText(m.memory_text);
+	const textMatch = normalizeSearchText(cleaned).includes(normQ);
+	const rawMatch = normalizeSearchText(m.memory_text).includes(normQ);
+	const catMatch = normalizeSearchText(m.category || "").includes(normQ);
+
+	return textMatch || rawMatch || catMatch;
+}
+
 function matchesFilter(
 	m: Memory,
 	scope: string,
@@ -136,22 +177,10 @@ function matchesFilter(
 	query: string,
 	user: TelegramUser | null,
 ): boolean {
-	if (scope === "mine" && user && m.user_id && m.user_id !== user.id) {
-		return false;
-	}
-	if (chat !== "all" && m.chat_id !== chat) {
-		return false;
-	}
-	if (category !== "all" && m.category !== category) {
-		return false;
-	}
-	if (query.trim()) {
-		const q = query.toLowerCase();
-		const textMatch = m.memory_text.toLowerCase().includes(q);
-		const catMatch = m.category?.toLowerCase().includes(q);
-		if (!textMatch && !catMatch) return false;
-	}
-	return true;
+	if (!matchesScope(m, scope, user)) return false;
+	if (chat !== "all" && m.chat_id !== chat) return false;
+	if (category !== "all" && m.category !== category) return false;
+	return matchesQuery(m, query);
 }
 
 export const MemoriesTab: FC<MemoriesTabProps> = ({
@@ -346,9 +375,7 @@ export const MemoriesTab: FC<MemoriesTabProps> = ({
 							title="Prune expired memories"
 						>
 							<Trash2 className="w-3.5 h-3.5" />
-							<span className="hidden sm:inline">
-								{isPruning ? "Pruning..." : "Prune Expired"}
-							</span>
+							<span>{isPruning ? "Pruning..." : "Prune"}</span>
 						</Button>
 					)}
 
@@ -364,7 +391,7 @@ export const MemoriesTab: FC<MemoriesTabProps> = ({
 			</div>
 
 			{/* Filters */}
-			<div className="grid grid-cols-1 sm:grid-cols-4 gap-2.5">
+			<div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
 				<Select value={scopeFilter} onValueChange={setScopeFilter}>
 					<SelectTrigger className="w-full bg-card/60 text-xs h-9">
 						<SelectValue placeholder="Scope" />
@@ -373,11 +400,11 @@ export const MemoriesTab: FC<MemoriesTabProps> = ({
 						<SelectItem value="all" className="text-xs">
 							All Scopes
 						</SelectItem>
-						<SelectItem value="user" className="text-xs">
-							User-Specific Only
+						<SelectItem value="mine" className="text-xs">
+							My Memories
 						</SelectItem>
 						<SelectItem value="group" className="text-xs">
-							Group-Wide Only
+							Group Memories
 						</SelectItem>
 					</SelectContent>
 				</Select>
@@ -392,7 +419,9 @@ export const MemoriesTab: FC<MemoriesTabProps> = ({
 						</SelectItem>
 						{chats.map((c) => (
 							<SelectItem key={c.chat_id} value={c.chat_id} className="text-xs">
-								{getChatDisplayName(c)}
+								<span dir="auto" className="truncate block max-w-[260px]">
+									{getChatDisplayName(c)}
+								</span>
 							</SelectItem>
 						))}
 					</SelectContent>

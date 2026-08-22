@@ -22,6 +22,7 @@ import { SystemTab } from "@/components/tabs/SystemTab";
 import { Toaster } from "@/components/ui/sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api, getTelegramWebApp } from "@/lib/api";
+import { handleHorizontalWheelScroll } from "@/lib/utils";
 import type {
 	Chat,
 	Memory,
@@ -150,7 +151,7 @@ export default function App() {
 		{
 			value: "memories",
 			icon: Brain,
-			label: role === "user" ? "Personal Memory" : "Group Memory",
+			label: "Memory",
 		},
 		{ value: "personas", icon: Bot, label: "Personas" },
 		{ value: "groups", icon: Users, label: "Groups" },
@@ -171,7 +172,10 @@ export default function App() {
 			<main className="flex-1 max-w-6xl w-full mx-auto px-3 sm:px-6 py-4 sm:py-6 space-y-5">
 				<Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
 					{/* Navigation Bar */}
-					<div className="overflow-x-auto pb-1.5 no-scrollbar -mx-1 px-1 touch-pan-x">
+					<div
+						className="overflow-x-auto pb-1.5 no-scrollbar -mx-1 px-1 touch-pan-x"
+						onWheel={handleHorizontalWheelScroll}
+					>
 						<TabsList className="inline-flex w-max sm:w-auto p-1 bg-secondary/50 border border-border/60 rounded-xl gap-1">
 							{navTabs.map((t) => {
 								const Icon = t.icon;

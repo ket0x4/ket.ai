@@ -24,7 +24,7 @@ import {
 } from "@/components/ui/select";
 import { useAsyncAction } from "@/hooks/useAsyncAction";
 import { api } from "@/lib/api";
-import { getChatDisplayName } from "@/lib/utils";
+import { getChatDisplayName, normalizeSearchText } from "@/lib/utils";
 import type { BaseTabProps, Persona } from "@/types";
 
 interface PersonaCardProps {
@@ -77,7 +77,10 @@ const PersonaCard: FC<PersonaCardProps> = ({
 					</div>
 					<div className="space-y-1 min-w-0 flex-1">
 						<div className="flex items-center gap-1.5 flex-wrap">
-							<h4 className="text-sm font-bold text-foreground truncate">
+							<h4
+								className="text-sm font-bold text-foreground truncate"
+								dir="auto"
+							>
 								{persona.name}
 							</h4>
 							{isSystem ? (
@@ -96,7 +99,10 @@ const PersonaCard: FC<PersonaCardProps> = ({
 								</Badge>
 							)}
 						</div>
-						<p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed">
+						<p
+							className="text-xs text-muted-foreground line-clamp-2 leading-relaxed"
+							dir="auto"
+						>
 							{persona.description || "No description provided."}
 						</p>
 					</div>
@@ -271,12 +277,12 @@ export const PersonasTab: FC<PersonasTabProps> = ({
 
 	const filteredPersonas = useMemo(() => {
 		if (!searchQuery.trim()) return personas;
-		const q = searchQuery.toLowerCase();
+		const normQ = normalizeSearchText(searchQuery);
 		return personas.filter(
 			(p) =>
-				p.name.toLowerCase().includes(q) ||
-				p.description?.toLowerCase().includes(q) ||
-				p.prompt.toLowerCase().includes(q),
+				normalizeSearchText(p.name).includes(normQ) ||
+				normalizeSearchText(p.description || "").includes(normQ) ||
+				normalizeSearchText(p.prompt).includes(normQ),
 		);
 	}, [personas, searchQuery]);
 
@@ -302,18 +308,23 @@ export const PersonasTab: FC<PersonasTabProps> = ({
 					</p>
 				</div>
 
-				<div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+				<div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 min-w-0 max-w-full">
 					{manageableChats.length > 0 && (
-						<div className="flex items-center gap-2 min-w-[200px] sm:min-w-[240px]">
+						<div className="flex items-center gap-2 w-full sm:w-auto min-w-0 max-w-full">
 							<Users className="w-4 h-4 text-muted-foreground shrink-0" />
 							<Select value={selectedChatId} onValueChange={setSelectedChatId}>
-								<SelectTrigger className="w-full bg-muted/40 border-border/80 text-xs">
+								<SelectTrigger className="w-full sm:w-[240px] bg-muted/40 border-border/80 text-xs">
 									<SelectValue placeholder="Select Chat" />
 								</SelectTrigger>
-								<SelectContent>
+								<SelectContent className="max-w-[calc(100vw-2rem)] sm:max-w-md">
 									{manageableChats.map((c) => (
 										<SelectItem key={c.id} value={c.id} className="text-xs">
-											{c.title}
+											<span
+												className="truncate block max-w-[200px] sm:max-w-[320px]"
+												dir="auto"
+											>
+												{c.title}
+											</span>
 										</SelectItem>
 									))}
 								</SelectContent>
@@ -334,22 +345,31 @@ export const PersonasTab: FC<PersonasTabProps> = ({
 
 			{/* Active Persona Banner for Selected Chat */}
 			<div className="p-4 rounded-2xl bg-gradient-to-r from-primary/10 via-primary/5 to-transparent border border-primary/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-				<div className="flex items-center gap-3">
+				<div className="flex items-center gap-3 min-w-0 flex-1">
 					<div className="w-11 h-11 rounded-xl bg-primary/10 border border-primary/30 flex items-center justify-center text-primary shadow-sm shrink-0">
 						<Sparkles className="w-5 h-5" />
 					</div>
-					<div>
+					<div className="min-w-0 flex-1">
 						<div className="flex items-center gap-2">
-							<span className="text-[11px] font-semibold uppercase tracking-wider text-primary">
+							<span
+								className="text-[11px] font-semibold uppercase tracking-wider text-primary truncate block max-w-[260px] sm:max-w-md"
+								dir="auto"
+							>
 								Active Persona — {selectedChatTitle}
 							</span>
 						</div>
-						<div className="text-base font-bold text-foreground">
+						<div
+							className="text-base font-bold text-foreground truncate"
+							dir="auto"
+						>
 							{currentActivePersona
 								? currentActivePersona.name
 								: "ket.ai Standard (Default)"}
 						</div>
-						<p className="text-xs text-muted-foreground line-clamp-1">
+						<p
+							className="text-xs text-muted-foreground line-clamp-1"
+							dir="auto"
+						>
 							{currentActivePersona?.description ||
 								"Default balanced, smart, and natural conversation style."}
 						</p>
@@ -370,18 +390,25 @@ export const PersonasTab: FC<PersonasTabProps> = ({
 			</div>
 
 			{/* Search & Stats Bar */}
-			<div className="flex items-center justify-between gap-3">
+			<div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
 				<div className="relative flex-1 max-w-md">
 					<Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
 					<Input
 						placeholder="Search personas (name, description, prompt)..."
 						value={searchQuery}
 						onChange={(e) => setSearchQuery(e.target.value)}
-						className="pl-9 bg-card border-border/80 text-xs"
+						className="pl-9 bg-card border-border/80 text-xs h-9"
 					/>
 				</div>
-				<div className="text-xs text-muted-foreground font-medium shrink-0">
-					Total {filteredPersonas.length} Personas
+				<div className="flex items-center gap-2 shrink-0">
+					<div className="px-3 py-1.5 rounded-xl bg-card border border-border/80 flex items-center gap-1.5 text-xs text-muted-foreground shadow-sm">
+						<Bot className="w-3.5 h-3.5 text-primary shrink-0" />
+						<span className="font-medium text-foreground">
+							{filteredPersonas.length === personas.length
+								? `${personas.length} Personas`
+								: `${filteredPersonas.length} of ${personas.length} Personas`}
+						</span>
+					</div>
 				</div>
 			</div>
 

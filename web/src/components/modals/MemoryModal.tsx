@@ -18,7 +18,7 @@ import {
 import { useAsyncAction } from "@/hooks/useAsyncAction";
 import { api } from "@/lib/api";
 import { MEMORY_CATEGORY_LIST } from "@/lib/constants";
-import { getChatDisplayName } from "@/lib/utils";
+import { cleanMemoryText, getChatDisplayName } from "@/lib/utils";
 import type {
 	Chat,
 	Memory,
@@ -61,7 +61,7 @@ export const MemoryModal: FC<MemoryModalProps> = ({
 	useEffect(() => {
 		if (isEdit && memory) {
 			setCategory(memory.category || "PROFILE");
-			setMemoryText(memory.memory_text || "");
+			setMemoryText(cleanMemoryText(memory.memory_text || ""));
 		} else if (!isEdit) {
 			setChatId(currentUser ? currentUser.id.toString() : "");
 			setCategory("PROFILE");
@@ -174,7 +174,12 @@ export const MemoryModal: FC<MemoryModalProps> = ({
 													value={c.chat_id}
 													className="text-xs"
 												>
-													{getChatDisplayName(c)}
+													<span
+														dir="auto"
+														className="truncate block max-w-[240px]"
+													>
+														{getChatDisplayName(c)}
+													</span>
 												</SelectItem>
 											))}
 									</SelectContent>

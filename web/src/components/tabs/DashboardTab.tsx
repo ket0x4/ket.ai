@@ -80,7 +80,7 @@ function getMetricCards(
 				description: "Where you are admin",
 			},
 			{
-				title: "Group Memories",
+				title: "Memories",
 				value: stats?.totalMemories ?? 0,
 				icon: Brain,
 				iconColor: "text-purple-400",
@@ -215,23 +215,25 @@ const MemoryDistributionCard: FC<{
 					))}
 				</div>
 
-				<div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs pt-1">
+				<div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs pt-1">
 					{MEMORY_CATEGORY_LIST.map((cat) => (
 						<div
 							key={cat.value}
-							className={`flex items-center gap-2 p-2 sm:p-2.5 rounded-lg ${cat.chipBg} border ${cat.chipBorder}`}
+							className={`flex items-center justify-between gap-2 p-2.5 rounded-lg ${cat.chipBg} border ${cat.chipBorder}`}
 						>
-							<span
-								className={`w-2 h-2 rounded-full ${cat.dotColor} shrink-0`}
-							/>
-							<div className="truncate min-w-0">
-								<span className={`font-semibold ${cat.textColor}`}>
-									{cat.label}:{" "}
+							<div className="flex items-center gap-2 min-w-0">
+								<span
+									className={`w-2 h-2 rounded-full ${cat.dotColor} shrink-0`}
+								/>
+								<span className={`font-semibold truncate ${cat.textColor}`}>
+									{cat.label}
 								</span>
-								<span className="font-mono text-foreground font-bold">
+							</div>
+							<div className="shrink-0 font-mono flex items-center gap-1">
+								<span className="text-foreground font-bold">
 									{catStats[cat.value] || 0}
 								</span>
-								<span className="text-muted-foreground text-[10px] ml-1">
+								<span className="text-muted-foreground text-[10px]">
 									({percentages[cat.value]}%)
 								</span>
 							</div>
@@ -292,7 +294,10 @@ const TopActiveGroupsCard: FC<{
 							className="py-2.5 flex items-center justify-between gap-3 text-xs first:pt-0 last:pb-0"
 						>
 							<div className="min-w-0 flex-1">
-								<div className="font-medium text-foreground truncate text-sm">
+								<div
+									className="font-medium text-foreground truncate text-sm"
+									dir="auto"
+								>
 									{c.title || `Group (${c.chat_id})`}
 								</div>
 								<div className="text-[11px] text-muted-foreground font-mono truncate">

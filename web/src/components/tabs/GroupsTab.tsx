@@ -75,7 +75,10 @@ const GroupCard: FC<GroupCardProps> = ({ chat, role, onToggleAllowed }) => {
 			<CardHeader className="p-4 pb-2">
 				<div className="flex items-start justify-between gap-2">
 					<div className="min-w-0 flex-1">
-						<CardTitle className="text-sm font-semibold truncate text-foreground">
+						<CardTitle
+							className="text-sm font-semibold truncate text-foreground"
+							dir="auto"
+						>
 							{getChatDisplayName(chat)}
 						</CardTitle>
 						<span className="text-[11px] font-mono text-muted-foreground block truncate">

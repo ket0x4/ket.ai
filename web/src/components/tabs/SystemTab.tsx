@@ -104,13 +104,13 @@ const BotSettingsCard: FC = () => {
 
 	return (
 		<Card className="glass-card">
-			<CardHeader className="pb-4 flex flex-row items-center justify-between">
-				<div>
+			<CardHeader className="pb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+				<div className="min-w-0 flex-1">
 					<CardTitle className="text-base sm:text-lg flex items-center gap-2">
 						<Settings className="w-5 h-5 text-primary" />
 						<span>Bot Engine Settings</span>
 					</CardTitle>
-					<CardDescription>
+					<CardDescription className="text-xs text-muted-foreground mt-0.5">
 						Configure AI parameters, grounding, reasoning steps, and system
 						behavior.
 					</CardDescription>
@@ -120,7 +120,7 @@ const BotSettingsCard: FC = () => {
 					size="sm"
 					onClick={handleClearCache}
 					disabled={isClearingCache}
-					className="text-xs h-8 text-amber-400 hover:text-amber-300"
+					className="text-xs h-8 text-amber-400 hover:text-amber-300 shrink-0 self-start sm:self-center"
 				>
 					<Trash2 className="w-3.5 h-3.5 mr-1" />
 					<span>{isClearingCache ? "Clearing..." : "Purge Cache"}</span>
@@ -349,7 +349,7 @@ const LiveLogsCard: FC = () => {
 				<div>
 					<CardTitle className="text-base sm:text-lg flex items-center gap-2">
 						<Terminal className="w-5 h-5 text-emerald-400" />
-						<span>Live Console Stream</span>
+						<span>Logs</span>
 					</CardTitle>
 					<CardDescription>
 						Real-time structured logs from application and error handlers.
@@ -423,15 +423,12 @@ const LiveLogsCard: FC = () => {
 									key={`${l.timestamp}-${l.message}`}
 									className="flex items-start gap-2 break-all hover:bg-white/5 p-1 rounded"
 								>
-									<span className="text-zinc-500 shrink-0 select-none text-[10px]">
-										{l.timestamp}
-									</span>
 									<span
-										className={`px-1 rounded border text-[9px] sm:text-[10px] font-bold shrink-0 ${lvlColor}`}
+										className={`px-1.5 py-0.5 rounded border text-[9px] sm:text-[10px] font-bold shrink-0 ${lvlColor}`}
 									>
 										{lvl}
 									</span>
-									<span className="text-zinc-200 break-words whitespace-pre-wrap">
+									<span className="text-zinc-200 break-words whitespace-pre-wrap flex-1">
 										{l.message}
 									</span>
 								</div>
