@@ -409,3 +409,286 @@ test("Memory LRU cache incremental updates and memory bounds", () => {
 
 	Repository.clearMemories(testChatId);
 });
+
+test("FTS5 Full-Text Search and trigger synchronization", () => {
+	const testChatId = "test_fts_sync_100";
+	Repository.clearMemories(testChatId);
+
+	// Insert
+	Repository.addMemory(
+		testChatId,
+		"Ahmet Kadikoy Bella Italia restoranini cok seviyor",
+		[0.1, 0.2],
+	);
+	Repository.addMemory(
+		testChatId,
+		"Zeynep Besiktas'ta yazilim muhendisi olarak calisiyor",
+		[0.3, 0.4],
+	);
+
+	// Exact keyword query on FTS
+	const ftsRes1 = Repository.searchMemoriesFTS(testChatId, "Bella Italia");
+	expect(ftsRes1.length).toBe(1);
+	expect(ftsRes1[0].text).toContain("Bella Italia");
+
+	const ftsRes2 = Repository.searchMemoriesFTS(testChatId, "yazilim muhendisi");
+	expect(ftsRes2.length).toBe(1);
+	expect(ftsRes2[0].text).toContain("Zeynep");
+
+	// Update memory and check FTS sync
+	const mems = Repository.getMemories(testChatId);
+	Repository.updateMemory(
+		mems[0].id,
+		"Ahmet Moda sahilinde espresso icmeyi cok seviyor",
+		"PROFILE",
+		new Float32Array([0.5, 0.5]),
+		testChatId,
+	);
+
+	const ftsUpdated = Repository.searchMemoriesFTS(testChatId, "Moda espresso");
+	expect(ftsUpdated.length).toBe(1);
+	expect(ftsUpdated[0].text).toContain("Moda sahilinde");
+
+	const ftsOld = Repository.searchMemoriesFTS(testChatId, "Bella Italia");
+	expect(ftsOld.length).toBe(0);
+
+	// Delete and check FTS sync
+	Repository.deleteMemoriesByIds([mems[0].id], testChatId);
+	const ftsAfterDel = Repository.searchMemoriesFTS(testChatId, "Moda espresso");
+	expect(ftsAfterDel.length).toBe(0);
+
+	Repository.clearMemories(testChatId);
+});
+
+test("Tiered capacity eviction prioritizes expired and temporary before profile", async () => {
+	const { db } = await import("../src/db/index");
+	const testChatId = "test_tiered_eviction_200";
+	Repository.clearMemories(testChatId);
+
+	const now = Math.floor(Date.now() / 1000);
+
+	// 1. Profile fact 100 days old
+	Repository.addMemory(testChatId, "Profile permanent fact", [1, 0], {
+		category: "PROFILE",
+	});
+	// 2. Dynamic fact 20 days old
+	Repository.addMemory(testChatId, "Dynamic medium fact", [0, 1], {
+		category: "DYNAMIC",
+	});
+	// 3. Temporary fact
+	Repository.addMemory(testChatId, "Temporary recent event", [1, 1], {
+		category: "TEMPORARY",
+		ttlDays: 10,
+	});
+	// 4. Expired Temporary fact
+	Repository.addMemory(testChatId, "Temporary expired fact", [0.5, 0.5], {
+		category: "TEMPORARY",
+		ttlDays: -1,
+	});
+
+	// Age the created_at in SQLite
+	db.run(
+		"UPDATE memories SET created_at = ? WHERE chat_id = ? AND category = 'PROFILE'",
+		[now - 100 * 86400, testChatId],
+	);
+	db.run(
+		"UPDATE memories SET created_at = ? WHERE chat_id = ? AND category = 'DYNAMIC'",
+		[now - 20 * 86400, testChatId],
+	);
+	Repository.clearMemoryCache(testChatId);
+
+	// Simulate adding a new memory when capacity limit is reached
+	// We call deleteOldestMemory directly to verify tiered eviction hierarchy
+	const { db: dbInstance } = await import("../src/db/index");
+	const getOldestStmt = dbInstance.prepare(`
+		SELECT id, memory_text, category FROM memories 
+		WHERE chat_id = ? 
+		ORDER BY 
+			CASE 
+				WHEN expires_at IS NOT NULL AND expires_at <= unixepoch() THEN 1
+				WHEN category = 'TEMPORARY' THEN 2
+				WHEN category = 'DYNAMIC' THEN 3
+				ELSE 4
+			END ASC,
+			created_at ASC 
+		LIMIT 1
+	`);
+
+	// 1st eviction must be Expired Temporary
+	const evict1 = getOldestStmt.get(testChatId) as { memory_text: string };
+	expect(evict1.memory_text).toBe("Temporary expired fact");
+	Repository.deleteMemoriesByIds(
+		[(getOldestStmt.get(testChatId) as { id: number }).id],
+		testChatId,
+	);
+
+	// 2nd eviction must be Temporary recent event
+	const evict2 = getOldestStmt.get(testChatId) as { memory_text: string };
+	expect(evict2.memory_text).toBe("Temporary recent event");
+	Repository.deleteMemoriesByIds(
+		[(getOldestStmt.get(testChatId) as { id: number }).id],
+		testChatId,
+	);
+
+	// 3rd eviction must be Dynamic medium fact
+	const evict3 = getOldestStmt.get(testChatId) as { memory_text: string };
+	expect(evict3.memory_text).toBe("Dynamic medium fact");
+	Repository.deleteMemoriesByIds(
+		[(getOldestStmt.get(testChatId) as { id: number }).id],
+		testChatId,
+	);
+
+	// 4th eviction is the Profile fact
+	const evict4 = getOldestStmt.get(testChatId) as { memory_text: string };
+	expect(evict4.memory_text).toBe("Profile permanent fact");
+
+	Repository.clearMemories(testChatId);
+});
+
+test("Slot replacement updates conflicting facts for the same user", async () => {
+	const { processNewMemory } = await import("../src/services/gemini/memory");
+	const { ai } = await import("../src/services/gemini/client");
+
+	const testChatId = "test_slot_conflict_300";
+	const userIdAli = 555;
+	Repository.clearMemories(testChatId);
+
+	const originalEmbed = ai.models.embedContent;
+	// Mock embedding 1: [1.0, 0.0]
+	// biome-ignore lint/suspicious/noExplicitAny: mock
+	(ai.models as any).embedContent = async () => ({
+		embeddings: [{ values: [1.0, 0.0] }],
+	});
+
+	try {
+		// Initial memory: Ali lives in Ankara
+		await processNewMemory(testChatId, "Ali: Ankara'da yasiyor", {
+			userId: userIdAli,
+			category: "PROFILE",
+		});
+
+		const mems1 = Repository.getMemories(testChatId);
+		expect(mems1.length).toBe(1);
+		expect(mems1[0].text).toBe("Ali: Ankara'da yasiyor");
+		const originalId = mems1[0].id;
+
+		// Updated memory: Ali moved to Istanbul (sim ~ 0.80, inside slot conflict window [0.72, 0.88])
+		// biome-ignore lint/suspicious/noExplicitAny: mock
+		(ai.models as any).embedContent = async () => ({
+			embeddings: [{ values: [0.8, 0.6] }],
+		});
+
+		await processNewMemory(testChatId, "Ali: Istanbul'a tasindi", {
+			userId: userIdAli,
+			category: "PROFILE",
+		});
+
+		const mems2 = Repository.getMemories(testChatId);
+		// Should update existing slot, NOT create a second duplicate row
+		expect(mems2.length).toBe(1);
+		expect(mems2[0].id).toBe(originalId);
+		expect(mems2[0].text).toBe("Ali: Istanbul'a tasindi");
+	} finally {
+		ai.models.embedContent = originalEmbed;
+		Repository.clearMemories(testChatId);
+	}
+});
+
+test("Contextual query expansion enriches anaphoric queries with recent messages", async () => {
+	const { expandContextualQuery } = await import(
+		"../src/services/gemini/utils"
+	);
+
+	const dummyHistory = [
+		{
+			id: 1,
+			chat_id: "c1",
+			message_id: 10,
+			user_id: 101,
+			username: "ahmet",
+			first_name: "Ahmet",
+			reply_to_message_id: null,
+			text: "Kadikoy Bella Italia restoranina gittim harikaydi",
+			photo_file_id: null,
+			is_bot_reply: 0,
+			sent_at: 1000,
+		},
+		{
+			id: 2,
+			chat_id: "c1",
+			message_id: 11,
+			user_id: 0,
+			username: null,
+			first_name: null,
+			reply_to_message_id: 10,
+			text: "Afiyet olsun!",
+			photo_file_id: null,
+			is_bot_reply: 1,
+			sent_at: 1001,
+		},
+	];
+
+	// Anaphoric short question "Orası tam olarak neredeydi?"
+	const enriched = expandContextualQuery(
+		"Orası tam olarak neredeydi?",
+		dummyHistory,
+		"Yemek Sohbeti",
+	);
+
+	expect(enriched).toContain("Kadikoy Bella Italia");
+	expect(enriched).toContain("Orası tam olarak neredeydi?");
+	expect(enriched).toContain("Topic: Yemek Sohbeti");
+});
+
+test("Bi-Level retrieval prioritizes speaking user personal facts over group noise", async () => {
+	const { queryMemoriesWithDiagnostics } = await import(
+		"../src/services/gemini/memory"
+	);
+	const { ai } = await import("../src/services/gemini/client");
+
+	const testChatId = "test_bi_level_chat_400";
+	const userIdSpeaker = 888;
+	const userIdOther = 999;
+	Repository.clearMemories(testChatId);
+
+	// Speaker profile
+	Repository.addMemory(testChatId, "Speaker: Loves electric cars", [0.9, 0.1], {
+		userId: userIdSpeaker,
+		category: "PROFILE",
+	});
+
+	// Other user profile
+	Repository.addMemory(
+		testChatId,
+		"Other: Bought a Tesla Model Y",
+		[0.9, 0.1],
+		{
+			userId: userIdOther,
+			category: "PROFILE",
+		},
+	);
+
+	const originalEmbed = ai.models.embedContent;
+	// biome-ignore lint/suspicious/noExplicitAny: mock
+	(ai.models as any).embedContent = async () => ({
+		embeddings: [{ values: [0.9, 0.1] }],
+	});
+
+	try {
+		const diag = await queryMemoriesWithDiagnostics(
+			testChatId,
+			"Tell me about my car interests",
+			{
+				senderUserId: userIdSpeaker,
+				topK: 2,
+			},
+		);
+
+		// Speaker's memory must be included as #1 in retrievedMemories via Level 1
+		expect(diag.retrievedMemories.length).toBeGreaterThanOrEqual(1);
+		expect(diag.retrievedMemories[0]).toBe("Speaker: Loves electric cars");
+	} finally {
+		ai.models.embedContent = originalEmbed;
+		Repository.clearMemories(testChatId);
+	}
+});

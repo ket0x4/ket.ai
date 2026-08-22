@@ -4,7 +4,7 @@ import { Repository } from "../../db/repository";
 import logger from "../../utils/logger";
 import { ai } from "./client";
 import { processNewMemory } from "./memory";
-import { getThinkingConfig, runWithRetry } from "./utils";
+import { getThinkingConfig, resolveTargetUserId, runWithRetry } from "./utils";
 
 const backgroundCounter = new Map<string, number>();
 const MAX_TRACKED_CHATS = 200;
@@ -96,6 +96,7 @@ function getExtractionSchema(): Record<string, unknown> {
 async function saveExtractedMemories(
 	chatIdStr: string,
 	extractedList: unknown[],
+	recentMessages: MessageRow[] = [],
 ): Promise<number> {
 	if (!Array.isArray(extractedList) || extractedList.length === 0) return 0;
 
@@ -116,8 +117,14 @@ async function saveExtractedMemories(
 				? item.ttl_days
 				: null;
 
+		const targetUserId = resolveTargetUserId(
+			item.user_name,
+			item.user_id,
+			recentMessages,
+		);
+
 		await processNewMemory(chatIdStr, combinedFact, {
-			userId: typeof item.user_id === "number" ? item.user_id : null,
+			userId: targetUserId,
 			category: cat,
 			ttlDays: ttl,
 			priority: "low",
@@ -161,7 +168,11 @@ async function runBackgroundMemoryExtraction(chatIdStr: string): Promise<void> {
 
 		const responseText = response.text?.trim() || "[]";
 		const extractedList = JSON.parse(responseText);
-		const savedCount = await saveExtractedMemories(chatIdStr, extractedList);
+		const savedCount = await saveExtractedMemories(
+			chatIdStr,
+			extractedList,
+			recentMessages,
+		);
 
 		if (savedCount > 0) {
 			logger.info(

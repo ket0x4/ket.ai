@@ -1,9 +1,18 @@
 import { CONFIG } from "../../config/index";
-import { type MemoryItem, Repository } from "../../db/repository";
+import {
+	type MemoryItem,
+	type MessageRow,
+	Repository,
+} from "../../db/repository";
 import logger from "../../utils/logger";
 import { dotProduct, normalizeVector } from "../../utils/vector";
 import { ai } from "./client";
-import { getThinkingConfig, type RequestPriority, runWithRetry } from "./utils";
+import {
+	expandContextualQuery,
+	getThinkingConfig,
+	type RequestPriority,
+	runWithRetry,
+} from "./utils";
 
 const newMemoriesCount = new Map<string, number>();
 const MAX_TRACKED_CHATS = 200;
@@ -118,12 +127,38 @@ export async function processNewMemory(
 
 	const emb = normalizeVector(rawEmb);
 
+	// Exact / Semantic deduplication (sim > 0.88)
 	if (isDuplicateMemory(emb, existing, options?.userId)) {
 		logger.debug(
 			`[Memory Store] Skipped semantically duplicate memory for chat ${chatIdStr}:`,
 			memText,
 		);
 		return;
+	}
+
+	// Slot replacement & conflict resolution (e.g. user updated location/status, 0.72 <= sim <= 0.88)
+	if (typeof options?.userId === "number" && options.userId > 0) {
+		const conflict = Repository.findSlotConflictForUser(
+			chatIdStr,
+			options.userId,
+			emb,
+			0.72,
+			0.88,
+		);
+		if (conflict) {
+			logger.info(
+				`[Memory Store] Detected slot update for user ${options.userId} in chat ${chatIdStr}. Updating memory #${conflict.id}: "${conflict.text}" -> "${memText}"`,
+			);
+			Repository.updateMemory(
+				conflict.id,
+				memText,
+				options?.category || conflict.category,
+				emb,
+				chatIdStr,
+			);
+			handleMemoryConsolidationCounter(chatIdStr);
+			return;
+		}
 	}
 
 	logger.info(`[Memory Store] Adding memory to chat ${chatIdStr}:`, memText);
@@ -155,38 +190,18 @@ function computeHybridScore(
 	return { ageInDays, recencyBoost, finalScore };
 }
 
-function updateTopCandidates(
-	topCandidates: Array<{ text: string; score: number }>,
-	text: string,
-	score: number,
-	topK: number,
-	minScore: number,
-): number {
-	if (topCandidates.length < topK) {
-		topCandidates.push({ text, score });
-		if (topCandidates.length === topK) {
-			topCandidates.sort((a, b) => b.score - a.score);
-			return topCandidates[topK - 1].score;
-		}
-		return minScore;
-	}
-	if (score > minScore) {
-		topCandidates[topK - 1] = { text, score };
-		topCandidates.sort((a, b) => b.score - a.score);
-		return topCandidates[topK - 1].score;
-	}
-	return minScore;
-}
-
 interface MemoryDiagnosticItem {
 	id: number;
 	text: string;
 	category: "PROFILE" | "DYNAMIC" | "TEMPORARY";
 	createdAt: number;
+	userId?: number | null;
 	ageInDays: number;
 	cosSim: number;
 	recencyBoost: number;
 	finalScore: number;
+	ftsRank?: number;
+	rrfScore?: number;
 	passedThreshold: boolean;
 	selected: boolean;
 }
@@ -196,12 +211,14 @@ function createDefaultDiagnosticItem(m: {
 	text: string;
 	category: "PROFILE" | "DYNAMIC" | "TEMPORARY";
 	createdAt: number;
+	userId?: number | null;
 }): MemoryDiagnosticItem {
 	return {
 		id: m.id,
 		text: m.text,
 		category: m.category,
 		createdAt: m.createdAt,
+		userId: m.userId,
 		ageInDays: 0,
 		cosSim: 0,
 		recencyBoost: 0,
@@ -226,26 +243,207 @@ export interface MemoryQueryDiagnostics {
 	details: MemoryDiagnosticItem[];
 }
 
+export interface QueryMemoriesOptions {
+	activeTopic?: string;
+	history?: MessageRow[];
+	senderUserId?: number;
+	isPrivateChat?: boolean;
+	topK?: number;
+	threshold?: number;
+}
+
+function resolveChatMemories(
+	chatId: string,
+	options?: QueryMemoriesOptions,
+): MemoryItem[] {
+	let allMemories = Repository.getMemories(chatId);
+
+	if (options?.isPrivateChat && options?.senderUserId) {
+		const existingIds = new Set(allMemories.map((m) => m.id));
+		const userAllMems = Repository.getUserAllMemories(options.senderUserId);
+		for (const uMem of userAllMems) {
+			if (!existingIds.has(uMem.id)) {
+				const fullMem = Repository.getMemoryById(uMem.id);
+				if (fullMem) {
+					allMemories = [
+						...allMemories,
+						{
+							id: fullMem.id,
+							text: fullMem.memory_text,
+							embedding: new Float32Array(0),
+							createdAt: fullMem.created_at,
+							userId: fullMem.user_id,
+							category:
+								(fullMem.category as "PROFILE" | "DYNAMIC" | "TEMPORARY") ||
+								"PROFILE",
+							expiresAt: fullMem.expires_at,
+						},
+					];
+				}
+			}
+		}
+	}
+	return allMemories;
+}
+
+function computeDenseAndSparseCandidates(
+	allMemories: MemoryItem[],
+	normQuery: Float32Array | null,
+	ftsRankMap: Map<number, number>,
+	now: number,
+): MemoryDiagnosticItem[] {
+	return allMemories.map((m) => {
+		if (!m.embedding || m.embedding.length === 0 || !normQuery) {
+			const item = createDefaultDiagnosticItem(m);
+			if (ftsRankMap.has(m.id)) {
+				item.ftsRank = ftsRankMap.get(m.id);
+			}
+			return item;
+		}
+
+		const targetEmb = m.normalizedEmbedding || normalizeVector(m.embedding);
+		const cosSim = dotProduct(normQuery, targetEmb);
+		const { ageInDays, recencyBoost, finalScore } = computeHybridScore(
+			cosSim,
+			m.createdAt,
+			m.category,
+			now,
+		);
+
+		return {
+			id: m.id,
+			text: m.text,
+			category: m.category,
+			createdAt: m.createdAt,
+			userId: m.userId,
+			ageInDays: Math.round(ageInDays * 100) / 100,
+			cosSim: Math.round(cosSim * 10000) / 10000,
+			recencyBoost: Math.round(recencyBoost * 10000) / 10000,
+			finalScore: Math.round(finalScore * 10000) / 10000,
+			ftsRank: ftsRankMap.get(m.id),
+			passedThreshold: false,
+			selected: false,
+		};
+	});
+}
+
+function fuseRRFAndCheckThresholds(
+	candidateDetails: MemoryDiagnosticItem[],
+	threshold: number,
+): MemoryDiagnosticItem[] {
+	const sortedByDense = [...candidateDetails].sort(
+		(a, b) => b.finalScore - a.finalScore,
+	);
+	const denseRankMap = new Map<number, number>();
+	sortedByDense.forEach((item, idx) => {
+		if (item.finalScore >= 0) {
+			denseRankMap.set(item.id, idx + 1);
+		}
+	});
+
+	const RRF_K = 60;
+	const details = candidateDetails.map((item) => {
+		const rankDense = denseRankMap.get(item.id);
+		const rankSparse = item.ftsRank;
+
+		let rrfScore = 0;
+		if (rankDense) {
+			rrfScore += 0.7 / (RRF_K + rankDense);
+		}
+		if (rankSparse) {
+			rrfScore += 0.3 / (RRF_K + rankSparse);
+		}
+
+		const passedDense = item.finalScore >= threshold;
+		const passedSparse =
+			Boolean(rankSparse) &&
+			(item.finalScore >= threshold - 0.15 || item.cosSim >= 0.4);
+
+		return {
+			...item,
+			rrfScore: Math.round(rrfScore * 100000) / 100000,
+			passedThreshold: passedDense || passedSparse,
+		};
+	});
+
+	details.sort((a, b) => (b.rrfScore || 0) - (a.rrfScore || 0));
+	return details;
+}
+
+function selectPersonalMemories(
+	details: MemoryDiagnosticItem[],
+	senderUserId: number,
+	topK: number,
+	selectedIds: Set<number>,
+	retrieved: string[],
+): void {
+	const personalItems = details.filter(
+		(d) =>
+			d.userId === senderUserId &&
+			(d.category === "PROFILE" || d.category === "DYNAMIC") &&
+			d.passedThreshold,
+	);
+
+	for (const pItem of personalItems.slice(0, 2)) {
+		if (retrieved.length < topK) {
+			pItem.selected = true;
+			selectedIds.add(pItem.id);
+			retrieved.push(pItem.text);
+		}
+	}
+}
+
+function selectBiLevelCandidates(
+	details: MemoryDiagnosticItem[],
+	senderUserId?: number,
+	topK = 5,
+): { retrievedMemories: string[]; matchedCount: number } {
+	const retrievedMemories: string[] = [];
+	const selectedIds = new Set<number>();
+	let matchedCount = 0;
+
+	for (const item of details) {
+		if (item.passedThreshold) {
+			matchedCount++;
+		}
+	}
+
+	if (typeof senderUserId === "number" && senderUserId > 0) {
+		selectPersonalMemories(
+			details,
+			senderUserId,
+			topK,
+			selectedIds,
+			retrievedMemories,
+		);
+	}
+
+	for (const item of details) {
+		if (retrievedMemories.length >= topK) break;
+		if (item.passedThreshold && !selectedIds.has(item.id)) {
+			item.selected = true;
+			selectedIds.add(item.id);
+			retrievedMemories.push(item.text);
+		}
+	}
+
+	return { retrievedMemories, matchedCount };
+}
+
 export async function queryMemoriesWithDiagnostics(
 	chatId: string,
 	query: string,
-	options?: {
-		activeTopic?: string;
-		topK?: number;
-		threshold?: number;
-	},
+	options?: QueryMemoriesOptions,
 ): Promise<MemoryQueryDiagnostics> {
-	// Automatically clean up expired memories first
 	Repository.pruneExpiredMemories(chatId);
 
-	const allMemories = Repository.getMemories(chatId);
+	const allMemories = resolveChatMemories(chatId, options);
 	const cleanQuery = query.trim();
-	const activeTopic = options?.activeTopic;
-	const enrichedQuery =
-		activeTopic &&
-		activeTopic !== "General chat is going on, no specific topic."
-			? `${cleanQuery} | Topic: ${activeTopic}`
-			: cleanQuery;
+	const enrichedQuery = expandContextualQuery(
+		cleanQuery,
+		options?.history,
+		options?.activeTopic,
+	);
 
 	const threshold = options?.threshold ?? 0.6;
 	const topK = options?.topK ?? 5;
@@ -277,70 +475,32 @@ export async function queryMemoriesWithDiagnostics(
 
 	if (queryEmbedding.length === 0) {
 		logger.warn(
-			`[Memory RAG] Query embedding failed for chat ${chatId}. Skipping RAG retrieval.`,
+			`[Memory RAG] Query embedding failed for chat ${chatId}. Falling back to FTS retrieval.`,
 		);
-		return {
-			chatId,
-			originalQuery: cleanQuery,
-			enrichedQuery,
-			embeddingDimensions: 0,
-			embeddingTimeMs,
-			totalMemoriesInChat: allMemories.length,
-			threshold,
-			topK,
-			evaluatedCount: allMemories.length,
-			matchedCount: 0,
-			retrievedMemories: [],
-			details: allMemories.map(createDefaultDiagnosticItem),
-		};
 	}
 
-	const normQuery = normalizeVector(queryEmbedding);
+	const normQuery =
+		queryEmbedding.length > 0 ? normalizeVector(queryEmbedding) : null;
 	const now = Math.floor(Date.now() / 1000);
 
-	// Calculate hybrid similarity score (Category-aware: PROFILE facts never decay, TEMPORARY decays fast)
-	const details: MemoryDiagnosticItem[] = allMemories.map((m) => {
-		if (!m.embedding || m.embedding.length === 0) {
-			return createDefaultDiagnosticItem(m);
-		}
-
-		const targetEmb = m.normalizedEmbedding || normalizeVector(m.embedding);
-		const cosSim = dotProduct(normQuery, targetEmb);
-		const { ageInDays, recencyBoost, finalScore } = computeHybridScore(
-			cosSim,
-			m.createdAt,
-			m.category,
-			now,
-		);
-
-		return {
-			id: m.id,
-			text: m.text,
-			category: m.category,
-			createdAt: m.createdAt,
-			ageInDays: Math.round(ageInDays * 100) / 100,
-			cosSim: Math.round(cosSim * 10000) / 10000,
-			recencyBoost: Math.round(recencyBoost * 10000) / 10000,
-			finalScore: Math.round(finalScore * 10000) / 10000,
-			passedThreshold: finalScore >= threshold,
-			selected: false,
-		};
+	const ftsResults = Repository.searchMemoriesFTS(chatId, cleanQuery, 25);
+	const ftsRankMap = new Map<number, number>();
+	ftsResults.forEach((res, idx) => {
+		ftsRankMap.set(res.id, idx + 1);
 	});
 
-	details.sort((a, b) => b.finalScore - a.finalScore);
-
-	const retrievedMemories: string[] = [];
-	let matchedCount = 0;
-
-	for (const item of details) {
-		if (item.passedThreshold) {
-			matchedCount++;
-			if (retrievedMemories.length < topK) {
-				item.selected = true;
-				retrievedMemories.push(item.text);
-			}
-		}
-	}
+	const candidateDetails = computeDenseAndSparseCandidates(
+		allMemories,
+		normQuery,
+		ftsRankMap,
+		now,
+	);
+	const details = fuseRRFAndCheckThresholds(candidateDetails, threshold);
+	const { retrievedMemories, matchedCount } = selectBiLevelCandidates(
+		details,
+		options?.senderUserId,
+		topK,
+	);
 
 	return {
 		chatId,
@@ -358,157 +518,98 @@ export async function queryMemoriesWithDiagnostics(
 	};
 }
 
-function scanTopMatchingMemories(
-	memories: MemoryItem[],
-	normQuery: Float32Array,
-	now: number,
-	threshold = 0.6,
-	topK = 5,
-): string[] {
-	const topCandidates: Array<{ text: string; score: number }> = [];
-	let minCandidateScore = threshold;
-
-	for (const m of memories) {
-		if (!m.embedding || m.embedding.length === 0) continue;
-		if (m.expiresAt !== null && m.expiresAt <= now) continue;
-
-		const targetEmb = m.normalizedEmbedding || normalizeVector(m.embedding);
-		const cosSim = dotProduct(normQuery, targetEmb);
-		const { finalScore } = computeHybridScore(
-			cosSim,
-			m.createdAt,
-			m.category,
-			now,
-		);
-
-		if (finalScore >= minCandidateScore) {
-			minCandidateScore = updateTopCandidates(
-				topCandidates,
-				m.text,
-				finalScore,
-				topK,
-				minCandidateScore,
-			);
-		}
-	}
-
-	if (topCandidates.length === 0) return [];
-	topCandidates.sort((a, b) => b.score - a.score);
-	return topCandidates.map((c) => c.text);
-}
-
 export async function getRelevantMemories(
 	chatId: string,
 	query: string,
-	activeTopic?: string,
+	activeTopicOrOptions?: string | QueryMemoriesOptions,
 	topK = 5,
 ): Promise<string[]> {
-	const allMemories = Repository.getMemories(chatId);
 	const cleanQuery = query.trim();
-	if (allMemories.length === 0 || !cleanQuery) {
-		return [];
-	}
+	if (!cleanQuery) return [];
 
-	const enrichedQuery =
-		activeTopic &&
-		activeTopic !== "General chat is going on, no specific topic."
-			? `${cleanQuery} | Topic: ${activeTopic}`
-			: cleanQuery;
+	const options: QueryMemoriesOptions =
+		typeof activeTopicOrOptions === "string"
+			? { activeTopic: activeTopicOrOptions, topK }
+			: { topK, ...activeTopicOrOptions };
 
-	const queryEmbedding = await generateEmbedding(
-		enrichedQuery,
-		"RETRIEVAL_QUERY",
-		"high",
+	const diagnostics = await queryMemoriesWithDiagnostics(
+		chatId,
+		cleanQuery,
+		options,
 	);
 
-	if (queryEmbedding.length === 0) {
-		logger.warn(
-			`[Memory RAG] Query embedding failed for chat ${chatId}. Skipping RAG retrieval.`,
-		);
-		return [];
-	}
-
-	const normQuery = normalizeVector(queryEmbedding);
-	const now = Math.floor(Date.now() / 1000);
-	const retrieved = scanTopMatchingMemories(
-		allMemories,
-		normQuery,
-		now,
-		0.6,
-		topK,
-	);
-
-	if (retrieved.length > 0) {
+	if (diagnostics.retrievedMemories.length > 0) {
 		logger.debug(
-			`[Memory RAG] Retrieved ${retrieved.length} memories for query: "${enrichedQuery}"`,
+			`[Memory RAG] Retrieved ${diagnostics.retrievedMemories.length} memories for query: "${diagnostics.enrichedQuery}"`,
 		);
-		logger.debug(`[Memory RAG] Memories:`, retrieved);
+		logger.debug(`[Memory RAG] Memories:`, diagnostics.retrievedMemories);
 	}
 
-	return retrieved;
+	return diagnostics.retrievedMemories;
 }
 
 async function consolidateMemories(chatIdStr: string) {
 	const allMemories = Repository.getMemories(chatIdStr);
 	if (allMemories.length < 10) return;
 
-	const memoryListText = allMemories
-		.map((m) => `ID: ${m.id} | ${m.text}`)
-		.join("\n");
+	logger.info(
+		`[Memory Consolidation] Triggered for chat ${chatIdStr}. Analyzing ${allMemories.length} memories in chunks...`,
+	);
 
-	const prompt = `Review the following memory list.
+	// Chunk large memory lists to prevent token limit blowout
+	const CHUNK_SIZE = 30;
+	for (let offset = 0; offset < allMemories.length; offset += CHUNK_SIZE) {
+		const chunk = allMemories.slice(offset, offset + CHUNK_SIZE);
+		const memoryListText = chunk
+			.map((m) => `ID: ${m.id} | ${m.text}`)
+			.join("\n");
+
+		const prompt = `Review the following memory list.
 Find exact duplicates, resolved contradictions, or completely useless/spam facts.
 Return ONLY a JSON array of the integer IDs of memories that should be permanently DELETED. Return an empty array [] if all memories are important and distinct.
 
 Memories:
 ${memoryListText}`;
 
-	logger.info(
-		`[Memory Consolidation] Triggered for chat ${chatIdStr}. Analyzing ${allMemories.length} memories...`,
-	);
-
-	try {
-		const response = await runWithRetry(
-			() =>
-				ai.models.generateContent({
-					model: CONFIG.GEMINI_MODEL,
-					contents: prompt,
-					config: {
-						systemInstruction:
-							"You are an automated data maintenance service. Analyze stored memories and identify redundant or contradictory memory IDs for deletion. Return strictly JSON.",
-						temperature: 0.1,
-						maxOutputTokens: 2048,
-						thinkingConfig: getThinkingConfig(CONFIG.GEMINI_MODEL),
-						responseMimeType: "application/json",
-						responseSchema: {
-							type: "ARRAY",
-							items: {
-								type: "INTEGER",
+		try {
+			const response = await runWithRetry(
+				() =>
+					ai.models.generateContent({
+						model: CONFIG.GEMINI_MODEL,
+						contents: prompt,
+						config: {
+							systemInstruction:
+								"You are an automated data maintenance service. Analyze stored memories and identify redundant or contradictory memory IDs for deletion. Return strictly JSON.",
+							temperature: 0.1,
+							maxOutputTokens: 2048,
+							thinkingConfig: getThinkingConfig(CONFIG.GEMINI_MODEL),
+							responseMimeType: "application/json",
+							responseSchema: {
+								type: "ARRAY",
+								items: {
+									type: "INTEGER",
+								},
+								description: "List of memory IDs to delete",
 							},
-							description: "List of memory IDs to delete",
 						},
-					},
-				}),
-			{ priority: "low" },
-		);
-
-		const responseText = response.text?.trim() || "[]";
-		const idsToDelete: number[] = JSON.parse(responseText);
-
-		if (Array.isArray(idsToDelete) && idsToDelete.length > 0) {
-			Repository.deleteMemoriesByIds(idsToDelete, chatIdStr);
-			logger.info(
-				`[Memory Consolidation] Successfully deleted ${idsToDelete.length} redundant/spam memories for chat ${chatIdStr}.`,
+					}),
+				{ priority: "low" },
 			);
-		} else {
-			logger.info(
-				`[Memory Consolidation] No redundant memories found for chat ${chatIdStr}.`,
+
+			const responseText = response.text?.trim() || "[]";
+			const idsToDelete: number[] = JSON.parse(responseText);
+
+			if (Array.isArray(idsToDelete) && idsToDelete.length > 0) {
+				Repository.deleteMemoriesByIds(idsToDelete, chatIdStr);
+				logger.info(
+					`[Memory Consolidation] Successfully deleted ${idsToDelete.length} redundant/spam memories for chat ${chatIdStr} in chunk [${offset}-${offset + chunk.length}].`,
+				);
+			}
+		} catch (error) {
+			logger.error(
+				`[Memory Consolidation] Error during consolidation for chat ${chatIdStr}:`,
+				error,
 			);
 		}
-	} catch (error) {
-		logger.error(
-			`[Memory Consolidation] Error during consolidation for chat ${chatIdStr}:`,
-			error,
-		);
 	}
 }

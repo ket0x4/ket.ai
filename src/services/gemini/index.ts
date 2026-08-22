@@ -12,6 +12,7 @@ import {
 	cleanUserText,
 	getSystemInstruction,
 	getThinkingConfig,
+	resolveTargetUserId,
 	runWithRetry,
 } from "./utils";
 
@@ -232,35 +233,6 @@ async function handleToolExecution(
 		if (part) toolResponseParts.push(part);
 	}
 	return toolResponseParts;
-}
-
-function resolveTargetUserId(
-	userName: string,
-	explicitUserId?: number,
-	history: MessageRow[] = [],
-	fallbackUserId?: number,
-): number | null {
-	if (typeof explicitUserId === "number" && explicitUserId > 0) {
-		return explicitUserId;
-	}
-
-	if (history.length > 0 && userName) {
-		const cleanName = userName.toLowerCase().trim();
-		const matchedMsg = history
-			.slice()
-			.reverse()
-			.find(
-				(m) =>
-					!m.is_bot_reply &&
-					((m.first_name && m.first_name.toLowerCase() === cleanName) ||
-						(m.username && m.username.toLowerCase() === cleanName)),
-			);
-		if (matchedMsg) {
-			return matchedMsg.user_id;
-		}
-	}
-
-	return fallbackUserId ?? null;
 }
 
 async function processExtractedMemories(
@@ -522,12 +494,19 @@ export const GeminiService = {
 			const queryForMemory = options.isSpontaneous
 				? topicSummary || "General chat"
 				: lastMessageText;
+			const senderUserId =
+				lastMsg && !lastMsg.is_bot_reply ? lastMsg.user_id : undefined;
+			const isPrivate = Boolean(
+				senderUserId && chatIdStr === senderUserId.toString(),
+			);
+
 			const memories = chatIdStr
-				? await getRelevantMemories(
-						chatIdStr,
-						queryForMemory,
-						topicSummary || undefined,
-					)
+				? await getRelevantMemories(chatIdStr, queryForMemory, {
+						activeTopic: topicSummary || undefined,
+						history,
+						senderUserId,
+						isPrivateChat: isPrivate,
+					})
 				: [];
 
 			const inputPayload = buildInputPayload(

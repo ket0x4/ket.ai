@@ -1,6 +1,6 @@
 import { CONFIG } from "../config/index";
 import logger from "../utils/logger";
-import { normalizeVector } from "../utils/vector";
+import { dotProduct, normalizeVector } from "../utils/vector";
 import { db } from "./index";
 
 interface ChatRow {
@@ -137,10 +137,30 @@ const stmts = {
 		"SELECT COUNT(*) as count FROM memories WHERE chat_id = ?",
 	),
 	deleteOldestMemory: db.prepare(
-		`DELETE FROM memories WHERE id = (SELECT id FROM memories WHERE chat_id = ? ORDER BY created_at ASC LIMIT 1)`,
+		`DELETE FROM memories WHERE id = (
+			SELECT id FROM memories 
+			WHERE chat_id = ? 
+			ORDER BY 
+				CASE 
+					WHEN expires_at IS NOT NULL AND expires_at <= unixepoch() THEN 1
+					WHEN category = 'TEMPORARY' THEN 2
+					WHEN category = 'DYNAMIC' THEN 3
+					ELSE 4
+				END ASC,
+				created_at ASC 
+			LIMIT 1
+		)`,
+	),
+	searchMemoriesFTS: db.prepare(
+		`SELECT m.id, m.memory_text, bm25(memories_fts) as rank
+     FROM memories_fts fts
+     JOIN memories m ON m.id = fts.rowid
+     WHERE memories_fts MATCH ? AND m.chat_id = ?
+     ORDER BY rank ASC
+     LIMIT ?`,
 	),
 	pruneExpiredMemories: db.prepare(
-		"DELETE FROM memories WHERE chat_id = ? AND expires_at IS NOT NULL AND expires_at <= ?",
+		"DELETE FROM memories WHERE chat_id = ? AND expires_at IS NOT NULL AND expires_at <= ? RETURNING id",
 	),
 	pruneOldMessages: db.prepare(
 		"DELETE FROM messages WHERE chat_id = ? AND sent_at < ?",
@@ -719,14 +739,95 @@ export const Repository = {
 	 */
 	pruneExpiredMemories(chatId: string): number {
 		const now = Math.floor(Date.now() / 1000);
-		const result = stmts.pruneExpiredMemories.run(chatId, now);
-		if (result.changes > 0) {
+		const deletedRows = stmts.pruneExpiredMemories.all(chatId, now) as {
+			id: number;
+		}[];
+		const deletedCount = deletedRows.length;
+		if (deletedCount > 0) {
 			memoryCache.pruneExpired(chatId, now);
 			logger.info(
-				`[Memory] Pruned ${result.changes} expired memories for chat ${chatId}.`,
+				`[Memory] Pruned ${deletedCount} expired memories for chat ${chatId}.`,
 			);
 		}
-		return result.changes;
+		return deletedCount;
+	},
+
+	/**
+	 * Sanitizes a search query into safe FTS5 MATCH format with prefix tokens.
+	 */
+	sanitizeFtsQuery(query: string): string {
+		if (!query) return "";
+		const tokens = query
+			.replace(/[^\p{L}\p{N}\s_]/gu, " ")
+			.trim()
+			.split(/\s+/)
+			.filter((t) => t.length > 0);
+		if (tokens.length === 0) return "";
+		return tokens.map((t) => `"${t}"*`).join(" OR ");
+	},
+
+	/**
+	 * Performs Full-Text Search on memories using SQLite FTS5 BM25 ranking.
+	 */
+	searchMemoriesFTS(
+		chatId: string,
+		query: string,
+		limit: number = 10,
+	): Array<{ id: number; text: string; rank: number }> {
+		const sanitized = this.sanitizeFtsQuery(query);
+		if (!sanitized) return [];
+		try {
+			const rows = stmts.searchMemoriesFTS.all(
+				sanitized,
+				chatId,
+				limit,
+			) as Array<{
+				id: number;
+				memory_text: string;
+				rank: number;
+			}>;
+			return rows.map((r) => ({
+				id: r.id,
+				text: r.memory_text,
+				rank: r.rank,
+			}));
+		} catch (err) {
+			logger.warn(`[Repository] FTS search failed for query "${query}":`, err);
+			return [];
+		}
+	},
+
+	/**
+	 * Finds an existing memory for a user with high semantic similarity to detect slot updates / conflicts.
+	 */
+	findSlotConflictForUser(
+		chatId: string,
+		userId: number,
+		embedding: Float32Array | number[],
+		minSim = 0.72,
+		maxSim = 0.88,
+	): MemoryItem | null {
+		const userMems = this.getUserMemories(chatId, userId);
+		if (userMems.length === 0) return null;
+		const normEmb =
+			embedding instanceof Float32Array
+				? embedding
+				: normalizeVector(embedding);
+
+		let bestMatch: MemoryItem | null = null;
+		let highestSim = minSim;
+
+		for (const m of userMems) {
+			if (!m.embedding || m.embedding.length === 0) continue;
+			const targetEmb = m.normalizedEmbedding || normalizeVector(m.embedding);
+			const sim = dotProduct(normEmb, targetEmb);
+			if (sim >= highestSim && sim <= maxSim) {
+				highestSim = sim;
+				bestMatch = m;
+			}
+		}
+
+		return bestMatch;
 	},
 
 	/**

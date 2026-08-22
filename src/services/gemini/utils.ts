@@ -436,3 +436,81 @@ export function buildHistoryList(history: MessageRow[]) {
 		};
 	});
 }
+
+/**
+ * Resolves target Telegram user_id by matching name against recent chat message history.
+ */
+export function resolveTargetUserId(
+	userName: string,
+	explicitUserId?: number,
+	history: MessageRow[] = [],
+	fallbackUserId?: number,
+): number | null {
+	if (typeof explicitUserId === "number" && explicitUserId > 0) {
+		return explicitUserId;
+	}
+
+	if (history.length > 0 && userName) {
+		const cleanName = userName.toLowerCase().trim();
+		const matchedMsg = history
+			.slice()
+			.reverse()
+			.find(
+				(m) =>
+					!m.is_bot_reply &&
+					((m.first_name && m.first_name.toLowerCase() === cleanName) ||
+						(m.username && m.username.toLowerCase() === cleanName)),
+			);
+		if (matchedMsg) {
+			return matchedMsg.user_id;
+		}
+	}
+
+	return fallbackUserId ?? null;
+}
+
+const ANAPHORIC_TRIGGERS =
+	/\b(?:o|onun|ona|onlar|orası|oraya|oradan|orada|burası|buraya|neredeydi|nerede|kimdi|kimin|neydi|nedir|ne zaman|hangisi|bu|bunu|bunun|buna|şu|şunu|bahsettiğin|bahsettiği|dediğin|dediği|bahsettiğimiz|what|where|who|when|which|it|that|there|they|him|her)\b/i;
+
+/**
+ * Enriches a RAG retrieval query with recent conversational context if anaphora/pronouns or short questions are detected.
+ */
+export function expandContextualQuery(
+	query: string,
+	history: MessageRow[] = [],
+	activeTopic?: string,
+): string {
+	const cleanQuery = query.trim();
+	const isAnaphoric = ANAPHORIC_TRIGGERS.test(cleanQuery);
+	const isVeryShort = cleanQuery.split(/\s+/).length <= 4;
+
+	let contextSnippet = "";
+	if ((isAnaphoric || isVeryShort) && history.length > 0) {
+		// Extract text from recent user messages before current query
+		const recentUserMsgs = history
+			.slice(-4)
+			.filter((m) => !m.is_bot_reply && m.text?.trim())
+			.map((m) => cleanUserText(m.text))
+			.filter((t) => t && t !== cleanQuery);
+
+		if (recentUserMsgs.length > 0) {
+			contextSnippet = recentUserMsgs.slice(-2).join(" ");
+		}
+	}
+
+	const parts: string[] = [];
+	if (contextSnippet) {
+		parts.push(contextSnippet);
+	}
+	if (cleanQuery) {
+		parts.push(cleanQuery);
+	}
+	if (
+		activeTopic &&
+		activeTopic !== "General chat is going on, no specific topic."
+	) {
+		parts.push(`Topic: ${activeTopic}`);
+	}
+
+	return parts.join(" | ") || cleanQuery;
+}

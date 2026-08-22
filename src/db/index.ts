@@ -187,6 +187,53 @@ function runMigrations() {
     ON memories(user_id, created_at DESC);
   `);
 
+	// FTS5 Full-Text Search Virtual Table for fast lexical keyword searches
+	try {
+		db.run(`
+      CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
+        memory_text,
+        content='memories',
+        content_rowid='id',
+        tokenize='unicode61'
+      );
+    `);
+
+		// Triggers to keep FTS index perfectly synced with memories table
+		db.run(`
+      CREATE TRIGGER IF NOT EXISTS trg_memories_ai AFTER INSERT ON memories BEGIN
+        INSERT INTO memories_fts(rowid, memory_text) VALUES (new.id, new.memory_text);
+      END;
+    `);
+
+		db.run(`
+      CREATE TRIGGER IF NOT EXISTS trg_memories_ad AFTER DELETE ON memories BEGIN
+        INSERT INTO memories_fts(memories_fts, rowid, memory_text) VALUES('delete', old.id, old.memory_text);
+      END;
+    `);
+
+		db.run(`
+      CREATE TRIGGER IF NOT EXISTS trg_memories_au AFTER UPDATE ON memories BEGIN
+        INSERT INTO memories_fts(memories_fts, rowid, memory_text) VALUES('delete', old.id, old.memory_text);
+        INSERT INTO memories_fts(rowid, memory_text) VALUES (new.id, new.memory_text);
+      END;
+    `);
+
+		// Rebuild FTS index on startup if needed to ensure parity
+		const ftsCount = db
+			.prepare("SELECT COUNT(*) as count FROM memories_fts")
+			.get() as { count: number } | null;
+		const memCount = db
+			.prepare("SELECT COUNT(*) as count FROM memories")
+			.get() as { count: number } | null;
+
+		if ((ftsCount?.count || 0) < (memCount?.count || 0)) {
+			logger.info("[DB Migration] Rebuilding memories_fts search index...");
+			db.run("INSERT INTO memories_fts(memories_fts) VALUES('rebuild')");
+		}
+	} catch (e) {
+		logger.warn("[DB Migration] Failed to initialize memories_fts:", e);
+	}
+
 	seedDefaultPersonas();
 }
 
