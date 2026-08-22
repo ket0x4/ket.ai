@@ -183,7 +183,6 @@ function runMigrations() {
 function seedDefaultPersonas() {
 	const now = Math.floor(Date.now() / 1000);
 
-	// Remove any legacy system personas other than ket-default
 	try {
 		db.run("DELETE FROM personas WHERE is_system = 1 AND id != 'ket-default'");
 		db.run(
