@@ -545,7 +545,7 @@ test("Tiered capacity eviction prioritizes expired and temporary before profile"
 	Repository.clearMemories(testChatId);
 });
 
-test("Slot replacement updates conflicting facts for the same user", async () => {
+test("Multiple distinct facts for the same user are preserved without being overwritten", async () => {
 	const { processNewMemory } = await import("../src/services/gemini/memory");
 	const { ai } = await import("../src/services/gemini/client");
 
@@ -561,33 +561,32 @@ test("Slot replacement updates conflicting facts for the same user", async () =>
 	});
 
 	try {
-		// Initial memory: Ali lives in Ankara
-		await processNewMemory(testChatId, "Ali: Ankara'da yasiyor", {
+		// Initial memory: Ali does not wear a watch
+		await processNewMemory(testChatId, "Ali: does not wear a watch", {
 			userId: userIdAli,
 			category: "PROFILE",
 		});
 
 		const mems1 = Repository.getMemories(testChatId);
 		expect(mems1.length).toBe(1);
-		expect(mems1[0].text).toBe("Ali: Ankara'da yasiyor");
-		const originalId = mems1[0].id;
+		expect(mems1[0].text).toBe("Ali: does not wear a watch");
 
-		// Updated memory: Ali moved to Istanbul (sim ~ 0.80, inside slot conflict window [0.72, 0.88])
+		// Second memory: Ali's arm is not healing (sim ~ 0.80 with first memory)
 		// biome-ignore lint/suspicious/noExplicitAny: mock
 		(ai.models as any).embedContent = async () => ({
 			embeddings: [{ values: [0.8, 0.6] }],
 		});
 
-		await processNewMemory(testChatId, "Ali: Istanbul'a tasindi", {
+		await processNewMemory(testChatId, "Ali: arm is not healing", {
 			userId: userIdAli,
 			category: "PROFILE",
 		});
 
 		const mems2 = Repository.getMemories(testChatId);
-		// Should update existing slot, NOT create a second duplicate row
-		expect(mems2.length).toBe(1);
-		expect(mems2[0].id).toBe(originalId);
-		expect(mems2[0].text).toBe("Ali: Istanbul'a tasindi");
+		// Both facts must be kept; neither should overwrite the other
+		expect(mems2.length).toBe(2);
+		expect(mems2.map((m) => m.text)).toContain("Ali: does not wear a watch");
+		expect(mems2.map((m) => m.text)).toContain("Ali: arm is not healing");
 	} finally {
 		ai.models.embedContent = originalEmbed;
 		Repository.clearMemories(testChatId);

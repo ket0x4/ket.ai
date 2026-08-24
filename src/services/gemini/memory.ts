@@ -62,7 +62,7 @@ function isDuplicateMemory(
 		}
 		const targetEmb = m.normalizedEmbedding || normalizeVector(m.embedding);
 		const sim = dotProduct(normEmb, targetEmb);
-		if (sim > 0.88) return true;
+		if (sim > 0.9) return true;
 	}
 	return false;
 }
@@ -127,38 +127,13 @@ export async function processNewMemory(
 
 	const emb = normalizeVector(rawEmb);
 
-	// Exact / Semantic deduplication (sim > 0.88)
+	// Exact / Semantic deduplication (sim > 0.90)
 	if (isDuplicateMemory(emb, existing, options?.userId)) {
 		logger.debug(
 			`[Memory Store] Skipped semantically duplicate memory for chat ${chatIdStr}:`,
 			memText,
 		);
 		return;
-	}
-
-	// Slot replacement & conflict resolution (e.g. user updated location/status, 0.72 <= sim <= 0.88)
-	if (typeof options?.userId === "number" && options.userId > 0) {
-		const conflict = Repository.findSlotConflictForUser(
-			chatIdStr,
-			options.userId,
-			emb,
-			0.72,
-			0.88,
-		);
-		if (conflict) {
-			logger.info(
-				`[Memory Store] Detected slot update for user ${options.userId} in chat ${chatIdStr}. Updating memory #${conflict.id}: "${conflict.text}" -> "${memText}"`,
-			);
-			Repository.updateMemory(
-				conflict.id,
-				memText,
-				options?.category || conflict.category,
-				emb,
-				chatIdStr,
-			);
-			handleMemoryConsolidationCounter(chatIdStr);
-			return;
-		}
 	}
 
 	logger.info(`[Memory Store] Adding memory to chat ${chatIdStr}:`, memText);

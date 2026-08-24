@@ -798,39 +798,6 @@ export const Repository = {
 	},
 
 	/**
-	 * Finds an existing memory for a user with high semantic similarity to detect slot updates / conflicts.
-	 */
-	findSlotConflictForUser(
-		chatId: string,
-		userId: number,
-		embedding: Float32Array | number[],
-		minSim = 0.72,
-		maxSim = 0.88,
-	): MemoryItem | null {
-		const userMems = this.getUserMemories(chatId, userId);
-		if (userMems.length === 0) return null;
-		const normEmb =
-			embedding instanceof Float32Array
-				? embedding
-				: normalizeVector(embedding);
-
-		let bestMatch: MemoryItem | null = null;
-		let highestSim = minSim;
-
-		for (const m of userMems) {
-			if (!m.embedding || m.embedding.length === 0) continue;
-			const targetEmb = m.normalizedEmbedding || normalizeVector(m.embedding);
-			const sim = dotProduct(normEmb, targetEmb);
-			if (sim >= highestSim && sim <= maxSim) {
-				highestSim = sim;
-				bestMatch = m;
-			}
-		}
-
-		return bestMatch;
-	},
-
-	/**
 	 * Deletes specific memories by their IDs and updates cache.
 	 */
 	deleteMemoriesByIds(ids: number[], chatId?: string): void {
