@@ -1,45 +1,49 @@
-# Pre-warmed Sandbox Container for Ket AI
-# Includes: Python 3, Bun, Node.js, Playwright Chromium, BeautifulSoup4, Requests, Httpx, Pandas, etc.
+# Ultra-lightweight Pre-warmed Sandbox Container for Ket AI (Alpine Edge)
+# Includes: Python 3, Bun, Chromium Headless, BeautifulSoup4, Requests, Httpx, Pandas, etc.
 
-FROM mcr.microsoft.com/playwright:v1.49.0-noble
+FROM oven/bun:alpine AS bun-source
 
-# Prevent interactive prompts during package installs
-ENV DEBIAN_FRONTEND=noninteractive
+FROM alpine:edge
+
+# Set timezone and environment
 ENV TZ=Europe/Istanbul
+ENV PYTHONUNBUFFERED=1
+ENV PORT=8080
+ENV SANDBOX_PORT=8080
+ENV CHROME_BIN=/usr/bin/chromium-browser
+ENV CHROME_PATH=/usr/lib/chromium/
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+ENV PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium-browser
 
-# Install Python 3, pip, and essential utilities
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# Install Python 3, pip, pre-compiled data/scraping packages, Chromium, and system utilities
+RUN apk update && apk add --no-cache \
     python3 \
-    python3-pip \
-    python3-venv \
+    py3-pip \
+    py3-requests \
+    py3-beautifulsoup4 \
+    py3-lxml \
+    py3-pandas \
+    py3-httpx \
+    chromium \
+    bash \
     curl \
     wget \
     jq \
     ca-certificates \
-    git \
-    unzip \
-    && rm -rf /var/lib/apt/lists/*
+    tzdata \
+    libstdc++ \
+    && rm -rf /var/cache/apk/*
 
-# Install Bun
-ENV BUN_INSTALL=/usr/local
-RUN curl -fsSL https://bun.sh/install | bash
+# Copy Bun runtime from official Bun alpine image
+COPY --from=bun-source /usr/local/bin/bun /usr/local/bin/bun
 
-# Install common Python libraries globally
-RUN pip3 install --no-cache-dir --break-system-packages \
-    requests \
-    httpx \
-    beautifulsoup4 \
-    lxml \
-    pandas \
-    playwright
-
-# Install Playwright Chromium browser binaries
-RUN python3 -m playwright install chromium
+# Install Playwright python package for chromium control
+RUN pip3 install --no-cache-dir --break-system-packages playwright
 
 # Create unprivileged sandbox user
-RUN useradd -m -u 1001 -s /bin/bash sandboxuser && \
-    mkdir -p /tmp/sandboxes /home/sandboxuser/app /ms-playwright && \
-    chown -R sandboxuser:sandboxuser /tmp/sandboxes /home/sandboxuser /ms-playwright
+RUN adduser -D -u 1000 -s /bin/bash sandboxuser && \
+    mkdir -p /tmp/sandboxes /home/sandboxuser/app && \
+    chown -R sandboxuser:sandboxuser /tmp/sandboxes /home/sandboxuser
 
 WORKDIR /home/sandboxuser/app
 
@@ -48,12 +52,6 @@ COPY package.json server.ts ./
 RUN chown -R sandboxuser:sandboxuser /home/sandboxuser/app
 
 USER sandboxuser
-
-# Environment variables
-ENV PORT=8080
-ENV SANDBOX_PORT=8080
-ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
-ENV PYTHONUNBUFFERED=1
 
 EXPOSE 8080
 

@@ -69,6 +69,10 @@ async function runCommand(
 			PYTHONUNBUFFERED: "1",
 			PLAYWRIGHT_BROWSERS_PATH:
 				process.env.PLAYWRIGHT_BROWSERS_PATH || "/ms-playwright",
+			PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH:
+				process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH ||
+				"/usr/bin/chromium-browser",
+			CHROME_BIN: process.env.CHROME_BIN || "/usr/bin/chromium-browser",
 		},
 	});
 

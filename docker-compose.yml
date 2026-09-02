@@ -17,8 +17,6 @@ services:
       - ./logs:/app/logs:rw
     depends_on:
       - ket-sandbox
-    networks:
-      - ket-net
 
   ket-sandbox:
     build:
@@ -37,9 +35,8 @@ services:
           cpus: "1.5"
           memory: 1536M
           pids: 150
-    networks:
-      - ket-net
 
 networks:
-  ket-net:
-    driver: bridge
+  default:
+    name: agalar-network
+    external: true
