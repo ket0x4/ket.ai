@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { CONFIG } from "../../config";
-import type { MessageRow } from "../../db/repository";
+import { type MessageRow, Repository } from "../../db/repository";
 import logger from "../../utils/logger";
 
 const SYSTEM_PROMPT_FILE = "system.txt";
@@ -31,8 +31,14 @@ cachedSystemPrompt = loadSystemPrompt();
 const FORMATTING_RULE =
 	"\n\n### FORMATTING RULE ###\nNever use emojis or emoticons in your responses. When presenting code, tool execution outputs, terminal logs, calculations, or structured data, always format them with clean Markdown code blocks (e.g. ```python, ```bash, ```text) or inline `code`. Use bold (*text*) for emphasis.";
 
+const WORKSPACE_FILE_RULE =
+	"\n\n### WORKSPACE & FILE OPERATIONS ###\nWhen users provide, attach, or refer to files:\n- All attached files are automatically stored in the session workspace.\n- To inspect or read code/text files, use `read_workspace_file`.\n- To execute scripts, code, or terminal commands (Python, TypeScript, JavaScript, Bash), use `execute_code`. For example: `execute_code({ language: 'bash', code: 'python3 script.py' })` or `execute_code({ language: 'python', code: '...' })`.\n- To edit or modify a file, write the updated version to the workspace using `write_workspace_file`. When the user wants the edited file, downloadable attachment, or output, use `send_workspace_file` (or `write_workspace_file` with `sendToUser: true`) to deliver it to the user.\n- For data analysis or plotting, run Python scripts with pandas/matplotlib; generated charts are automatically delivered to the user.\n- When asked to summarize ('özetle'), give a clear, informative summary of the file's structure, contents, and key logic.";
+
+const GROUP_CHAT_RULE =
+	"\n\n### TELEGRAM GROUP CHAT RULES ###\n- You participate in a Telegram group with multiple users. Always observe who sent which message.\n- Messages labeled 'You (ket.ai)' in recent_messages are your own previous statements. Never contradict what you wrote earlier or claim you do not remember saying it.\n- When 'current_message_to_reply' has a 'replying_to' object, the user is answering, asking about, or commenting directly on that specific message. Formulate your reply with this parent message firmly in mind.\n- Never confuse the current sender with other users in the chat or with yourself. Always direct your response to the sender of the current message.";
+
 export function getSystemInstruction(personaPrompt?: string): string {
-	const base = `${cachedSystemPrompt}${FORMATTING_RULE}`;
+	const base = `${cachedSystemPrompt}${FORMATTING_RULE}${WORKSPACE_FILE_RULE}${GROUP_CHAT_RULE}`;
 	if (!personaPrompt?.trim()) {
 		return base;
 	}
@@ -431,54 +437,150 @@ export function cleanUserText(
 	return text.replace(regex, " ").replace(/\s+/g, " ").trim();
 }
 
-export function buildHistoryList(history: MessageRow[]) {
-	return history.map((msg) => {
-		const usernameSuffix = msg.username ? ` (@${msg.username})` : "";
-		const senderName = msg.is_bot_reply
+function resolveMessageFallback(msg: MessageRow): string {
+	if (msg.photo_file_id) return "[Photo]";
+	if (msg.document_file_id) {
+		return `[Document: ${msg.document_file_name || "file"}]`;
+	}
+	return "[Media]";
+}
+
+function resolveMessageSender(msg: MessageRow): string {
+	if (msg.is_bot_reply) return "You (ket.ai)";
+	const usernameSuffix = msg.username ? ` (@${msg.username})` : "";
+	return `User_${msg.user_id} (${msg.first_name || "Unnamed"}${usernameSuffix})`;
+}
+
+function formatParentPreview(sender: string, rawText?: string | null): string {
+	const text = rawText
+		? rawText.length > 50
+			? `${rawText.slice(0, 47)}...`
+			: rawText
+		: "[Media]";
+	return `${sender}: "${text}"`;
+}
+
+function resolveReplyPreview(
+	replyToId: number,
+	msgMap: Map<number, MessageRow>,
+	chatId?: string,
+): string | undefined {
+	const parent = msgMap.get(replyToId);
+	if (parent) {
+		const sender = parent.is_bot_reply
 			? "You (ket.ai)"
-			: `User_${msg.user_id} (${msg.first_name || "Unnamed"}${usernameSuffix})`;
-		const fallback = msg.photo_file_id ? "[Photo]" : "[Media]";
+			: parent.first_name || "User";
+		return formatParentPreview(sender, parent.text);
+	}
+
+	if (chatId) {
+		const dbParent = Repository.getMessageWithUser(chatId, replyToId);
+		if (dbParent) {
+			const sender = dbParent.is_bot_reply
+				? "You (ket.ai)"
+				: dbParent.first_name || "User";
+			return formatParentPreview(sender, dbParent.text);
+		}
+	}
+
+	return undefined;
+}
+
+export function buildHistoryList(
+	history: MessageRow[],
+	botUsernameOverride?: string,
+	chatId?: string,
+) {
+	const msgMap = new Map<number, MessageRow>();
+	for (const m of history) {
+		msgMap.set(m.message_id, m);
+	}
+
+	return history.map((msg) => {
+		const fallback = resolveMessageFallback(msg);
+		const sender = resolveMessageSender(msg);
+		const replyPreview = msg.reply_to_message_id
+			? resolveReplyPreview(msg.reply_to_message_id, msgMap, chatId)
+			: undefined;
+
+		const cleanText = msg.is_bot_reply
+			? msg.text || fallback
+			: cleanUserText(msg.text, botUsernameOverride) || fallback;
+
 		return {
+			message_id: msg.message_id,
 			user_id: msg.is_bot_reply ? undefined : msg.user_id,
-			sender: senderName,
+			sender,
 			reply_to_message_id: msg.reply_to_message_id || undefined,
-			text: msg.is_bot_reply
-				? msg.text || fallback
-				: cleanUserText(msg.text) || fallback,
+			reply_to_preview: replyPreview,
+			text: cleanText,
 		};
 	});
 }
 
 /**
- * Resolves target Telegram user_id by matching name against recent chat message history.
+ * Resolves target Telegram user_id by matching name against recent chat message history or SQLite database.
+ * If userName is about someone else and that person is not found, returns null (rather than wrongly attributing
+ * the fact to the speaker).
  */
 export function resolveTargetUserId(
 	userName: string,
 	explicitUserId?: number,
 	history: MessageRow[] = [],
 	fallbackUserId?: number,
+	senderFirstName?: string,
+	senderUsername?: string,
 ): number | null {
 	if (typeof explicitUserId === "number" && explicitUserId > 0) {
 		return explicitUserId;
 	}
 
-	if (history.length > 0 && userName) {
-		const cleanName = userName.toLowerCase().trim();
+	if (!userName?.trim()) {
+		return fallbackUserId ?? null;
+	}
+
+	const cleanName = userName.toLowerCase().trim();
+
+	// Check if the stated user_name refers to the sender themself
+	const isSelf =
+		cleanName === "me" ||
+		cleanName === "myself" ||
+		cleanName === "ben" ||
+		cleanName === "kendim" ||
+		cleanName === "kendisi" ||
+		(senderFirstName && senderFirstName.toLowerCase().trim() === cleanName) ||
+		(senderUsername && senderUsername.toLowerCase().trim() === cleanName);
+
+	if (isSelf && typeof fallbackUserId === "number" && fallbackUserId > 0) {
+		return fallbackUserId;
+	}
+
+	// Try matching in recent message history
+	if (history.length > 0) {
 		const matchedMsg = history
 			.slice()
 			.reverse()
 			.find(
 				(m) =>
 					!m.is_bot_reply &&
-					((m.first_name && m.first_name.toLowerCase() === cleanName) ||
-						(m.username && m.username.toLowerCase() === cleanName)),
+					(m.first_name?.toLowerCase().trim() === cleanName ||
+						m.first_name?.toLowerCase().trim().startsWith(cleanName) ||
+						m.username?.toLowerCase().trim() === cleanName),
 			);
 		if (matchedMsg) {
 			return matchedMsg.user_id;
 		}
 	}
 
-	return fallbackUserId ?? null;
+	// Try matching in SQLite users table
+	const dbUser = Repository.getUserByName(cleanName);
+	if (dbUser) {
+		return dbUser.user_id;
+	}
+
+	// If userName was explicitly provided and clearly not the sender, DO NOT pollute sender's profile.
+	// Return null so the memory is stored as a general group memory.
+	return null;
 }
 
 const ANAPHORIC_TRIGGERS =

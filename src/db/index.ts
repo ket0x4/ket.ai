@@ -132,6 +132,9 @@ function runMigrations() {
       reply_to_message_id INTEGER,
       text TEXT,
       photo_file_id TEXT,
+      document_file_id TEXT,
+      document_file_name TEXT,
+      document_mime_type TEXT,
       is_bot_reply INTEGER DEFAULT 0,
       sent_at INTEGER NOT NULL,
       FOREIGN KEY(chat_id) REFERENCES chats(chat_id) ON DELETE CASCADE,
@@ -139,6 +142,33 @@ function runMigrations() {
       UNIQUE(chat_id, message_id)
     ) STRICT;
   `);
+
+	// Ensure document columns exist for existing databases
+	try {
+		const msgColumns = db
+			.prepare("PRAGMA table_info(messages)")
+			.all() as Array<{ name: string }>;
+		if (!msgColumns.some((col) => col.name === "document_file_id")) {
+			db.run(
+				"ALTER TABLE messages ADD COLUMN document_file_id TEXT DEFAULT NULL",
+			);
+		}
+		if (!msgColumns.some((col) => col.name === "document_file_name")) {
+			db.run(
+				"ALTER TABLE messages ADD COLUMN document_file_name TEXT DEFAULT NULL",
+			);
+		}
+		if (!msgColumns.some((col) => col.name === "document_mime_type")) {
+			db.run(
+				"ALTER TABLE messages ADD COLUMN document_mime_type TEXT DEFAULT NULL",
+			);
+		}
+	} catch (e) {
+		logger.debug(
+			"[DB Migration] messages document columns check/alter skipped:",
+			e,
+		);
+	}
 
 	// Indexes for faster lookups on message history
 	db.run(`

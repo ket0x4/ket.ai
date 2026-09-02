@@ -49,7 +49,7 @@ export const CONFIG = {
 	CHAT_HISTORY_LIMIT:
 		typeof configJson.chat_history_limit === "number"
 			? configJson.chat_history_limit
-			: 10,
+			: 20,
 	IMAGE_HISTORY_LIMIT:
 		typeof configJson.image_history_limit === "number"
 			? configJson.image_history_limit

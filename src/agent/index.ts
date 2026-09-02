@@ -25,6 +25,7 @@ import {
 	listWorkspaceFilesTool,
 	readWorkspaceFileTool,
 	resetWorkspaceTool,
+	sendWorkspaceFileTool,
 	writeWorkspaceFileTool,
 } from "./tools/workspaceTools";
 import type {
@@ -43,6 +44,7 @@ const CODE_TOOLS: AgentTool[] = [
 	codeExecutionTool,
 	readWorkspaceFileTool,
 	writeWorkspaceFileTool,
+	sendWorkspaceFileTool,
 	listWorkspaceFilesTool,
 	resetWorkspaceTool,
 ];
@@ -110,6 +112,7 @@ export {
 	resetWorkspaceTool,
 	runAgentLoop,
 	sanitizeToolResultForLLM,
+	sendWorkspaceFileTool,
 	smartTruncateText,
 	ToolRegistry,
 	toolRegistry,

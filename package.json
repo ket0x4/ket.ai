@@ -19,14 +19,14 @@
 		"test": "bun test"
 	},
 	"dependencies": {
-		"@google/genai": "^2.18.0",
-		"grammy": "^1.45.1"
+		"@google/genai": "^2.21.0",
+		"grammy": "^1.46.0"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "2.5.9",
-		"@types/node": "^26.2.0",
+		"@types/node": "^26.4.1",
 		"bun-types": "^1.4.0",
-		"oxlint": "^1.79.0",
+		"oxlint": "^1.81.0",
 		"typescript": "^7.0.2"
 	}
 }

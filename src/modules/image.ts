@@ -27,7 +27,7 @@ export function registerImageHandlers(bot: Bot) {
 		await processMediaInteraction(ctx, {
 			mediaType: "photo",
 			resolveMimeType: () => "image/jpeg",
-			generateReply: (buffer, mimeType, history, activeTopic) =>
+			generateReply: (buffer, mimeType, history, activeTopic, targetMessage) =>
 				GeminiService.generateImageReply(
 					buffer,
 					mimeType,
@@ -35,6 +35,8 @@ export function registerImageHandlers(bot: Bot) {
 					activeTopic,
 					undefined,
 					ctx.chat?.id.toString(),
+					undefined,
+					targetMessage,
 				),
 			fallbackErrorMessage: CONFIG.MESSAGES.image_processing_failed,
 		});

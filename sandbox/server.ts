@@ -165,9 +165,7 @@ function truncateOutput(output: string): { text: string; truncated: boolean } {
  */
 function getSafeEnv(): Record<string, string> {
 	return {
-		PATH:
-			process.env.PATH ||
-			"/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+		PATH: `${process.env.HOME ? `${process.env.HOME}/.bun/bin:` : ""}/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin`,
 		LANG: process.env.LANG || "C.UTF-8",
 		LC_ALL: process.env.LC_ALL || "C.UTF-8",
 		TZ: process.env.TZ || "Europe/Istanbul",
@@ -176,6 +174,7 @@ function getSafeEnv(): Record<string, string> {
 		TMPDIR: "/tmp",
 		PYTHONUNBUFFERED: "1",
 		MPLBACKEND: "Agg",
+		QT_QPA_PLATFORM: "offscreen",
 		PLAYWRIGHT_BROWSERS_PATH:
 			process.env.PLAYWRIGHT_BROWSERS_PATH || "/ms-playwright",
 		PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH:
@@ -194,7 +193,7 @@ const ARTIFACT_MIME_MAP: Record<string, { mimeType: string; type: ArtifactType }
 	".svg": { mimeType: "image/svg+xml", type: "image" },
 	".gif": { mimeType: "image/gif", type: "image" },
 
-	// Documents & Spreadsheets
+	// Documents, Code & Spreadsheets
 	".xlsx": {
 		mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 		type: "document",
@@ -217,6 +216,19 @@ const ARTIFACT_MIME_MAP: Record<string, { mimeType: string; type: ArtifactType }
 	".json": { mimeType: "application/json", type: "document" },
 	".parquet": { mimeType: "application/octet-stream", type: "document" },
 	".txt": { mimeType: "text/plain", type: "document" },
+	".py": { mimeType: "text/x-python", type: "document" },
+	".js": { mimeType: "application/javascript", type: "document" },
+	".ts": { mimeType: "application/typescript", type: "document" },
+	".sh": { mimeType: "text/x-shellscript", type: "document" },
+	".bash": { mimeType: "text/x-shellscript", type: "document" },
+	".html": { mimeType: "text/html", type: "document" },
+	".css": { mimeType: "text/css", type: "document" },
+	".md": { mimeType: "text/markdown", type: "document" },
+	".sql": { mimeType: "application/sql", type: "document" },
+	".yaml": { mimeType: "text/yaml", type: "document" },
+	".yml": { mimeType: "text/yaml", type: "document" },
+	".xml": { mimeType: "application/xml", type: "document" },
+	".log": { mimeType: "text/plain", type: "document" },
 
 	// Video & Animations
 	".mp4": { mimeType: "video/mp4", type: "video" },
@@ -973,8 +985,12 @@ async function handleExecute(req: Request): Promise<Response> {
 
 async function handleWorkspaceRead(req: Request): Promise<Response> {
 	try {
-		const body = (await req.json()) as { sessionId?: string; filename?: string };
-		const { sessionId, filename } = body;
+		const body = (await req.json()) as {
+			sessionId?: string;
+			filename?: string;
+			encoding?: "utf-8" | "base64";
+		};
+		const { sessionId, filename, encoding } = body;
 		if (!sessionId || !filename) {
 			return Response.json(
 				{ success: false, error: "Missing 'sessionId' or 'filename'" },
@@ -1000,6 +1016,17 @@ async function handleWorkspaceRead(req: Request): Promise<Response> {
 			);
 		}
 
+		if (encoding === "base64") {
+			const buffer = readFileSync(targetPath);
+			return Response.json({
+				success: true,
+				filename,
+				data: buffer.toString("base64"),
+				sizeBytes: stats.size,
+				modifiedAt: stats.mtime.toISOString(),
+			});
+		}
+
 		const content = readFileSync(targetPath, "utf-8");
 		return Response.json({
 			success: true,
@@ -1022,8 +1049,9 @@ async function handleWorkspaceWrite(req: Request): Promise<Response> {
 			sessionId?: string;
 			filename?: string;
 			content?: string;
+			encoding?: "utf-8" | "base64";
 		};
-		const { sessionId, filename, content } = body;
+		const { sessionId, filename, content, encoding } = body;
 		if (!sessionId || !filename || typeof content !== "string") {
 			return Response.json(
 				{
@@ -1037,7 +1065,11 @@ async function handleWorkspaceWrite(req: Request): Promise<Response> {
 		const { workspaceDir } = resolveWorkspace(sessionId);
 		const targetPath = resolveSafePath(workspaceDir, filename);
 
-		writeFileSync(targetPath, content, "utf-8");
+		const buffer =
+			encoding === "base64"
+				? Buffer.from(content, "base64")
+				: Buffer.from(content, "utf-8");
+		writeFileSync(targetPath, buffer);
 		const stats = statSync(targetPath);
 
 		return Response.json({

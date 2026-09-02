@@ -3,8 +3,16 @@ import { CONFIG } from "../config";
 import { Repository } from "../db/repository";
 import { botUsername, withChatLock, withTyping } from "../services/bot";
 import {
+	type PreparedDocumentContext,
+	prepareDocumentContext,
+	sanitizeDocumentFilename,
+	stageDocumentInWorkspace,
+} from "../services/gemini/documentPerception";
+import {
 	GeminiService,
 	type GeneratedMediaArtifact,
+	type ReplyContextInfo,
+	type TargetMessageInfo,
 	type ToolProgressUpdate,
 } from "../services/gemini/index";
 import { checkAndRunBackgroundMemoryExtraction } from "../services/gemini/memoryWorker";
@@ -64,6 +72,109 @@ async function resolveRepliedPhoto(
 		logger.error("[Chat] Error downloading replied photo:", err);
 	}
 	return undefined;
+}
+
+async function resolveRepliedDocument(
+	ctx: Context,
+	chatIdStr: string,
+): Promise<PreparedDocumentContext | undefined> {
+	const replyToMsg = ctx.message?.reply_to_message;
+	if (!replyToMsg) return undefined;
+
+	let docFileId = replyToMsg.document?.file_id;
+	let docFileName = replyToMsg.document?.file_name;
+	let docMimeType = replyToMsg.document?.mime_type;
+
+	if (!docFileId && replyToMsg.message_id) {
+		const dbMsg = Repository.getMessage(chatIdStr, replyToMsg.message_id);
+		if (dbMsg?.document_file_id) {
+			docFileId = dbMsg.document_file_id;
+			docFileName = dbMsg.document_file_name || undefined;
+			docMimeType = dbMsg.document_mime_type || undefined;
+		}
+	}
+
+	if (!docFileId) return undefined;
+
+	const cleanName = sanitizeDocumentFilename(docFileName || "document.bin");
+	logger.info(
+		`[Chat] Reply to document message detected (${cleanName}, file_id: ${docFileId}). Downloading...`,
+	);
+
+	try {
+		const downloadResult = await downloadTelegramFileById(
+			ctx,
+			docFileId,
+			"document",
+		);
+		if (!isDownloadError(downloadResult)) {
+			const docContext = prepareDocumentContext(
+				downloadResult.buffer,
+				cleanName,
+				docMimeType,
+			);
+			// Automatically stage into chat sandbox workspace
+			await stageDocumentInWorkspace(
+				chatIdStr,
+				docContext.fileName,
+				downloadResult.buffer,
+				docContext.isText,
+			).catch((e) => {
+				logger.warn(`[Chat] Failed to stage replied document in workspace:`, e);
+			});
+			return docContext;
+		}
+		logger.warn(
+			`[Chat] Failed to download replied document: ${downloadResult.error}`,
+		);
+	} catch (err) {
+		logger.error("[Chat] Error downloading replied document:", err);
+	}
+	return undefined;
+}
+
+function extractReplyMessageText(
+	replyToMsg: NonNullable<NonNullable<Context["message"]>["reply_to_message"]>,
+	chatIdStr: string,
+): string {
+	if (replyToMsg.text) return replyToMsg.text;
+	if (replyToMsg.caption) return replyToMsg.caption;
+	if (replyToMsg.photo) return "[Photo]";
+	if (replyToMsg.document) {
+		return `[Document: ${replyToMsg.document.file_name || "file"}]`;
+	}
+	if (replyToMsg.voice) return "[Voice]";
+
+	const dbMsg = Repository.getMessageWithUser(chatIdStr, replyToMsg.message_id);
+	if (dbMsg?.text) return dbMsg.text;
+
+	return "[Media]";
+}
+
+export function resolveReplyContext(
+	ctx: Context,
+	chatIdStr: string,
+): ReplyContextInfo | undefined {
+	const replyToMsg = ctx.message?.reply_to_message;
+	if (!replyToMsg) return undefined;
+
+	const replyMsgId = replyToMsg.message_id;
+	const from = replyToMsg.from;
+	const isBot = Boolean(
+		from?.is_bot || (from?.username && from.username === botUsername),
+	);
+	const senderName = isBot ? "You (ket.ai)" : from?.first_name || "User";
+	const senderUsername = from?.username || undefined;
+	const text = extractReplyMessageText(replyToMsg, chatIdStr);
+
+	return {
+		messageId: replyMsgId,
+		senderId: from?.id,
+		senderName,
+		senderUsername,
+		isBot,
+		text,
+	};
 }
 
 function formatFileSize(bytes: number): string {
@@ -138,6 +249,8 @@ function resolveToolStatusMessage(
 			return `📄 Reading workspace file (${filename})...`;
 		case "write_workspace_file":
 			return `✏️ Writing workspace file (${filename})...`;
+		case "send_workspace_file":
+			return `📤 Preparing and sending file (${filename})...`;
 		case "list_workspace_files":
 			return "📁 Scanning session workspace files...";
 		case "reset_workspace":
@@ -160,7 +273,7 @@ function extractRecentStdoutSnippet(fullStdout?: string, maxLines = 3): string {
 		.join("\n");
 }
 
-function createToolNotifier(
+export function createToolNotifier(
 	ctx: Context,
 	replyToMessageId?: number,
 	logPrefix: string = "[Chat]",
@@ -280,7 +393,7 @@ function createToolNotifier(
 	};
 }
 
-async function sendSingleArtifact(
+export async function sendSingleArtifact(
 	ctx: Context,
 	art: GeneratedMediaArtifact,
 	replyToMessageId?: number,
@@ -324,18 +437,21 @@ async function generateAndSendReply(
 	chatIdStr: string,
 	isSpontaneous: boolean,
 	replyToMessageId?: number,
+	targetMessage?: TargetMessageInfo,
 ): Promise<void> {
 	const chatSettings = Repository.getChat(chatIdStr);
 	if (!chatSettings) return;
 
-	// Concurrency: fetch active topic, history, and replied photo in parallel
-	const [activeTopic, history, mediaPayload] = await Promise.all([
-		GeminiService.ensureTopicSummary(chatIdStr, chatSettings.current_topic),
-		Promise.resolve(
-			Repository.getRecentMessages(chatIdStr, CONFIG.CHAT_HISTORY_LIMIT),
-		),
-		resolveRepliedPhoto(ctx, chatIdStr),
-	]);
+	// Concurrency: fetch active topic, history, replied photo, and replied document in parallel
+	const [activeTopic, history, mediaPayload, documentPayload] =
+		await Promise.all([
+			GeminiService.ensureTopicSummary(chatIdStr, chatSettings.current_topic),
+			Promise.resolve(
+				Repository.getRecentMessages(chatIdStr, CONFIG.CHAT_HISTORY_LIMIT),
+			),
+			resolveRepliedPhoto(ctx, chatIdStr),
+			resolveRepliedDocument(ctx, chatIdStr),
+		]);
 
 	const logPrefix = isSpontaneous ? "[Spontaneous]" : "[Chat]";
 	const notifier = createToolNotifier(ctx, replyToMessageId, logPrefix);
@@ -352,6 +468,8 @@ async function generateAndSendReply(
 			generatedArtifacts.push(...media);
 		},
 		notifier.onToolProgress,
+		documentPayload,
+		targetMessage,
 	);
 
 	// Send generated artifacts (Photos, Spreadsheets, PDF reports, Videos, Audio)
@@ -459,10 +577,26 @@ export function registerChatHandlers(bot: Bot) {
 		if (!chatSettings) return;
 
 		if (isDirectInteraction) {
+			const targetMessage: TargetMessageInfo = {
+				messageId: msg.message_id,
+				userId: from.id,
+				userName: from.first_name || "User",
+				userUsername: from.username || undefined,
+				text: msg.text || "",
+				sentAt: msg.date,
+				replyTo: resolveReplyContext(ctx, chatIdStr),
+			};
+
 			// Direct interaction: reply immediately, serialized per chat
 			await withChatLock(chatIdStr, () =>
 				withTyping(ctx, () =>
-					generateAndSendReply(ctx, chatIdStr, false, msg.message_id),
+					generateAndSendReply(
+						ctx,
+						chatIdStr,
+						false,
+						msg.message_id,
+						targetMessage,
+					),
 				),
 			);
 			return;

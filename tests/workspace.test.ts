@@ -48,6 +48,7 @@ describe("Stateful Session Workspace & Iterative Debugging", () => {
 	test("should register all workspace tools in toolRegistry", () => {
 		expect(toolRegistry.hasTool("read_workspace_file")).toBeTrue();
 		expect(toolRegistry.hasTool("write_workspace_file")).toBeTrue();
+		expect(toolRegistry.hasTool("send_workspace_file")).toBeTrue();
 		expect(toolRegistry.hasTool("list_workspace_files")).toBeTrue();
 		expect(toolRegistry.hasTool("reset_workspace")).toBeTrue();
 	});

@@ -10,7 +10,7 @@ import {
 } from "../utils/mediaDownloader";
 import { sendLongMessage } from "../utils/message";
 import { botUsername, withChatLock, withTyping } from "./bot";
-import { GeminiService } from "./gemini/index";
+import { GeminiService, type TargetMessageInfo } from "./gemini/index";
 
 interface MediaProcessorOptions {
 	mediaType: "photo" | "voice";
@@ -20,6 +20,7 @@ interface MediaProcessorOptions {
 		mimeType: string,
 		history: MessageRow[],
 		activeTopic: string,
+		targetMessage?: TargetMessageInfo,
 	) => Promise<string>;
 	fallbackErrorMessage: string;
 }
@@ -91,11 +92,20 @@ export async function processMediaInteraction(
 				logger.info(
 					`[${options.mediaType}] Sending ${options.mediaType} to Gemini for analysis...`,
 				);
+				const targetMessage: TargetMessageInfo = {
+					messageId: msg.message_id,
+					userId: ctx.from?.id || 0,
+					userName: ctx.from?.first_name || "User",
+					userUsername: ctx.from?.username || undefined,
+					text: msg.caption || `[${options.mediaType}]`,
+					sentAt: msg.date,
+				};
 				const reply = await options.generateReply(
 					downloadResult.buffer,
 					mimeType,
 					history,
 					activeTopic,
+					targetMessage,
 				);
 
 				await sendLongMessage(ctx, reply, {

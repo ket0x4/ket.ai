@@ -1,16 +1,25 @@
+import { extname } from "node:path";
 import { CONFIG } from "../../config";
 import logger from "../../utils/logger";
-import type { AgentTool, ToolExecutionContext } from "../types";
+import { inferArtifactType } from "../sanitizer";
+import type {
+	AgentTool,
+	ArtifactMediaType,
+	GeneratedMediaArtifact,
+	ToolExecutionContext,
+} from "../types";
 
 export interface ReadWorkspaceFileArgs {
 	filename: string;
 	sessionId?: string;
+	encoding?: "utf-8" | "base64";
 }
 
 export interface ReadWorkspaceFileResult {
 	success: boolean;
 	filename: string;
 	content?: string;
+	data?: string;
 	sizeBytes?: number;
 	error?: string;
 	system_note?: string;
@@ -20,9 +29,25 @@ export interface WriteWorkspaceFileArgs {
 	filename: string;
 	content: string;
 	sessionId?: string;
+	encoding?: "utf-8" | "base64";
+	sendToUser?: boolean;
 }
 
 export interface WriteWorkspaceFileResult {
+	success: boolean;
+	filename: string;
+	sizeBytes?: number;
+	error?: string;
+	system_note?: string;
+}
+
+export interface SendWorkspaceFileArgs {
+	filename: string;
+	caption?: string;
+	sessionId?: string;
+}
+
+export interface SendWorkspaceFileResult {
 	success: boolean;
 	filename: string;
 	sizeBytes?: number;
@@ -101,6 +126,57 @@ async function postToWorkspaceSandbox<T>(
 	return { ok: true, data };
 }
 
+const WORKSPACE_FILE_MIME_MAP: Record<
+	string,
+	{ mimeType: string; type: ArtifactMediaType }
+> = {
+	".png": { mimeType: "image/png", type: "image" },
+	".jpg": { mimeType: "image/jpeg", type: "image" },
+	".jpeg": { mimeType: "image/jpeg", type: "image" },
+	".webp": { mimeType: "image/webp", type: "image" },
+	".svg": { mimeType: "image/svg+xml", type: "image" },
+	".gif": { mimeType: "image/gif", type: "image" },
+	".mp4": { mimeType: "video/mp4", type: "video" },
+	".webm": { mimeType: "video/webm", type: "video" },
+	".mp3": { mimeType: "audio/mpeg", type: "audio" },
+	".wav": { mimeType: "audio/wav", type: "audio" },
+	".ogg": { mimeType: "audio/ogg", type: "audio" },
+	".pdf": { mimeType: "application/pdf", type: "document" },
+	".xlsx": {
+		mimeType:
+			"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+		type: "document",
+	},
+	".xls": { mimeType: "application/vnd.ms-excel", type: "document" },
+	".docx": {
+		mimeType:
+			"application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+		type: "document",
+	},
+	".pptx": {
+		mimeType:
+			"application/vnd.openxmlformats-officedocument.presentationml.presentation",
+		type: "document",
+	},
+	".csv": { mimeType: "text/csv", type: "document" },
+	".tsv": { mimeType: "text/tab-separated-values", type: "document" },
+	".json": { mimeType: "application/json", type: "document" },
+	".py": { mimeType: "text/x-python", type: "document" },
+	".js": { mimeType: "application/javascript", type: "document" },
+	".ts": { mimeType: "application/typescript", type: "document" },
+	".sh": { mimeType: "text/x-shellscript", type: "document" },
+	".bash": { mimeType: "text/x-shellscript", type: "document" },
+	".html": { mimeType: "text/html", type: "document" },
+	".css": { mimeType: "text/css", type: "document" },
+	".md": { mimeType: "text/markdown", type: "document" },
+	".sql": { mimeType: "application/sql", type: "document" },
+	".zip": { mimeType: "application/zip", type: "document" },
+	".tar": { mimeType: "application/x-tar", type: "document" },
+	".gz": { mimeType: "application/gzip", type: "document" },
+	".txt": { mimeType: "text/plain", type: "document" },
+	".log": { mimeType: "text/plain", type: "document" },
+};
+
 export async function readWorkspaceFile(
 	args: ReadWorkspaceFileArgs,
 	context?: ToolExecutionContext,
@@ -120,11 +196,13 @@ export async function readWorkspaceFile(
 		const res = await postToWorkspaceSandbox<{
 			success: boolean;
 			content?: string;
+			data?: string;
 			sizeBytes?: number;
 			error?: string;
 		}>("/workspace/read", {
 			filename,
 			sessionId: resolvedSessionId,
+			encoding: args.encoding,
 		});
 
 		if (!res.ok) {
@@ -141,6 +219,7 @@ export async function readWorkspaceFile(
 			success: data.success,
 			filename,
 			content: data.content,
+			data: data.data,
 			sizeBytes: data.sizeBytes,
 			error: data.error,
 			system_note: data.success
@@ -184,6 +263,7 @@ export async function writeWorkspaceFile(
 			filename,
 			content,
 			sessionId: resolvedSessionId,
+			encoding: args.encoding,
 		});
 
 		if (!res.ok) {
@@ -196,13 +276,33 @@ export async function writeWorkspaceFile(
 		}
 
 		const data = res.data;
+
+		if (args.sendToUser && data.success && context?.emitArtifact) {
+			const buf =
+				args.encoding === "base64"
+					? Buffer.from(content, "base64")
+					: Buffer.from(content, "utf-8");
+			const ext = extname(filename).toLowerCase();
+			const mapping = WORKSPACE_FILE_MIME_MAP[ext];
+			const mimeType = mapping?.mimeType || "application/octet-stream";
+			const artType = mapping?.type || inferArtifactType(mimeType);
+
+			context.emitArtifact({
+				filename,
+				mimeType,
+				buffer: buf,
+				type: artType,
+				sizeBytes: buf.length,
+			});
+		}
+
 		return {
 			success: data.success,
 			filename,
 			sizeBytes: data.sizeBytes,
 			error: data.error,
 			system_note: data.success
-				? `File '${filename}' written successfully (${data.sizeBytes} bytes).`
+				? `File '${filename}' written successfully (${data.sizeBytes} bytes)${args.sendToUser ? " and queued for sending to user" : ""}.`
 				: `Failed writing '${filename}': ${data.error}`,
 		};
 	} catch (err) {
@@ -213,6 +313,79 @@ export async function writeWorkspaceFile(
 			filename,
 			error: msg,
 			system_note: "Workspace container unreachable.",
+		};
+	}
+}
+
+export async function sendWorkspaceFile(
+	args: SendWorkspaceFileArgs,
+	context?: ToolExecutionContext,
+): Promise<SendWorkspaceFileResult> {
+	const filename = validateFilename(args.filename);
+	if (!filename) {
+		return {
+			success: false,
+			filename: "",
+			error: "Filename parameter is required.",
+		};
+	}
+
+	const resolvedSessionId = resolveSessionId(context, args.sessionId);
+
+	try {
+		const res = await postToWorkspaceSandbox<{
+			success: boolean;
+			filename?: string;
+			data?: string;
+			sizeBytes?: number;
+			error?: string;
+		}>("/workspace/read", {
+			filename,
+			sessionId: resolvedSessionId,
+			encoding: "base64",
+		});
+
+		if (!res.ok || !res.data.success || !res.data.data) {
+			return {
+				success: false,
+				filename,
+				error: res.ok ? res.data.error : res.error,
+				system_note: `Could not retrieve '${filename}' to send to user. Ensure file exists in workspace.`,
+			};
+		}
+
+		const buffer = Buffer.from(res.data.data, "base64");
+		const ext = extname(filename).toLowerCase();
+		const mapping = WORKSPACE_FILE_MIME_MAP[ext];
+		const mimeType = mapping?.mimeType || "application/octet-stream";
+		const artType = mapping?.type || inferArtifactType(mimeType);
+
+		const artifact: GeneratedMediaArtifact = {
+			filename,
+			mimeType,
+			buffer,
+			type: artType,
+			sizeBytes: buffer.length,
+		};
+
+		if (context?.emitArtifact) {
+			context.emitArtifact(artifact);
+		}
+
+		return {
+			success: true,
+			filename,
+			sizeBytes: buffer.length,
+			system_note: `File '${filename}' (${buffer.length} bytes) successfully queued and will be delivered to the user as a Telegram file attachment.`,
+		};
+	} catch (err) {
+		const msg = err instanceof Error ? err.message : String(err);
+		logger.error(`[WorkspaceTools] Error sending file ${filename}:`, err);
+		return {
+			success: false,
+			filename,
+			error: msg,
+			system_note: "Failed to read file from workspace for delivery.",
 		};
 	}
 }
@@ -347,6 +520,11 @@ export const writeWorkspaceFileTool: AgentTool<
 				type: "STRING",
 				description: "Complete text content to write to the file.",
 			},
+			sendToUser: {
+				type: "BOOLEAN",
+				description:
+					"Optional. If true, delivers the written file directly to the user as a downloadable file in Telegram.",
+			},
 		},
 		required: ["filename", "content"],
 	},
@@ -354,6 +532,34 @@ export const writeWorkspaceFileTool: AgentTool<
 		args: WriteWorkspaceFileArgs,
 		context?: ToolExecutionContext,
 	) => writeWorkspaceFile(args, context),
+};
+
+export const sendWorkspaceFileTool: AgentTool<
+	SendWorkspaceFileArgs,
+	SendWorkspaceFileResult
+> = {
+	name: "send_workspace_file",
+	description:
+		"Sends a file from the workspace to the user in Telegram as a downloadable document or media attachment. Use this when the user asks to get, download, or receive an edited script, modified code, generated report, or exported file.",
+	parameters: {
+		type: "OBJECT",
+		properties: {
+			filename: {
+				type: "STRING",
+				description:
+					"Name of the file in the workspace to send to the user (e.g. 'script.py', 'report.pdf', 'output.csv').",
+			},
+			caption: {
+				type: "STRING",
+				description: "Optional brief caption or description for the file.",
+			},
+		},
+		required: ["filename"],
+	},
+	execute: async (
+		args: SendWorkspaceFileArgs,
+		context?: ToolExecutionContext,
+	) => sendWorkspaceFile(args, context),
 };
 
 export const listWorkspaceFilesTool: AgentTool<

@@ -11,6 +11,7 @@ import type { MessageRow } from "../../db/repository";
 import { Repository } from "../../db/repository";
 import logger from "../../utils/logger";
 import { ai } from "./client";
+import type { PreparedDocumentContext } from "./documentPerception";
 import { describeImage, transcribeAudio } from "./mediaPerception";
 import { getRelevantMemories, processNewMemory } from "./memory";
 import {
@@ -30,9 +31,29 @@ export type {
 	ToolProgressCallback,
 	ToolProgressUpdate,
 } from "../../agent/index";
+export type { PreparedDocumentContext } from "./documentPerception";
 
 const lastSummarizedCount = new Map<string, number>();
 const MAX_TRACKED_CHATS = 200;
+
+export interface ReplyContextInfo {
+	messageId: number;
+	senderId?: number;
+	senderName: string;
+	senderUsername?: string;
+	isBot: boolean;
+	text: string;
+}
+
+export interface TargetMessageInfo {
+	messageId: number;
+	userId: number;
+	userName: string;
+	userUsername?: string;
+	text: string;
+	sentAt: number;
+	replyTo?: ReplyContextInfo;
+}
 
 interface GenerateResponseOptions {
 	chatId?: string;
@@ -40,6 +61,7 @@ interface GenerateResponseOptions {
 	instruction?: string;
 	personaPrompt?: string;
 	media?: { buffer: Buffer; mimeType: string };
+	document?: PreparedDocumentContext;
 	replyDescription: string;
 	fallbackEmpty: string;
 	fallbackError: string;
@@ -48,6 +70,7 @@ interface GenerateResponseOptions {
 	onToolCall?: ToolCallCallback;
 	onToolProgress?: ToolProgressCallback;
 	onMediaGenerated?: MediaGeneratedCallback;
+	targetMessage?: TargetMessageInfo;
 }
 
 function resolveLastMessageText(
@@ -66,6 +89,56 @@ function resolveSenderDescription(lastMsg?: MessageRow): string {
 	return `User_${lastMsg.user_id} (${lastMsg.first_name || "Unnamed"}${suffix})`;
 }
 
+function buildCurrentMessageToReply(
+	options: GenerateResponseOptions,
+	lastMsg?: MessageRow,
+	lastMessageText = "",
+): Record<string, unknown> {
+	if (options.targetMessage) {
+		const usernameSuffix = options.targetMessage.userUsername
+			? ` (@${options.targetMessage.userUsername})`
+			: "";
+		const senderDesc = `User_${options.targetMessage.userId} (${options.targetMessage.userName || "Unnamed"}${usernameSuffix})`;
+		const cleanText =
+			cleanUserText(options.targetMessage.text) || options.mediaFallbackText;
+
+		const currentMsgObj: Record<string, unknown> = {
+			message_id: options.targetMessage.messageId,
+			sender_id: options.targetMessage.userId,
+			sender: senderDesc,
+			text: cleanText,
+		};
+
+		if (options.targetMessage.replyTo) {
+			currentMsgObj.replying_to = {
+				message_id: options.targetMessage.replyTo.messageId,
+				sender: options.targetMessage.replyTo.senderName,
+				text: options.targetMessage.replyTo.text,
+			};
+		}
+		return currentMsgObj;
+	}
+
+	return {
+		sender: resolveSenderDescription(lastMsg),
+		text: lastMessageText,
+	};
+}
+
+function buildDocumentAttachment(doc: PreparedDocumentContext) {
+	return {
+		filename: doc.fileName,
+		mime_type: doc.mimeType,
+		size_bytes: doc.sizeBytes,
+		is_text: doc.isText,
+		is_truncated: doc.isTruncated,
+		content: doc.textContent,
+		summary_hint: doc.summaryHint,
+		workspace_saved: true,
+		workspace_filename: doc.fileName,
+	};
+}
+
 function buildInputPayload(
 	history: MessageRow[],
 	topicSummary: string | null,
@@ -77,7 +150,7 @@ function buildInputPayload(
 		lastMsg,
 		options.mediaFallbackText,
 	);
-	const historyList = buildHistoryList(history);
+	const historyList = buildHistoryList(history, undefined, options.chatId);
 
 	const inputPayload: Record<string, unknown> = {
 		active_topic:
@@ -90,19 +163,29 @@ function buildInputPayload(
 		inputPayload.instruction = options.instruction;
 	}
 
+	if (options.document) {
+		inputPayload.attached_document = buildDocumentAttachment(options.document);
+		const docGuidance = `Document '${options.document.fileName}' is available in your persistent workspace. You can inspect it, summarize it, execute it with execute_code (Python/Bash/Bun), or edit it and send it to the user with send_workspace_file or write_workspace_file (with sendToUser: true).`;
+		inputPayload.instruction = inputPayload.instruction
+			? `${inputPayload.instruction} ${docGuidance}`
+			: docGuidance;
+	}
+
 	if (options.isSpontaneous) {
 		inputPayload.interaction_type = "spontaneous_comment";
 	} else {
 		inputPayload.interaction_type = "direct_reply";
-		inputPayload.current_message_to_reply = {
-			sender: resolveSenderDescription(lastMsg),
-			text: lastMessageText,
-		};
+		inputPayload.current_message_to_reply = buildCurrentMessageToReply(
+			options,
+			lastMsg,
+			lastMessageText,
+		);
 	}
 
+	const activeText = options.targetMessage?.text || lastMessageText;
 	const hasExplicitMemoryIntent =
 		/\b(?:remember this|keep in mind|note this|save this|don'?t forget|bunu unutma|aklında tut|not et|hafızana yaz|kaydet|bunu hatırla)\b/i.test(
-			lastMessageText,
+			activeText,
 		);
 	if (hasExplicitMemoryIntent) {
 		inputPayload.instruction =
@@ -182,6 +265,8 @@ async function processExtractedMemories(
 	memoryUpdates: unknown[],
 	history: MessageRow[] = [],
 	senderUserId?: number,
+	senderFirstName?: string,
+	senderUsername?: string,
 ): Promise<void> {
 	if (
 		!Array.isArray(memoryUpdates) ||
@@ -214,6 +299,8 @@ async function processExtractedMemories(
 			mem.user_id,
 			history,
 			senderUserId,
+			senderFirstName,
+			senderUsername,
 		);
 
 		await processNewMemory(chatIdStr, combinedFact, {
@@ -283,13 +370,17 @@ async function handleJsonReply(
 	fsm: AgentStateMachine,
 	history: MessageRow[] = [],
 	lastMsg?: MessageRow,
+	senderUserId?: number,
+	senderFirstName?: string,
+	senderUsername?: string,
 ): Promise<string> {
 	try {
 		const parsed = JSON.parse(cleanedText);
 
 		fsm.transition("PERSISTING_DATA");
-		const senderUserId =
-			lastMsg && !lastMsg.is_bot_reply ? lastMsg.user_id : undefined;
+		const effectiveSenderId =
+			senderUserId ??
+			(lastMsg && !lastMsg.is_bot_reply ? lastMsg.user_id : undefined);
 
 		if (
 			parsed &&
@@ -301,7 +392,9 @@ async function handleJsonReply(
 				chatIdStr,
 				parsed.new_memory_updates,
 				history,
-				senderUserId,
+				effectiveSenderId,
+				senderFirstName,
+				senderUsername,
 			).catch((err) => {
 				logger.error(
 					`[Gemini:${fsm.getTraceId()}] Error persisting extracted memories:`,
@@ -354,6 +447,9 @@ async function parseAndProcessReply(
 	fsm: AgentStateMachine,
 	history: MessageRow[] = [],
 	lastMsg?: MessageRow,
+	senderUserId?: number,
+	senderFirstName?: string,
+	senderUsername?: string,
 ): Promise<string> {
 	if (fsm.isTerminal()) {
 		return responseText;
@@ -382,6 +478,9 @@ async function parseAndProcessReply(
 			fsm,
 			history,
 			lastMsg,
+			senderUserId,
+			senderFirstName,
+			senderUsername,
 		);
 		if (jsonReply) return jsonReply;
 	}
@@ -423,17 +522,20 @@ export const GeminiService = {
 			const queryForMemory = options.isSpontaneous
 				? topicSummary || "General chat"
 				: lastMessageText;
-			const senderUserId =
-				lastMsg && !lastMsg.is_bot_reply ? lastMsg.user_id : undefined;
+			const targetUserId =
+				options.targetMessage?.userId ??
+				(lastMsg && !lastMsg.is_bot_reply ? lastMsg.user_id : undefined);
+			const senderFirstName = options.targetMessage?.userName;
+			const senderUsername = options.targetMessage?.userUsername;
 			const isPrivate = Boolean(
-				senderUserId && chatIdStr === senderUserId.toString(),
+				targetUserId && chatIdStr === targetUserId.toString(),
 			);
 
 			const memories = chatIdStr
 				? await getRelevantMemories(chatIdStr, queryForMemory, {
 						activeTopic: topicSummary || undefined,
 						history,
-						senderUserId,
+						senderUserId: targetUserId,
 						isPrivateChat: isPrivate,
 					})
 				: [];
@@ -475,6 +577,9 @@ export const GeminiService = {
 				fsm,
 				history,
 				lastMsg,
+				targetUserId,
+				senderFirstName,
+				senderUsername,
 			);
 			// If reply is empty (e.g. suppressed due to parse error), do not send fallback message
 			return reply;
@@ -529,28 +634,88 @@ export const GeminiService = {
 		media?: { buffer: Buffer; mimeType: string },
 		onMediaGenerated?: MediaGeneratedCallback,
 		onToolProgress?: ToolProgressCallback,
+		document?: PreparedDocumentContext,
+		targetMessage?: TargetMessageInfo,
 	): Promise<string> {
+		const effectiveMedia = media || document?.mediaPayload;
+
+		let instruction: string | undefined;
+		if (document) {
+			instruction = `The user is referring to or asking about the document '${document.fileName}'. It is saved in your sandbox workspace. Inspect, run (via execute_code), edit/modify (via write_workspace_file/send_workspace_file), or summarize it according to the user's message.`;
+		} else if (media) {
+			instruction =
+				"The user is referring to or asking about the attached photo. Analyze the photo and answer their message/question, or make a natural, fitting comment about the photo in the context of the conversation.";
+		}
+
+		let replyDescription: string;
+		if (document) {
+			replyDescription =
+				"The helpful and natural response regarding the document and the user's request in the conversation.";
+		} else if (media) {
+			replyDescription =
+				"The reply you will write to the photo and the user's message/question in the flow of the conversation.";
+		} else {
+			replyDescription =
+				"The reply you will write to the chat. A short (1-2 sentences).";
+		}
+
+		const fallbackEmpty = document
+			? "I looked at the document, but didn't know what to say."
+			: media
+				? CONFIG.MESSAGES.gemini_empty_image_fallback
+				: CONFIG.MESSAGES.gemini_empty_reply_fallback;
+
+		const fallbackError = document
+			? "I ran into an issue while processing the document, please try again."
+			: media
+				? CONFIG.MESSAGES.gemini_error_image_fallback
+				: CONFIG.MESSAGES.gemini_error_reply_fallback;
+
+		const mediaFallbackText = document
+			? `[Document: ${document.fileName}]`
+			: media
+				? "[Photo]"
+				: "[Media]";
+
 		return this._generateResponse(history, topicSummary, {
 			chatId,
 			isSpontaneous,
-			media,
-			instruction: media
-				? "The user is referring to or asking about the attached photo. Analyze the photo and answer their message/question, or make a natural, fitting comment about the photo in the context of the conversation."
-				: undefined,
-			replyDescription: media
-				? "The reply you will write to the photo and the user's message/question in the flow of the conversation."
-				: "The reply you will write to the chat. A short (1-2 sentences).",
-			fallbackEmpty: media
-				? CONFIG.MESSAGES.gemini_empty_image_fallback
-				: CONFIG.MESSAGES.gemini_empty_reply_fallback,
-			fallbackError: media
-				? CONFIG.MESSAGES.gemini_error_image_fallback
-				: CONFIG.MESSAGES.gemini_error_reply_fallback,
-			mediaFallbackText: media ? "[Photo]" : "[Media]",
+			media: effectiveMedia,
+			document,
+			instruction,
+			replyDescription,
+			fallbackEmpty,
+			fallbackError,
+			mediaFallbackText,
 			onToolCall,
 			onToolProgress,
 			onMediaGenerated,
+			targetMessage,
 		});
+	},
+
+	async generateDocumentReply(
+		document: PreparedDocumentContext,
+		history: MessageRow[],
+		topicSummary: string | null,
+		onToolCall?: ToolCallCallback,
+		chatId?: string,
+		onMediaGenerated?: MediaGeneratedCallback,
+		onToolProgress?: ToolProgressCallback,
+		targetMessage?: TargetMessageInfo,
+	): Promise<string> {
+		return this.generateReply(
+			history,
+			topicSummary,
+			false,
+			onToolCall,
+			chatId,
+			document.mediaPayload,
+			onMediaGenerated,
+			onToolProgress,
+			document,
+			targetMessage,
+		);
 	},
 
 	async summarizeTopic(history: MessageRow[]): Promise<string> {
@@ -633,6 +798,7 @@ export const GeminiService = {
 			onToolProgress?: ToolProgressCallback;
 			onMediaGenerated?: MediaGeneratedCallback;
 			chatId?: string;
+			targetMessage?: TargetMessageInfo;
 		},
 	): Promise<string> {
 		return this._generateResponse(history, topicSummary, {
@@ -649,6 +815,7 @@ export const GeminiService = {
 		onToolCall?: ToolCallCallback,
 		chatId?: string,
 		onToolProgress?: ToolProgressCallback,
+		targetMessage?: TargetMessageInfo,
 	): Promise<string> {
 		return this.generateMediaReply(
 			{ buffer: imageBuffer, mimeType },
@@ -665,6 +832,7 @@ export const GeminiService = {
 				onToolCall,
 				onToolProgress,
 				chatId,
+				targetMessage,
 			},
 		);
 	},
@@ -677,6 +845,7 @@ export const GeminiService = {
 		onToolCall?: ToolCallCallback,
 		chatId?: string,
 		onToolProgress?: ToolProgressCallback,
+		targetMessage?: TargetMessageInfo,
 	): Promise<string> {
 		return this.generateMediaReply(
 			{ buffer: audioBuffer, mimeType },
@@ -694,6 +863,7 @@ export const GeminiService = {
 				onToolCall,
 				onToolProgress,
 				chatId,
+				targetMessage,
 			},
 		);
 	},

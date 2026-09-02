@@ -36,6 +36,9 @@ export interface MessageRow {
 	reply_to_message_id: number | null;
 	text: string | null;
 	photo_file_id: string | null;
+	document_file_id?: string | null;
+	document_file_name?: string | null;
+	document_mime_type?: string | null;
 	is_bot_reply: number; // 0 or 1
 	sent_at: number;
 }
@@ -86,11 +89,14 @@ const stmts = {
 	),
 
 	insertMessage: db.prepare(
-		`INSERT INTO messages (chat_id, message_id, user_id, reply_to_message_id, text, photo_file_id, is_bot_reply, sent_at) 
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		`INSERT INTO messages (chat_id, message_id, user_id, reply_to_message_id, text, photo_file_id, document_file_id, document_file_name, document_mime_type, is_bot_reply, sent_at) 
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(chat_id, message_id) DO UPDATE SET
        text = excluded.text,
-       photo_file_id = excluded.photo_file_id`,
+       photo_file_id = excluded.photo_file_id,
+       document_file_id = excluded.document_file_id,
+       document_file_name = excluded.document_file_name,
+       document_mime_type = excluded.document_mime_type`,
 	),
 
 	getRecentMessages: db.prepare(
@@ -101,6 +107,18 @@ const stmts = {
 	),
 	getMessage: db.prepare(
 		"SELECT * FROM messages WHERE chat_id = ? AND message_id = ?",
+	),
+	getMessageWithUser: db.prepare(
+		`SELECT m.*, u.username, u.first_name 
+     FROM messages m 
+     LEFT JOIN users u ON m.user_id = u.user_id 
+     WHERE m.chat_id = ? AND m.message_id = ?`,
+	),
+	findUserByName: db.prepare(
+		`SELECT user_id, username, first_name, last_updated 
+     FROM users 
+     WHERE LOWER(first_name) = LOWER(?) OR LOWER(username) = LOWER(?) 
+     ORDER BY last_updated DESC LIMIT 1`,
 	),
 	getMessageCount: db.prepare(
 		"SELECT COUNT(*) as count FROM messages WHERE chat_id = ?",
@@ -533,6 +551,9 @@ export const Repository = {
 		replyToMessageId?: number;
 		text?: string;
 		photoFileId?: string;
+		documentFileId?: string;
+		documentFileName?: string;
+		documentMimeType?: string;
 		isBotReply?: boolean;
 		sentAt: number;
 	}): void {
@@ -553,6 +574,9 @@ export const Repository = {
 				params.replyToMessageId || null,
 				params.text || null,
 				params.photoFileId || null,
+				params.documentFileId || null,
+				params.documentFileName || null,
+				params.documentMimeType || null,
 				params.isBotReply ? 1 : 0,
 				params.sentAt,
 			);
@@ -582,6 +606,36 @@ export const Repository = {
 	 */
 	getMessage(chatId: string, messageId: number): MessageRow | null {
 		return (stmts.getMessage.get(chatId, messageId) as MessageRow) || null;
+	},
+
+	/**
+	 * Retrieves a single message with joined user details (username, first_name).
+	 */
+	getMessageWithUser(chatId: string, messageId: number): MessageRow | null {
+		return (
+			(stmts.getMessageWithUser.get(chatId, messageId) as MessageRow) || null
+		);
+	},
+
+	/**
+	 * Looks up a Telegram user by username or first name.
+	 */
+	getUserByName(name: string): {
+		user_id: number;
+		username: string | null;
+		first_name: string | null;
+		last_updated: number;
+	} | null {
+		if (!name?.trim()) return null;
+		const clean = name.trim().toLowerCase();
+		return (
+			(stmts.findUserByName.get(clean, clean) as {
+				user_id: number;
+				username: string | null;
+				first_name: string | null;
+				last_updated: number;
+			} | null) || null
+		);
 	},
 
 	/**
