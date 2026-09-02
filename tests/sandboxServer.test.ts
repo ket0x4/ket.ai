@@ -227,6 +227,78 @@ print("MPLBACKEND:", os.environ.get("MPLBACKEND", "NOT_FOUND"))
 		expect(dataSyntax.errorHint).toContain("SyntaxError");
 	});
 
+	test("should detect and return generated document artifacts (csv, json) as base64", async () => {
+		const res = await fetch(`http://127.0.0.1:${testPort}/execute`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				language: "python",
+				code: `
+with open("data.csv", "w") as f:
+    f.write("name,price\\nBitcoin,65000\\nEthereum,3500\\n")
+print("Saved data.csv")
+`,
+			}),
+		});
+
+		expect(res.ok).toBeTrue();
+		const data = (await res.json()) as {
+			success: boolean;
+			stdout: string;
+			artifacts?: Array<{
+				filename: string;
+				mimeType: string;
+				data: string;
+				sizeBytes: number;
+				type: string;
+			}>;
+		};
+
+		expect(data.success).toBeTrue();
+		expect(data.artifacts).toBeDefined();
+		expect(data.artifacts?.length).toBe(1);
+		expect(data.artifacts?.[0].filename).toBe("data.csv");
+		expect(data.artifacts?.[0].mimeType).toBe("text/csv");
+		expect(data.artifacts?.[0].type).toBe("document");
+		expect(data.artifacts?.[0].sizeBytes).toBeGreaterThan(0);
+	});
+
+	test("should provide intelligent error hints for KeyError and Cloudflare 403", async () => {
+		const resKeyError = await fetch(`http://127.0.0.1:${testPort}/execute`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				language: "python",
+				code: "data = {}\nval = data['missing_key']",
+			}),
+		});
+
+		expect(resKeyError.ok).toBeTrue();
+		const dataKey = (await resKeyError.json()) as {
+			success: boolean;
+			errorHint?: string;
+		};
+		expect(dataKey.success).toBeFalse();
+		expect(dataKey.errorHint).toContain("KeyError");
+
+		const resBotBlock = await fetch(`http://127.0.0.1:${testPort}/execute`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				language: "python",
+				code: "import sys\nsys.stderr.write('HTTPError: 403 Forbidden Cloudflare\\n')\nsys.exit(1)",
+			}),
+		});
+
+		expect(resBotBlock.ok).toBeTrue();
+		const dataBot = (await resBotBlock.json()) as {
+			success: boolean;
+			errorHint?: string;
+		};
+		expect(dataBot.success).toBeFalse();
+		expect(dataBot.errorHint).toContain("curl_cffi");
+	});
+
 	test("should clean up and terminate sandbox daemon", () => {
 		if (sandboxProcess) {
 			try {

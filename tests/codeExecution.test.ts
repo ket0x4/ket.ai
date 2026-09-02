@@ -159,6 +159,7 @@ print("Top Seller Books:\n1. Atomic Habits\n2. The Psychology of Money")
 								mimeType: "image/png",
 								data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
 								sizeBytes: 68,
+								type: "image",
 							},
 						],
 						truncated: false,
@@ -184,8 +185,107 @@ print("Top Seller Books:\n1. Atomic Habits\n2. The Psychology of Money")
 			expect(result.images?.[0].mimeType).toBe("image/png");
 			expect(result.system_note).toContain("chart.png");
 			expect(result.system_note).toContain(
-				"automatically displayed/sent to the user",
+				"automatically delivered/displayed to the user",
 			);
+		} finally {
+			CONFIG.SANDBOX_URL = originalUrl;
+			mockServer.stop(true);
+		}
+	});
+
+	test("should parse multiple rich artifacts (Excel, PDF, CSV, Video) and include in system_note", async () => {
+		const mockServer = Bun.serve({
+			port: 8093,
+			fetch(req) {
+				const url = new URL(req.url);
+				if (url.pathname === "/execute" && req.method === "POST") {
+					return Response.json({
+						success: true,
+						stdout: "Excel and video generated successfully",
+						stderr: "",
+						exitCode: 0,
+						executionTimeMs: 340,
+						artifacts: [
+							{
+								filename: "crypto_report.xlsx",
+								mimeType:
+									"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+								type: "document",
+								data: "UEsDBBQAAAAIA...",
+								sizeBytes: 4096,
+							},
+							{
+								filename: "animation.mp4",
+								mimeType: "video/mp4",
+								type: "video",
+								data: "AAAAHGZ0eXBtcDQy...",
+								sizeBytes: 1048576,
+							},
+						],
+						truncated: false,
+					});
+				}
+				return Response.json({ error: "Not found" }, { status: 404 });
+			},
+		});
+
+		const originalUrl = CONFIG.SANDBOX_URL;
+		CONFIG.SANDBOX_URL = `http://127.0.0.1:${mockServer.port}`;
+
+		try {
+			const result = await codeExecutionTool.execute({
+				language: "python",
+				code: "import pandas as pd\ndf.to_excel('crypto_report.xlsx')",
+			});
+
+			expect(result.success).toBeTrue();
+			expect(result.artifacts).toBeDefined();
+			expect(result.artifacts?.length).toBe(2);
+			expect(result.artifacts?.[0].filename).toBe("crypto_report.xlsx");
+			expect(result.artifacts?.[0].type).toBe("document");
+			expect(result.artifacts?.[1].filename).toBe("animation.mp4");
+			expect(result.artifacts?.[1].type).toBe("video");
+			expect(result.system_note).toContain("crypto_report.xlsx (document)");
+			expect(result.system_note).toContain("animation.mp4 (video)");
+		} finally {
+			CONFIG.SANDBOX_URL = originalUrl;
+			mockServer.stop(true);
+		}
+	});
+
+	test("should handle Cloudflare 403 and Playwright Timeout error hints", async () => {
+		const mockServer = Bun.serve({
+			port: 8094,
+			fetch(req) {
+				const url = new URL(req.url);
+				if (url.pathname === "/execute" && req.method === "POST") {
+					return Response.json({
+						success: false,
+						stdout: "",
+						stderr: "requests.exceptions.HTTPError: 403 Forbidden\nCloudflare",
+						errorHint:
+							"Hint: Target website blocked the request (403/429/Cloudflare Bot Protection). Try using 'curl_cffi' (with impersonate='chrome') or 'playwright' with stealth mode and realistic browser headers instead of standard requests.",
+						exitCode: 1,
+						executionTimeMs: 120,
+						truncated: false,
+					});
+				}
+				return Response.json({ error: "Not found" }, { status: 404 });
+			},
+		});
+
+		const originalUrl = CONFIG.SANDBOX_URL;
+		CONFIG.SANDBOX_URL = `http://127.0.0.1:${mockServer.port}`;
+
+		try {
+			const result = await codeExecutionTool.execute({
+				language: "python",
+				code: "import requests\nrequests.get('https://example.com')",
+			});
+
+			expect(result.success).toBeFalse();
+			expect(result.error_hint).toContain("curl_cffi");
+			expect(result.system_note).toContain("Cloudflare Bot Protection");
 		} finally {
 			CONFIG.SANDBOX_URL = originalUrl;
 			mockServer.stop(true);

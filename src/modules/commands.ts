@@ -1,4 +1,5 @@
 import { type Bot, type Context, InlineKeyboard } from "grammy";
+import { resetWorkspace } from "../agent/tools/workspaceTools";
 import { CONFIG } from "../config/index";
 import { Repository } from "../db/repository";
 import { processNewMemory } from "../services/gemini/memory";
@@ -148,10 +149,34 @@ export function registerCommandHandlers(bot: Bot) {
 
 		const chatId = ctx.chat.id.toString();
 		Repository.clearChatHistory(chatId);
+		resetWorkspace({ sessionId: chatId }).catch(() => {});
+
 		logger.info(
-			`[Commands:reset] Cleared chat history and memories for chat ${chatId} by user ${ctx.from?.id} (${ctx.from?.first_name})`,
+			`[Commands:reset] Cleared chat history, memories, and sandbox workspace for chat ${chatId} by user ${ctx.from?.id} (${ctx.from?.first_name})`,
 		);
-		await ctx.reply("Chat history and group memories cleared successfully.");
+		await ctx.reply(
+			"Chat history, group memories, and sandbox workspace cleared successfully.",
+		);
+	});
+
+	// 3b. /reset_sandbox command to reset code execution workspace
+	bot.command(["reset_sandbox", "clear_session"], async (ctx) => {
+		if (!ctx.chat) return;
+
+		if (!(await isAuthorized(ctx))) {
+			logger.warn(
+				`[Commands:reset_sandbox] Unauthorized attempt by user ${ctx.from?.id} in chat ${ctx.chat.id}`,
+			);
+			await ctx.reply(CONFIG.MESSAGES.not_authorized_command);
+			return;
+		}
+
+		const chatId = ctx.chat.id.toString();
+		await resetWorkspace({ sessionId: chatId });
+		logger.info(
+			`[Commands:reset_sandbox] Reset sandbox workspace for chat ${chatId} by user ${ctx.from?.id}`,
+		);
+		await ctx.reply("🧹 Sandbox workspace files cleared successfully.");
 	});
 
 	async function fetchTelegramChatTitle(

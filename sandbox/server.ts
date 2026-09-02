@@ -6,14 +6,21 @@ interface ExecuteRequest {
 	code: string;
 	packages?: string[];
 	timeoutMs?: number;
+	sessionId?: string;
+	filename?: string;
 }
 
-export interface GeneratedImage {
+export type ArtifactType = "image" | "document" | "video" | "audio";
+
+export interface GeneratedArtifact {
 	filename: string;
 	mimeType: string;
 	data: string; // base64
 	sizeBytes: number;
+	type: ArtifactType;
 }
+
+export type GeneratedImage = GeneratedArtifact;
 
 interface ExecuteResponse {
 	success: boolean;
@@ -24,17 +31,30 @@ interface ExecuteResponse {
 	error?: string;
 	errorHint?: string;
 	installedPackages?: string[];
-	images?: GeneratedImage[];
+	artifacts?: GeneratedArtifact[];
+	images?: GeneratedArtifact[];
 	truncated?: boolean;
+}
+
+interface WorkspaceFileEntry {
+	filename: string;
+	sizeBytes: number;
+	modifiedAt: string;
+	isImage: boolean;
+	artifactType?: ArtifactType;
 }
 
 const PORT = Number(process.env.SANDBOX_PORT || 8080);
 const MAX_TIMEOUT_MS = 120_000;
 const DEFAULT_TIMEOUT_MS = 45_000;
 const MAX_OUTPUT_BYTES = 64 * 1024; // 64 KB
-const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB per image
+const MAX_ARTIFACT_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB per artifact
+const MAX_ARTIFACTS_COUNT = 8;
+const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB (backward compatibility)
 const MAX_IMAGES_COUNT = 5;
+const MAX_SESSION_DIR_BYTES = 50 * 1024 * 1024; // 50 MB
 const SANDBOX_BASE_DIR = process.env.SANDBOX_BASE_DIR || "/tmp/sandboxes";
+const SAFE_SESSION_ID_REGEX = /^[a-zA-Z0-9_-]{1,64}$/;
 
 // Ensure base sandbox directory exists
 if (!existsSync(SANDBOX_BASE_DIR)) {
@@ -53,6 +73,51 @@ function sanitizePackages(packages?: string[]): string[] {
 	return packages
 		.map((p) => (typeof p === "string" ? p.trim() : ""))
 		.filter((p) => p.length > 0 && SAFE_PKG_REGEX.test(p));
+}
+
+function resolveWorkspace(sessionId?: string): {
+	workspaceDir: string;
+	isPersistent: boolean;
+} {
+	if (sessionId && SAFE_SESSION_ID_REGEX.test(sessionId)) {
+		const dir = join(SANDBOX_BASE_DIR, `session_${sessionId}`);
+		if (!existsSync(dir)) {
+			mkdirSync(dir, { recursive: true });
+		}
+		return { workspaceDir: dir, isPersistent: true };
+	}
+	const execId = `exec_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+	const dir = join(SANDBOX_BASE_DIR, execId);
+	mkdirSync(dir, { recursive: true });
+	return { workspaceDir: dir, isPersistent: false };
+}
+
+function resolveSafePath(workspaceDir: string, relativePath: string): string {
+	const clean = relativePath.trim().replace(/^(\.\.(\/|\\|$))+/, "");
+	const targetPath = join(workspaceDir, clean);
+	if (!targetPath.startsWith(workspaceDir)) {
+		throw new Error(
+			"Access denied: Path traversal outside workspace is forbidden.",
+		);
+	}
+	return targetPath;
+}
+
+function getDirectorySizeBytes(dirPath: string): number {
+	let total = 0;
+	try {
+		const entries = readdirSync(dirPath);
+		for (const entry of entries) {
+			const fullPath = join(dirPath, entry);
+			const stats = statSync(fullPath);
+			if (stats.isFile()) {
+				total += stats.size;
+			} else if (stats.isDirectory() && entry !== "node_modules") {
+				total += getDirectorySizeBytes(fullPath);
+			}
+		}
+	} catch {}
+	return total;
 }
 
 function truncateOutput(output: string): { text: string; truncated: boolean } {
@@ -92,27 +157,65 @@ function getSafeEnv(): Record<string, string> {
 	};
 }
 
-const IMAGE_MIME_MAP: Record<string, string> = {
-	".png": "image/png",
-	".jpg": "image/jpeg",
-	".jpeg": "image/jpeg",
-	".webp": "image/webp",
-	".svg": "image/svg+xml",
-	".gif": "image/gif",
+const ARTIFACT_MIME_MAP: Record<string, { mimeType: string; type: ArtifactType }> = {
+	// Images
+	".png": { mimeType: "image/png", type: "image" },
+	".jpg": { mimeType: "image/jpeg", type: "image" },
+	".jpeg": { mimeType: "image/jpeg", type: "image" },
+	".webp": { mimeType: "image/webp", type: "image" },
+	".svg": { mimeType: "image/svg+xml", type: "image" },
+	".gif": { mimeType: "image/gif", type: "image" },
+
+	// Documents & Spreadsheets
+	".xlsx": {
+		mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+		type: "document",
+	},
+	".xls": { mimeType: "application/vnd.ms-excel", type: "document" },
+	".csv": { mimeType: "text/csv", type: "document" },
+	".tsv": { mimeType: "text/tab-separated-values", type: "document" },
+	".pdf": { mimeType: "application/pdf", type: "document" },
+	".docx": {
+		mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+		type: "document",
+	},
+	".pptx": {
+		mimeType: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+		type: "document",
+	},
+	".zip": { mimeType: "application/zip", type: "document" },
+	".tar": { mimeType: "application/x-tar", type: "document" },
+	".gz": { mimeType: "application/gzip", type: "document" },
+	".json": { mimeType: "application/json", type: "document" },
+	".parquet": { mimeType: "application/octet-stream", type: "document" },
+	".txt": { mimeType: "text/plain", type: "document" },
+
+	// Video & Animations
+	".mp4": { mimeType: "video/mp4", type: "video" },
+	".webm": { mimeType: "video/webm", type: "video" },
+	".mkv": { mimeType: "video/x-matroska", type: "video" },
+	".avi": { mimeType: "video/x-msvideo", type: "video" },
+
+	// Audio
+	".mp3": { mimeType: "audio/mpeg", type: "audio" },
+	".wav": { mimeType: "audio/wav", type: "audio" },
+	".ogg": { mimeType: "audio/ogg", type: "audio" },
+	".m4a": { mimeType: "audio/mp4", type: "audio" },
+	".aac": { mimeType: "audio/aac", type: "audio" },
 };
 
 /**
- * Scans the workspace directory for generated images/plots (e.g. from Matplotlib or Playwright screenshots).
+ * Scans the workspace directory for generated artifacts (images, spreadsheets, PDFs, data files, videos).
  */
-function detectGeneratedImages(
+function detectGeneratedArtifacts(
 	workspaceDir: string,
 	ignoredFileNames: string[] = [],
-): GeneratedImage[] {
-	const images: GeneratedImage[] = [];
+): GeneratedArtifact[] {
+	const artifacts: GeneratedArtifact[] = [];
 	try {
 		const entries = readdirSync(workspaceDir);
 		for (const file of entries) {
-			if (ignoredFileNames.includes(file)) continue;
+			if (ignoredFileNames.includes(file) || file.startsWith(".")) continue;
 
 			const filePath = join(workspaceDir, file);
 			try {
@@ -120,30 +223,43 @@ function detectGeneratedImages(
 				if (!stats.isFile()) continue;
 
 				const ext = extname(file).toLowerCase();
-				const mimeType = IMAGE_MIME_MAP[ext];
-				if (mimeType && stats.size > 0 && stats.size <= MAX_IMAGE_SIZE_BYTES) {
+				const entry = ARTIFACT_MIME_MAP[ext];
+				if (entry && stats.size > 0 && stats.size <= MAX_ARTIFACT_SIZE_BYTES) {
 					const fileBuffer = readFileSync(filePath);
-					images.push({
+					artifacts.push({
 						filename: file,
-						mimeType,
+						mimeType: entry.mimeType,
+						type: entry.type,
 						data: fileBuffer.toString("base64"),
 						sizeBytes: stats.size,
 					});
 
-					if (images.length >= MAX_IMAGES_COUNT) break;
+					if (artifacts.length >= MAX_ARTIFACTS_COUNT) break;
 				}
 			} catch (err) {
 				console.warn(`[Sandbox] Failed to read potential artifact ${file}:`, err);
 			}
 		}
 	} catch (err) {
-		console.warn(`[Sandbox] Error scanning workspace for images:`, err);
+		console.warn(`[Sandbox] Error scanning workspace for artifacts:`, err);
 	}
-	return images;
+	return artifacts;
 }
 
 /**
- * Parses stderr to provide intelligent self-healing hints for the LLM agent.
+ * Backward compatibility alias for image detection.
+ */
+function detectGeneratedImages(
+	workspaceDir: string,
+	ignoredFileNames: string[] = [],
+): GeneratedImage[] {
+	return detectGeneratedArtifacts(workspaceDir, ignoredFileNames).filter(
+		(a) => a.type === "image",
+	);
+}
+
+/**
+ * Parses stderr and exit code to provide intelligent self-healing hints for the LLM agent.
  */
 function generateErrorHint(
 	stderr: string,
@@ -173,17 +289,75 @@ function generateErrorHint(
 		return `Hint: Python SyntaxError detected (${syntaxMatch[1]}). Please verify your script syntax and indentation.`;
 	}
 
-	// 4. Timeout
-	if (exitCode === 124 || stderr.includes("timed out")) {
+	// 4. Timeout & Playwright Timeout
+	if (
+		exitCode === 124 ||
+		stderr.includes("timed out") ||
+		stderr.includes("TimeoutError: Page.goto") ||
+		stderr.includes("TimeoutError: Locator") ||
+		stderr.includes("playwright._impl._errors.TimeoutError")
+	) {
+		if (
+			stderr.includes("playwright") ||
+			stderr.includes("Locator") ||
+			stderr.includes("Page.goto") ||
+			stderr.includes("waiting for locator")
+		) {
+			return "Hint: Playwright page navigation or selector wait timed out. Consider using wait_until='domcontentloaded', increasing timeout, or checking if target selectors are present.";
+		}
 		return "Hint: Script execution timed out. If performing web scraping or heavy computation, consider reducing loops or queries.";
 	}
 
-	// 5. NameError
+	// 5. Anti-Bot / HTTP 403 / 429 / Cloudflare
+	if (
+		stderr.includes("403 Forbidden") ||
+		stderr.includes("HTTPError: 403") ||
+		stderr.includes("429 Too Many Requests") ||
+		stderr.includes("Cloudflare") ||
+		stderr.includes("Just a moment...") ||
+		stderr.includes("Enable JavaScript and cookies to continue")
+	) {
+		return "Hint: Target website blocked the request (403/429/Cloudflare Bot Protection). Try using 'curl_cffi' (with impersonate='chrome') or 'playwright' with stealth mode and realistic browser headers instead of standard requests.";
+	}
+
+	// 6. JSON / Data Parsing / KeyError / IndexError
+	if (
+		stderr.includes("JSONDecodeError") ||
+		stderr.includes("Unexpected token < in JSON") ||
+		stderr.includes("SyntaxError: Unexpected token")
+	) {
+		return "Hint: JSON parsing failed. The server likely returned an HTML error or captcha page instead of JSON. Print and inspect the raw response body first.";
+	}
+	if (stderr.match(/KeyError: (.*)/)) {
+		return "Hint: KeyError detected. The dictionary key does not exist. Use dict.get('key') with a default fallback or inspect available keys with print(data.keys()).";
+	}
+	if (stderr.includes("IndexError: list index out of range")) {
+		return "Hint: IndexError detected. The parsed list or elements array is empty. Verify that your CSS/XPath selector or regex actually matched elements.";
+	}
+
+	// 7. FileNotFoundError
+	if (
+		stderr.includes("FileNotFoundError") ||
+		stderr.includes("ENOENT: no such file or directory")
+	) {
+		return "Hint: File or directory was not found. Use list_workspace_files to see existing files or write output files using relative paths.";
+	}
+
+	// 8. NameError
 	const nameMatch = stderr.match(
 		/NameError: name '([a-zA-Z0-9_]+)' is not defined/,
 	);
 	if (nameMatch) {
 		return `Hint: Variable or function '${nameMatch[1]}' is not defined before use.`;
+	}
+
+	// 9. Memory limit / OOM
+	if (
+		exitCode === 137 ||
+		stderr.includes("MemoryError") ||
+		stderr.includes("heap out of memory")
+	) {
+		return "Hint: Process exceeded memory quota (1.5GB) and was terminated. Process data in chunks (e.g. chunksize in pandas/polars) to avoid loading entire datasets into memory.";
 	}
 
 	return undefined;
@@ -247,6 +421,26 @@ async function runCommand(
 	return Promise.race([executionPromise, timeoutPromise]);
 }
 
+function resolveScriptCommand(
+	normalizedLang: string,
+	customFilename?: string,
+): { scriptFileName: string; execCommand: string[] } {
+	if (normalizedLang === "javascript") {
+		const scriptFileName = customFilename || "script.mjs";
+		return { scriptFileName, execCommand: ["bun", "run", scriptFileName] };
+	}
+	if (normalizedLang === "typescript") {
+		const scriptFileName = customFilename || "script.ts";
+		return { scriptFileName, execCommand: ["bun", "run", scriptFileName] };
+	}
+	if (normalizedLang === "bash" || normalizedLang === "sh") {
+		const scriptFileName = customFilename || "script.sh";
+		return { scriptFileName, execCommand: ["bash", scriptFileName] };
+	}
+	const scriptFileName = customFilename || "script.py";
+	return { scriptFileName, execCommand: ["python3", scriptFileName] };
+}
+
 async function handleExecute(req: Request): Promise<Response> {
 	let body: ExecuteRequest;
 	try {
@@ -258,7 +452,7 @@ async function handleExecute(req: Request): Promise<Response> {
 		);
 	}
 
-	const { language, code } = body;
+	const { language, code, sessionId, filename } = body;
 	if (!code || typeof code !== "string") {
 		return Response.json(
 			{ success: false, error: "Missing or invalid 'code' string parameter" },
@@ -267,7 +461,11 @@ async function handleExecute(req: Request): Promise<Response> {
 	}
 
 	const normalizedLang = (language || "python").toLowerCase();
-	if (!["python", "javascript", "typescript", "bash", "sh"].includes(normalizedLang)) {
+	if (
+		!["python", "javascript", "typescript", "bash", "sh"].includes(
+			normalizedLang,
+		)
+	) {
 		return Response.json(
 			{
 				success: false,
@@ -282,24 +480,44 @@ async function handleExecute(req: Request): Promise<Response> {
 		MAX_TIMEOUT_MS,
 	);
 	const packages = sanitizePackages(body.packages);
-	const execId = `exec_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
-	const workspaceDir = join(SANDBOX_BASE_DIR, execId);
+	const { workspaceDir, isPersistent } = resolveWorkspace(sessionId);
+
+	// Quota check
+	if (getDirectorySizeBytes(workspaceDir) > MAX_SESSION_DIR_BYTES) {
+		return Response.json(
+			{
+				success: false,
+				error:
+					"Session workspace disk quota exceeded (50MB). Please reset the workspace.",
+			},
+			{ status: 413 },
+		);
+	}
 
 	const startTime = Date.now();
 	let packageInstallStderr = "";
 	const installedPackages: string[] = [];
 
 	try {
-		mkdirSync(workspaceDir, { recursive: true });
-
 		// Step 1: Install packages if requested
 		if (packages.length > 0) {
-			console.log(`[Sandbox:${execId}] Installing packages: ${packages.join(", ")}`);
+			console.log(
+				`[Sandbox:${workspaceDir}] Installing packages: ${packages.join(", ")}`,
+			);
 			let installCmd: string[] = [];
 
 			if (normalizedLang === "python") {
-				installCmd = ["pip", "install", "--no-cache-dir", ...packages];
-			} else if (normalizedLang === "javascript" || normalizedLang === "typescript") {
+				installCmd = [
+					"pip",
+					"install",
+					"--cache-dir",
+					"/home/sandboxuser/.cache/pip",
+					...packages,
+				];
+			} else if (
+				normalizedLang === "javascript" ||
+				normalizedLang === "typescript"
+			) {
 				installCmd = ["bun", "add", ...packages];
 			}
 
@@ -307,7 +525,7 @@ async function handleExecute(req: Request): Promise<Response> {
 				const pkgResult = await runCommand(installCmd, workspaceDir, 60_000);
 				if (pkgResult.exitCode !== 0) {
 					console.warn(
-						`[Sandbox:${execId}] Package install warning / error:`,
+						`[Sandbox:${workspaceDir}] Package install warning / error:`,
 						pkgResult.stderr,
 					);
 					packageInstallStderr = `Package installation warning:\n${pkgResult.stderr}\n`;
@@ -318,26 +536,16 @@ async function handleExecute(req: Request): Promise<Response> {
 		}
 
 		// Step 2: Write script file
-		let scriptFileName = "script.py";
-		let execCommand: string[] = ["python3", "script.py"];
-
-		if (normalizedLang === "javascript") {
-			scriptFileName = "script.mjs";
-			execCommand = ["bun", "run", "script.mjs"];
-		} else if (normalizedLang === "typescript") {
-			scriptFileName = "script.ts";
-			execCommand = ["bun", "run", "script.ts"];
-		} else if (normalizedLang === "bash" || normalizedLang === "sh") {
-			scriptFileName = "script.sh";
-			execCommand = ["bash", "script.sh"];
-		}
-
-		const scriptPath = join(workspaceDir, scriptFileName);
+		const { scriptFileName, execCommand } = resolveScriptCommand(
+			normalizedLang,
+			filename,
+		);
+		const scriptPath = resolveSafePath(workspaceDir, scriptFileName);
 		writeFileSync(scriptPath, code, "utf-8");
 
 		// Step 3: Execute script
 		console.log(
-			`[Sandbox:${execId}] Executing ${normalizedLang} script (timeout: ${timeout}ms)...`,
+			`[Sandbox:${workspaceDir}] Executing ${normalizedLang} script (${scriptFileName}, timeout: ${timeout}ms)...`,
 		);
 		const result = await runCommand(execCommand, workspaceDir, timeout);
 		const durationMs = Date.now() - startTime;
@@ -346,16 +554,43 @@ async function handleExecute(req: Request): Promise<Response> {
 			? `${packageInstallStderr}\n${result.stderr}`
 			: result.stderr;
 
-		// Detect any images generated by the script (e.g. Matplotlib plots, screenshots)
-		const generatedImages = detectGeneratedImages(workspaceDir, [
+		// Detect any artifacts generated by the script (images, spreadsheets, PDFs, videos, etc.)
+		const generatedArtifacts = detectGeneratedArtifacts(workspaceDir, [
 			scriptFileName,
 			"package.json",
 			"bun.lock",
+			".session_meta.json",
 		]);
+		const generatedImages = generatedArtifacts.filter((a) => a.type === "image");
 
 		const stdoutTruncated = truncateOutput(result.stdout);
 		const stderrTruncated = truncateOutput(totalStderr);
 		const errorHint = generateErrorHint(totalStderr, result.exitCode);
+
+		// Save session metadata for continuity
+		if (isPersistent) {
+			try {
+				const metaPath = join(workspaceDir, ".session_meta.json");
+				writeFileSync(
+					metaPath,
+					JSON.stringify(
+						{
+							lastLanguage: normalizedLang,
+							lastScriptFile: scriptFileName,
+							lastExitCode: result.exitCode,
+							lastExecutionTimeMs: durationMs,
+							lastStderrSnippet: totalStderr.slice(0, 500),
+							lastStdoutSnippet: result.stdout.slice(0, 500),
+							lastExecutedAt: new Date().toISOString(),
+							errorHint,
+						},
+						null,
+						2,
+					),
+					"utf-8",
+				);
+			} catch {}
+		}
 
 		const responsePayload: ExecuteResponse = {
 			success: result.exitCode === 0,
@@ -364,6 +599,7 @@ async function handleExecute(req: Request): Promise<Response> {
 			exitCode: result.exitCode,
 			executionTimeMs: durationMs,
 			installedPackages,
+			artifacts: generatedArtifacts.length > 0 ? generatedArtifacts : undefined,
 			images: generatedImages.length > 0 ? generatedImages : undefined,
 			errorHint,
 			truncated: stdoutTruncated.truncated || stderrTruncated.truncated,
@@ -373,7 +609,7 @@ async function handleExecute(req: Request): Promise<Response> {
 	} catch (error) {
 		const durationMs = Date.now() - startTime;
 		const errMessage = error instanceof Error ? error.message : String(error);
-		console.error(`[Sandbox:${execId}] Execution exception:`, error);
+		console.error(`[Sandbox:${workspaceDir}] Execution exception:`, error);
 		return Response.json(
 			{
 				success: false,
@@ -386,16 +622,180 @@ async function handleExecute(req: Request): Promise<Response> {
 			{ status: 500 },
 		);
 	} finally {
-		// Clean up isolated workspace
-		try {
-			rmSync(workspaceDir, { recursive: true, force: true });
-			console.log(`[Sandbox:${execId}] Cleaned up workspace directory.`);
-		} catch (cleanupErr) {
-			console.warn(
-				`[Sandbox:${execId}] Failed to clean up workspace:`,
-				cleanupErr,
+		// Clean up isolated temporary workspace (keep persistent session directories)
+		if (!isPersistent) {
+			try {
+				rmSync(workspaceDir, { recursive: true, force: true });
+			} catch (cleanupErr) {
+				console.warn(
+					`[Sandbox:${workspaceDir}] Failed to clean up workspace:`,
+					cleanupErr,
+				);
+			}
+		}
+	}
+}
+
+async function handleWorkspaceRead(req: Request): Promise<Response> {
+	try {
+		const body = (await req.json()) as { sessionId?: string; filename?: string };
+		const { sessionId, filename } = body;
+		if (!sessionId || !filename) {
+			return Response.json(
+				{ success: false, error: "Missing 'sessionId' or 'filename'" },
+				{ status: 400 },
 			);
 		}
+
+		const { workspaceDir } = resolveWorkspace(sessionId);
+		const targetPath = resolveSafePath(workspaceDir, filename);
+
+		if (!existsSync(targetPath)) {
+			return Response.json(
+				{ success: false, error: `File '${filename}' not found in workspace.` },
+				{ status: 404 },
+			);
+		}
+
+		const stats = statSync(targetPath);
+		if (!stats.isFile()) {
+			return Response.json(
+				{ success: false, error: `'${filename}' is not a file.` },
+				{ status: 400 },
+			);
+		}
+
+		const content = readFileSync(targetPath, "utf-8");
+		return Response.json({
+			success: true,
+			filename,
+			content,
+			sizeBytes: stats.size,
+			modifiedAt: stats.mtime.toISOString(),
+		});
+	} catch (err) {
+		return Response.json(
+			{ success: false, error: err instanceof Error ? err.message : String(err) },
+			{ status: 500 },
+		);
+	}
+}
+
+async function handleWorkspaceWrite(req: Request): Promise<Response> {
+	try {
+		const body = (await req.json()) as {
+			sessionId?: string;
+			filename?: string;
+			content?: string;
+		};
+		const { sessionId, filename, content } = body;
+		if (!sessionId || !filename || typeof content !== "string") {
+			return Response.json(
+				{
+					success: false,
+					error: "Missing 'sessionId', 'filename', or 'content'",
+				},
+				{ status: 400 },
+			);
+		}
+
+		const { workspaceDir } = resolveWorkspace(sessionId);
+		const targetPath = resolveSafePath(workspaceDir, filename);
+
+		writeFileSync(targetPath, content, "utf-8");
+		const stats = statSync(targetPath);
+
+		return Response.json({
+			success: true,
+			filename,
+			sizeBytes: stats.size,
+			modifiedAt: stats.mtime.toISOString(),
+		});
+	} catch (err) {
+		return Response.json(
+			{ success: false, error: err instanceof Error ? err.message : String(err) },
+			{ status: 500 },
+		);
+	}
+}
+
+async function handleWorkspaceList(req: Request): Promise<Response> {
+	try {
+		const body = (await req.json()) as { sessionId?: string };
+		const { sessionId } = body;
+		if (!sessionId) {
+			return Response.json(
+				{ success: false, error: "Missing 'sessionId'" },
+				{ status: 400 },
+			);
+		}
+
+		const { workspaceDir } = resolveWorkspace(sessionId);
+		const files: WorkspaceFileEntry[] = [];
+
+		if (existsSync(workspaceDir)) {
+			const entries = readdirSync(workspaceDir);
+			for (const entry of entries) {
+				if (entry.startsWith(".")) continue;
+				const fullPath = join(workspaceDir, entry);
+				try {
+					const stats = statSync(fullPath);
+					if (stats.isFile()) {
+						const ext = extname(entry).toLowerCase();
+						const artifactInfo = ARTIFACT_MIME_MAP[ext];
+						files.push({
+							filename: entry,
+							sizeBytes: stats.size,
+							modifiedAt: stats.mtime.toISOString(),
+							isImage: artifactInfo?.type === "image",
+							artifactType: artifactInfo?.type,
+						});
+					}
+				} catch {}
+			}
+		}
+
+		return Response.json({
+			success: true,
+			sessionId,
+			files,
+			totalFiles: files.length,
+		});
+	} catch (err) {
+		return Response.json(
+			{ success: false, error: err instanceof Error ? err.message : String(err) },
+			{ status: 500 },
+		);
+	}
+}
+
+async function handleWorkspaceReset(req: Request): Promise<Response> {
+	try {
+		const body = (await req.json()) as { sessionId?: string };
+		const { sessionId } = body;
+		if (!sessionId) {
+			return Response.json(
+				{ success: false, error: "Missing 'sessionId'" },
+				{ status: 400 },
+			);
+		}
+
+		const { workspaceDir } = resolveWorkspace(sessionId);
+		if (existsSync(workspaceDir)) {
+			rmSync(workspaceDir, { recursive: true, force: true });
+			mkdirSync(workspaceDir, { recursive: true });
+		}
+
+		return Response.json({
+			success: true,
+			sessionId,
+			message: "Workspace reset successfully.",
+		});
+	} catch (err) {
+		return Response.json(
+			{ success: false, error: err instanceof Error ? err.message : String(err) },
+			{ status: 500 },
+		);
 	}
 }
 
@@ -417,6 +817,22 @@ Bun.serve({
 
 		if (req.method === "POST" && url.pathname === "/execute") {
 			return handleExecute(req);
+		}
+
+		if (req.method === "POST" && url.pathname === "/workspace/read") {
+			return handleWorkspaceRead(req);
+		}
+
+		if (req.method === "POST" && url.pathname === "/workspace/write") {
+			return handleWorkspaceWrite(req);
+		}
+
+		if (req.method === "POST" && url.pathname === "/workspace/list") {
+			return handleWorkspaceList(req);
+		}
+
+		if (req.method === "POST" && url.pathname === "/workspace/reset") {
+			return handleWorkspaceReset(req);
 		}
 
 		return Response.json({ error: "Not found" }, { status: 404 });

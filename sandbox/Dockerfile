@@ -14,7 +14,7 @@ ENV SANDBOX_PORT=8080
 ENV MPLBACKEND=Agg
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
-# Install essential CLI utilities and fonts for plotting
+# Install essential CLI utilities, ffmpeg, and fonts for plotting
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     wget \
@@ -22,6 +22,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     git \
     unzip \
+    ffmpeg \
     fonts-dejavu-core \
     fonts-liberation \
     && rm -rf /var/lib/apt/lists/*
@@ -29,20 +30,26 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy Bun runtime from official Bun debian image
 COPY --from=bun-source /usr/local/bin/bun /usr/local/bin/bun
 
-# Install pre-compiled Python libraries (Data Science, Math, Scraping & Visualization)
+# Install pre-compiled Python libraries (Data Science, Math, Scraping, Media & Reporting)
 RUN pip install --no-cache-dir \
     requests \
     httpx \
     beautifulsoup4 \
     lxml \
+    curl_cffi \
+    playwright-stealth \
     numpy \
     pandas \
+    polars \
     matplotlib \
     seaborn \
     pillow \
     sympy \
     scipy \
     openpyxl \
+    xlsxwriter \
+    reportlab \
+    tabulate \
     yfinance \
     duckdb \
     playwright
@@ -50,9 +57,9 @@ RUN pip install --no-cache-dir \
 # Install Playwright Chromium headless browser with minimal dependencies
 RUN playwright install --with-deps chromium
 
-# Create unprivileged sandbox user
+# Create unprivileged sandbox user and cache directories
 RUN useradd -m -u 1000 -s /bin/bash sandboxuser && \
-    mkdir -p /tmp/sandboxes /home/sandboxuser/app /ms-playwright && \
+    mkdir -p /tmp/sandboxes /home/sandboxuser/app /home/sandboxuser/.cache/pip /home/sandboxuser/.bun /ms-playwright && \
     chown -R sandboxuser:sandboxuser /tmp/sandboxes /home/sandboxuser /ms-playwright
 
 WORKDIR /home/sandboxuser/app

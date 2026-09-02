@@ -65,6 +65,60 @@ async function resolveRepliedPhoto(
 	return undefined;
 }
 
+function formatFileSize(bytes: number): string {
+	if (bytes < 1024) return `${bytes} B`;
+	if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+	return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function getArtifactEmoji(type: string, filename: string): string {
+	if (type === "image") return "📊";
+	if (type === "video") return "🎬";
+	if (type === "audio") return "🎵";
+	const lower = filename.toLowerCase();
+	if (
+		lower.endsWith(".xlsx") ||
+		lower.endsWith(".xls") ||
+		lower.endsWith(".csv")
+	) {
+		return "📈";
+	}
+	if (lower.endsWith(".pdf")) return "📑";
+	if (
+		lower.endsWith(".zip") ||
+		lower.endsWith(".tar") ||
+		lower.endsWith(".gz")
+	) {
+		return "🗜️";
+	}
+	return "📁";
+}
+
+function normalizeLanguageName(raw?: unknown): string {
+	if (typeof raw !== "string") return "script";
+	const lower = raw.toLowerCase();
+	if (lower === "python") return "Python";
+	if (lower === "typescript") return "TypeScript";
+	if (lower === "javascript") return "JavaScript";
+	if (lower === "bash" || lower === "sh") return "Bash";
+	return raw;
+}
+
+function resolveExecuteCodeMessage(args: Record<string, unknown>): string {
+	const packages = Array.isArray(args.packages)
+		? (args.packages as string[])
+		: [];
+	const lang = normalizeLanguageName(args.language);
+	const filename =
+		typeof args.filename === "string" ? ` (${args.filename})` : "";
+	if (packages.length > 0) {
+		const pkgList = packages.slice(0, 3).join(", ");
+		const suffix = packages.length > 3 ? "..." : "";
+		return `📦 Installing dependencies (${pkgList}${suffix}) & running ${lang}${filename}...`;
+	}
+	return `⚡ Executing ${lang} script${filename} in sandbox...`;
+}
+
 function resolveToolStatusMessage(
 	toolName: string,
 	args: Record<string, unknown> = {},
@@ -74,19 +128,22 @@ function resolveToolStatusMessage(
 	}
 
 	if (toolName === "execute_code") {
-		const packages = Array.isArray(args.packages)
-			? (args.packages as string[])
-			: [];
-		const lang = typeof args.language === "string" ? args.language : "script";
-		if (packages.length > 0) {
-			const pkgList = packages.slice(0, 3).join(", ");
-			const suffix = packages.length > 3 ? "..." : "";
-			return `📦 Installing dependencies (${pkgList}${suffix}) & running ${lang} script in sandbox...`;
-		}
-		return `⚡ Executing ${lang} script in sandbox...`;
+		return resolveExecuteCodeMessage(args);
 	}
 
-	return `Spawning subagent for (${toolName})...`;
+	const filename = typeof args.filename === "string" ? args.filename : "file";
+	switch (toolName) {
+		case "read_workspace_file":
+			return `📄 Reading workspace file (${filename})...`;
+		case "write_workspace_file":
+			return `✏️ Writing workspace file (${filename})...`;
+		case "list_workspace_files":
+			return "📁 Scanning session workspace files...";
+		case "reset_workspace":
+			return "🧹 Cleaning and resetting session workspace...";
+		default:
+			return `Spawning subagent for (${toolName})...`;
+	}
 }
 
 function createToolNotifier(
@@ -146,6 +203,45 @@ function createToolNotifier(
 	};
 }
 
+async function sendSingleArtifact(
+	ctx: Context,
+	art: GeneratedMediaArtifact,
+	replyToMessageId?: number,
+): Promise<void> {
+	const sizeText = formatFileSize(art.sizeBytes || art.buffer.length);
+	const emoji = getArtifactEmoji(art.type, art.filename);
+	const caption = `${emoji} ${art.filename} (${sizeText})`;
+	const inputFile = new InputFile(art.buffer, art.filename);
+	const replyParams = replyToMessageId
+		? { reply_to_message_id: replyToMessageId }
+		: undefined;
+
+	try {
+		if (art.type === "image") {
+			await ctx.replyWithPhoto(inputFile, { caption, ...replyParams });
+		} else if (art.type === "video") {
+			await ctx.replyWithVideo(inputFile, { caption, ...replyParams });
+		} else if (art.type === "audio") {
+			await ctx.replyWithAudio(inputFile, { caption, ...replyParams });
+		} else {
+			await ctx.replyWithDocument(inputFile, { caption, ...replyParams });
+		}
+	} catch (err) {
+		logger.warn(
+			`[Chat] Failed to send generated artifact (${art.filename}) as ${art.type}:`,
+			err,
+		);
+		try {
+			await ctx.replyWithDocument(inputFile, { caption, ...replyParams });
+		} catch (fallbackErr) {
+			logger.error(
+				`[Chat] Fallback document delivery also failed for ${art.filename}:`,
+				fallbackErr,
+			);
+		}
+	}
+}
+
 async function generateAndSendReply(
 	ctx: Context,
 	chatIdStr: string,
@@ -166,7 +262,7 @@ async function generateAndSendReply(
 
 	const logPrefix = isSpontaneous ? "[Spontaneous]" : "[Chat]";
 	const notifier = createToolNotifier(ctx, replyToMessageId, logPrefix);
-	const generatedImages: GeneratedMediaArtifact[] = [];
+	const generatedArtifacts: GeneratedMediaArtifact[] = [];
 
 	const reply = await GeminiService.generateReply(
 		history,
@@ -176,19 +272,13 @@ async function generateAndSendReply(
 		chatIdStr,
 		mediaPayload,
 		async (media) => {
-			generatedImages.push(...media);
+			generatedArtifacts.push(...media);
 		},
 	);
 
-	// Send generated chart/plot photos (e.g. from Matplotlib or Playwright)
-	for (const img of generatedImages) {
-		try {
-			await ctx.replyWithPhoto(new InputFile(img.buffer, img.filename), {
-				reply_to_message_id: replyToMessageId,
-			});
-		} catch (err) {
-			logger.warn("[Chat] Failed to send generated photo to Telegram:", err);
-		}
+	// Send generated artifacts (Photos, Spreadsheets, PDF reports, Videos, Audio)
+	for (const art of generatedArtifacts) {
+		await sendSingleArtifact(ctx, art, replyToMessageId);
 	}
 
 	// Send final reply

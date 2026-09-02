@@ -16,10 +16,14 @@ import {
 	runWithRetry,
 } from "./utils";
 
+export type ArtifactMediaType = "image" | "document" | "video" | "audio";
+
 export interface GeneratedMediaArtifact {
 	filename: string;
 	mimeType: string;
 	buffer: Buffer;
+	type: ArtifactMediaType;
+	sizeBytes: number;
 }
 
 type ToolCallCallback = (
@@ -193,37 +197,61 @@ async function notifyToolCallbacks(
 	}
 }
 
+function inferArtifactType(
+	mimeType?: string,
+	explicitType?: ArtifactMediaType,
+): ArtifactMediaType {
+	if (explicitType) return explicitType;
+	if (mimeType?.startsWith("image/")) return "image";
+	if (mimeType?.startsWith("video/")) return "video";
+	if (mimeType?.startsWith("audio/")) return "audio";
+	return "document";
+}
+
+function extractRawArtifacts(result: unknown): unknown[] {
+	if (!result || typeof result !== "object") return [];
+	const obj = result as { artifacts?: unknown; images?: unknown };
+	if (Array.isArray(obj.artifacts)) return obj.artifacts;
+	if (Array.isArray(obj.images)) return obj.images;
+	return [];
+}
+
+function parseGeneratedArtifact(art: {
+	filename?: string;
+	mimeType?: string;
+	data?: string;
+	type?: ArtifactMediaType;
+	sizeBytes?: number;
+}): GeneratedMediaArtifact | null {
+	if (!art.data || typeof art.data !== "string") return null;
+	const buf = Buffer.from(art.data, "base64");
+	return {
+		filename: art.filename || "output.dat",
+		mimeType: art.mimeType || "application/octet-stream",
+		buffer: buf,
+		type: inferArtifactType(art.mimeType, art.type),
+		sizeBytes: art.sizeBytes || buf.length,
+	};
+}
+
 async function handleToolMediaArtifacts(
 	result: unknown,
 	traceId: string,
 	onMediaGenerated?: MediaGeneratedCallback,
 ): Promise<void> {
-	if (
-		!result ||
-		typeof result !== "object" ||
-		!("images" in result) ||
-		!Array.isArray(result.images) ||
-		result.images.length === 0
-	) {
-		return;
-	}
+	if (!onMediaGenerated) return;
+	const rawArtifacts = extractRawArtifacts(result);
+	if (rawArtifacts.length === 0) return;
 
 	const artifacts: GeneratedMediaArtifact[] = [];
-	for (const img of result.images as Array<{
-		filename?: string;
-		mimeType?: string;
-		data?: string;
-	}>) {
-		if (img.data && typeof img.data === "string") {
-			artifacts.push({
-				filename: img.filename || "output.png",
-				mimeType: img.mimeType || "image/png",
-				buffer: Buffer.from(img.data, "base64"),
-			});
-		}
+	for (const raw of rawArtifacts) {
+		const parsed = parseGeneratedArtifact(
+			raw as Parameters<typeof parseGeneratedArtifact>[0],
+		);
+		if (parsed) artifacts.push(parsed);
 	}
 
-	if (artifacts.length > 0 && onMediaGenerated) {
+	if (artifacts.length > 0) {
 		try {
 			await onMediaGenerated(artifacts);
 		} catch (err) {
@@ -244,7 +272,10 @@ async function executeSingleTool(
 ): Promise<Record<string, unknown> | null> {
 	if (!fc?.name) return null;
 	const name = fc.name;
-	const args = fc.args || {};
+	const args = {
+		sessionId: chatIdStr || "default",
+		...(fc.args || {}),
+	};
 	logger.info(`[Agent:${traceId}] Executing tool '${name}'...`);
 	const startTime = Date.now();
 	const result = await toolRegistry.executeTool(name, args);

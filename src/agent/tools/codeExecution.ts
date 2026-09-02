@@ -6,14 +6,21 @@ export interface CodeExecutionArgs {
 	language: "python" | "javascript" | "typescript" | "bash";
 	code: string;
 	packages?: string[];
+	sessionId?: string;
+	filename?: string;
 }
 
-export interface CodeExecutionImage {
+export type ArtifactType = "image" | "document" | "video" | "audio";
+
+export interface CodeExecutionArtifact {
 	filename: string;
 	mimeType: string;
 	data: string; // base64
 	sizeBytes: number;
+	type: ArtifactType;
 }
+
+export type CodeExecutionImage = CodeExecutionArtifact;
 
 export interface CodeExecutionResult {
 	success: boolean;
@@ -22,6 +29,7 @@ export interface CodeExecutionResult {
 	exit_code: number;
 	execution_time_ms: number;
 	installed_packages?: string[];
+	artifacts?: CodeExecutionArtifact[];
 	images?: CodeExecutionImage[];
 	error_hint?: string;
 	truncated?: boolean;
@@ -31,6 +39,7 @@ export interface CodeExecutionResult {
 
 function buildSystemNote(data: {
 	success: boolean;
+	artifacts?: CodeExecutionArtifact[];
 	images?: CodeExecutionImage[];
 	errorHint?: string;
 }): string {
@@ -38,9 +47,12 @@ function buildSystemNote(data: {
 		? "Code execution succeeded. Use the output to formulate your final concise reply."
 		: "Code execution finished with errors. You may analyze the stderr or give the user the best possible answer.";
 
-	if (data.images && data.images.length > 0) {
-		const fileList = data.images.map((img) => img.filename).join(", ");
-		systemNote += ` Generated image(s) [${fileList}] will be automatically displayed/sent to the user. Describe or summarize the visual findings in your reply.`;
+	const allArtifacts = data.artifacts || data.images || [];
+	if (allArtifacts.length > 0) {
+		const fileList = allArtifacts
+			.map((art) => `${art.filename} (${art.type || "file"})`)
+			.join(", ");
+		systemNote += ` Generated artifact(s) [${fileList}] will be automatically delivered/displayed to the user. Describe or summarize the findings in your reply.`;
 	}
 
 	if (data.errorHint) {
@@ -70,6 +82,8 @@ export async function executeInSandbox(
 	const language = (args.language || "python").toLowerCase();
 	const code = args.code || "";
 	const packages = Array.isArray(args.packages) ? args.packages : [];
+	const sessionId = args.sessionId;
+	const filename = args.filename;
 
 	if (!code.trim()) {
 		return {
@@ -86,7 +100,7 @@ export async function executeInSandbox(
 	const targetUrl = `${sandboxUrl}/execute`;
 
 	logger.info(
-		`[CodeExecutionTool] Sending ${language} code (${code.length} chars, ${packages.length} packages) to sandbox at ${targetUrl}...`,
+		`[CodeExecutionTool] Sending ${language} code (${code.length} chars, ${packages.length} packages, session: ${sessionId || "ephemeral"}) to sandbox at ${targetUrl}...`,
 	);
 
 	try {
@@ -103,6 +117,8 @@ export async function executeInSandbox(
 				language,
 				code,
 				packages,
+				sessionId,
+				filename,
 				timeoutMs: CONFIG.SANDBOX_TIMEOUT_MS,
 			}),
 			signal: controller.signal,
@@ -132,14 +148,18 @@ export async function executeInSandbox(
 			exitCode: number;
 			executionTimeMs: number;
 			installedPackages?: string[];
+			artifacts?: CodeExecutionArtifact[];
 			images?: CodeExecutionImage[];
 			errorHint?: string;
 			truncated?: boolean;
 			error?: string;
 		};
 
+		const artifacts = data.artifacts || data.images || [];
+		const images = data.images || artifacts.filter((a) => a.type === "image");
+
 		logger.info(
-			`[CodeExecutionTool] Sandbox executed in ${data.executionTimeMs}ms with exit code ${data.exitCode} (images: ${data.images?.length || 0})`,
+			`[CodeExecutionTool] Sandbox executed in ${data.executionTimeMs}ms with exit code ${data.exitCode} (artifacts: ${artifacts.length}, images: ${images.length})`,
 		);
 
 		return {
@@ -149,11 +169,12 @@ export async function executeInSandbox(
 			exit_code: data.exitCode,
 			execution_time_ms: data.executionTimeMs,
 			installed_packages: data.installedPackages,
-			images: data.images,
+			artifacts,
+			images,
 			error_hint: data.errorHint,
 			truncated: data.truncated,
 			error: data.error,
-			system_note: buildSystemNote(data),
+			system_note: buildSystemNote({ ...data, artifacts, images }),
 		};
 	} catch (err: unknown) {
 		const errorMessage = err instanceof Error ? err.message : String(err);
@@ -181,7 +202,7 @@ export const codeExecutionTool: AgentTool<
 > = {
 	name: "execute_code",
 	description:
-		"Executes Python, JavaScript, TypeScript, or Bash scripts in a sandboxed Linux container with web access, pre-loaded data science packages (numpy, pandas, matplotlib, seaborn, pillow, sympy, scipy, beautifulsoup4, requests), and Playwright browser support. You can generate charts and plots (e.g. using matplotlib.pyplot and saving to 'chart.png') or take screenshots with Playwright, and they will automatically be delivered as photos to the user.",
+		"Executes Python, JavaScript, TypeScript, or Bash scripts in a sandboxed Linux container with web access, persistent workspace files across turns, pre-loaded data science, scraping, media, and reporting packages (numpy, pandas, polars, matplotlib, seaborn, pillow, openpyxl, xlsxwriter, reportlab, tabulate, curl_cffi, beautifulsoup4, requests, ffmpeg, playwright, playwright-stealth). You can generate Excel spreadsheets (.xlsx), PDF documents (.pdf), CSV files (.csv), charts/plots (.png/.jpg), animations/videos (.mp4), or screenshots, and they will automatically be delivered directly to the user as appropriate Telegram photos/documents/videos.",
 	parameters: {
 		type: "OBJECT",
 		properties: {
@@ -202,6 +223,11 @@ export const codeExecutionTool: AgentTool<
 				items: {
 					type: "STRING",
 				},
+			},
+			filename: {
+				type: "STRING",
+				description:
+					"Optional custom filename to save and execute the script as (e.g. 'main.py', 'crawler.ts'). Defaults to standard extension.",
 			},
 		},
 		required: ["language", "code"],
