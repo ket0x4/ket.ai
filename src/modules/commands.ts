@@ -1,5 +1,6 @@
-import { type Bot, type Context, InlineKeyboard } from "grammy";
+import type { Bot, Context } from "grammy";
 import { resetWorkspace } from "../agent/tools/workspaceTools";
+import { buildMiniAppKeyboard } from "../bot/ui";
 import { CONFIG } from "../config/index";
 import { Repository } from "../db/repository";
 import { processNewMemory } from "../services/gemini/memory";
@@ -109,22 +110,9 @@ export function registerCommandHandlers(bot: Bot) {
 				`[Commands:app] User ${ctx.from?.id} (${ctx.from?.first_name}) opened Mini App dashboard button in chat ${ctx.chat?.id}`,
 			);
 
-			const appUrl =
-				CONFIG.WEB_APP_URL || `http://localhost:${CONFIG.WEB_PORT}`;
 			const isPrivate = ctx.chat?.type === "private";
 			const botUsername = ctx.me?.username || "";
-
-			const keyboard = new InlineKeyboard();
-			if (isPrivate) {
-				keyboard.webApp("Open Dashboard", appUrl);
-			} else if (botUsername) {
-				keyboard.url(
-					"Open Mini App",
-					`https://t.me/${botUsername}?startapp=dashboard`,
-				);
-			} else {
-				keyboard.webApp("Open Dashboard", appUrl);
-			}
+			const keyboard = buildMiniAppKeyboard(isPrivate, botUsername);
 
 			await ctx.reply(
 				"Click the button below to open the Admin & Memory Dashboard:",

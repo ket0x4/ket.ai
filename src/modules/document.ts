@@ -1,4 +1,5 @@
 import type { Bot, Context } from "grammy";
+import { createToolNotifier, sendSingleArtifact } from "../bot/ui";
 import { CONFIG } from "../config";
 import { Repository } from "../db/repository";
 import { botUsername, withChatLock, withTyping } from "../services/bot";
@@ -18,7 +19,6 @@ import {
 	isDownloadError,
 } from "../utils/mediaDownloader";
 import { sendLongMessage } from "../utils/message";
-import { createToolNotifier, sendSingleArtifact } from "./chat";
 
 async function executeDocumentReplyWorkflow(
 	ctx: Context,
