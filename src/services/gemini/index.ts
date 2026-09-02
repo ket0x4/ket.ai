@@ -1,4 +1,5 @@
 import { AgentStateMachine, toolRegistry } from "../../agent/index";
+import type { CodeExecutionProgressEvent } from "../../agent/tools/codeExecution";
 import { CONFIG } from "../../config";
 import type { MessageRow } from "../../db/repository";
 import { Repository } from "../../db/repository";
@@ -26,13 +27,26 @@ export interface GeneratedMediaArtifact {
 	sizeBytes: number;
 }
 
-type ToolCallCallback = (
+export interface ToolProgressUpdate {
+	statusText?: string;
+	stdoutSnippet?: string;
+	fullStdout?: string;
+	type?: "status" | "stdout" | "stderr";
+}
+
+export type ToolCallCallback = (
 	toolName: string,
 	args: Record<string, unknown>,
 	step: number,
 ) => Promise<void> | void;
 
-type MediaGeneratedCallback = (
+export type ToolProgressCallback = (
+	toolName: string,
+	progress: ToolProgressUpdate,
+	step: number,
+) => Promise<void> | void;
+
+export type MediaGeneratedCallback = (
 	media: GeneratedMediaArtifact[],
 ) => Promise<void> | void;
 
@@ -51,6 +65,7 @@ interface GenerateResponseOptions {
 	mediaFallbackText: string;
 	traceId?: string;
 	onToolCall?: ToolCallCallback;
+	onToolProgress?: ToolProgressCallback;
 	onMediaGenerated?: MediaGeneratedCallback;
 }
 
@@ -307,13 +322,37 @@ async function executeSingleTool(
 	step: number,
 	traceId: string,
 	onMediaGenerated?: MediaGeneratedCallback,
+	onToolProgress?: ToolProgressCallback,
 ): Promise<Record<string, unknown> | null> {
 	if (!fc?.name) return null;
 	const name = fc.name;
-	const args = {
+	const args: Record<string, unknown> = {
 		sessionId: chatIdStr || "default",
 		...(fc.args || {}),
 	};
+
+	if (name === "execute_code" && onToolProgress) {
+		args.onProgress = (event: CodeExecutionProgressEvent) => {
+			try {
+				onToolProgress(
+					name,
+					{
+						type: event.type,
+						statusText: event.type === "status" ? event.text : undefined,
+						stdoutSnippet:
+							event.type === "stdout" || event.type === "stderr"
+								? event.text
+								: undefined,
+						fullStdout: event.fullStdoutSoFar,
+					},
+					step,
+				);
+			} catch (err) {
+				logger.debug(`[Agent:${traceId}] Error in onToolProgress:`, err);
+			}
+		};
+	}
+
 	logger.info(`[Agent:${traceId}] Executing tool '${name}'...`);
 	const startTime = Date.now();
 	const result = await toolRegistry.executeTool(name, args);
@@ -363,6 +402,7 @@ async function handleToolExecution(
 	traceId: string,
 	onToolCall?: ToolCallCallback,
 	onMediaGenerated?: MediaGeneratedCallback,
+	onToolProgress?: ToolProgressCallback,
 ): Promise<Array<Record<string, unknown>>> {
 	await notifyToolCallbacks(functionCalls, step, onToolCall);
 
@@ -374,6 +414,7 @@ async function handleToolExecution(
 			step,
 			traceId,
 			onMediaGenerated,
+			onToolProgress,
 		);
 		if (part) toolResponseParts.push(part);
 	}
@@ -428,6 +469,43 @@ async function processExtractedMemories(
 	}
 }
 
+function extractFunctionCalls(response: {
+	functionCalls?: Array<{
+		id?: string;
+		name?: string;
+		args?: Record<string, unknown>;
+	}>;
+	candidates?: Array<{
+		content?: {
+			parts?: Array<{
+				functionCall?: {
+					id?: string;
+					name?: string;
+					args?: Record<string, unknown>;
+				};
+			}>;
+		};
+	}>;
+}): Array<{
+	id?: string;
+	name: string;
+	args?: Record<string, unknown>;
+}> {
+	const rawParts = response.candidates?.[0]?.content?.parts;
+	const candidateCalls =
+		response.functionCalls ||
+		rawParts?.filter((p) => p.functionCall?.name).map((p) => p.functionCall);
+	return (candidateCalls || []).filter(
+		(
+			fc,
+		): fc is {
+			id?: string;
+			name: string;
+			args?: Record<string, unknown>;
+		} => Boolean(fc?.name),
+	);
+}
+
 async function runAgentStepLoop(
 	contents: Array<Record<string, unknown>>,
 	genConfig: Record<string, unknown>,
@@ -435,6 +513,7 @@ async function runAgentStepLoop(
 	fsm: AgentStateMachine,
 	onToolCall?: ToolCallCallback,
 	onMediaGenerated?: MediaGeneratedCallback,
+	onToolProgress?: ToolProgressCallback,
 ): Promise<string> {
 	let responseText = "";
 
@@ -454,27 +533,7 @@ async function runAgentStepLoop(
 			{ priority: "high" },
 		);
 
-		const rawParts = response.candidates?.[0]?.content?.parts as
-			| Array<{
-					functionCall?: {
-						id?: string;
-						name?: string;
-						args?: Record<string, unknown>;
-					};
-			  }>
-			| undefined;
-		const candidateCalls =
-			response.functionCalls ||
-			rawParts?.filter((p) => p.functionCall?.name).map((p) => p.functionCall);
-		const functionCalls = (candidateCalls || []).filter(
-			(
-				fc,
-			): fc is {
-				id?: string;
-				name?: string;
-				args?: Record<string, unknown>;
-			} => Boolean(fc?.name),
-		);
+		const functionCalls = extractFunctionCalls(response);
 
 		if (functionCalls.length > 0) {
 			fsm.transition("EXECUTING_TOOLS", {
@@ -502,6 +561,7 @@ async function runAgentStepLoop(
 				fsm.getTraceId(),
 				onToolCall,
 				onMediaGenerated,
+				onToolProgress,
 			);
 			contents.push({ role: "user", parts: toolParts });
 			continue;
@@ -578,6 +638,29 @@ function isStrayBracket(text: string): boolean {
 	return text === "}" || text === "{" || text === "[]" || text === "{}";
 }
 
+function extractReplyFieldFromObject(
+	parsed: Record<string, unknown>,
+): string | undefined {
+	const candidateFields = [
+		"reply",
+		"summary",
+		"text",
+		"message",
+		"answer",
+		"result",
+		"output",
+		"response",
+		"content",
+	];
+	for (const field of candidateFields) {
+		const val = parsed[field];
+		if (typeof val === "string" && val.trim()) {
+			return val.trim();
+		}
+	}
+	return undefined;
+}
+
 async function handleJsonReply(
 	cleanedText: string,
 	rawText: string,
@@ -614,32 +697,15 @@ async function handleJsonReply(
 
 		fsm.transition("COMPLETED");
 
-		// Search for standard reply fields in priority order
-		if (typeof parsed?.reply === "string" && parsed.reply.trim()) {
-			return parsed.reply.trim();
-		}
-		if (typeof parsed?.summary === "string" && parsed.summary.trim()) {
-			return parsed.summary.trim();
-		}
-		if (typeof parsed?.text === "string" && parsed.text.trim()) {
-			return parsed.text.trim();
-		}
-		if (typeof parsed?.message === "string" && parsed.message.trim()) {
-			return parsed.message.trim();
-		}
-		if (typeof parsed?.answer === "string" && parsed.answer.trim()) {
-			return parsed.answer.trim();
-		}
-		if (typeof parsed?.result === "string" && parsed.result.trim()) {
-			return parsed.result.trim();
-		}
-		if (typeof parsed?.output === "string" && parsed.output.trim()) {
-			return parsed.output.trim();
-		}
+		if (parsed && typeof parsed === "object") {
+			const extracted = extractReplyFieldFromObject(
+				parsed as Record<string, unknown>,
+			);
+			if (extracted) return extracted;
 
-		// If it is a non-empty object without explicit text keys, fallback to cleanedText
-		if (parsed && typeof parsed === "object" && Object.keys(parsed).length > 0) {
-			return cleanedText;
+			if (Object.keys(parsed).length > 0) {
+				return cleanedText;
+			}
 		}
 
 		return "";
@@ -774,6 +840,7 @@ export const GeminiService = {
 				fsm,
 				options.onToolCall,
 				options.onMediaGenerated,
+				options.onToolProgress,
 			);
 
 			const reply = await parseAndProcessReply(
@@ -835,6 +902,7 @@ export const GeminiService = {
 		chatId?: string,
 		media?: { buffer: Buffer; mimeType: string },
 		onMediaGenerated?: MediaGeneratedCallback,
+		onToolProgress?: ToolProgressCallback,
 	): Promise<string> {
 		return this._generateResponse(history, topicSummary, {
 			chatId,
@@ -854,6 +922,7 @@ export const GeminiService = {
 				: CONFIG.MESSAGES.gemini_error_reply_fallback,
 			mediaFallbackText: media ? "[Photo]" : "[Media]",
 			onToolCall,
+			onToolProgress,
 			onMediaGenerated,
 		});
 	},
@@ -935,6 +1004,8 @@ export const GeminiService = {
 			fallbackError: string;
 			mediaFallbackText: string;
 			onToolCall?: ToolCallCallback;
+			onToolProgress?: ToolProgressCallback;
+			onMediaGenerated?: MediaGeneratedCallback;
 			chatId?: string;
 		},
 	): Promise<string> {
@@ -951,6 +1022,7 @@ export const GeminiService = {
 		topicSummary: string | null,
 		onToolCall?: ToolCallCallback,
 		chatId?: string,
+		onToolProgress?: ToolProgressCallback,
 	): Promise<string> {
 		return this.generateMediaReply(
 			{ buffer: imageBuffer, mimeType },
@@ -965,6 +1037,7 @@ export const GeminiService = {
 				fallbackError: CONFIG.MESSAGES.gemini_error_image_fallback,
 				mediaFallbackText: "[Photo]",
 				onToolCall,
+				onToolProgress,
 				chatId,
 			},
 		);
@@ -977,6 +1050,7 @@ export const GeminiService = {
 		topicSummary: string | null,
 		onToolCall?: ToolCallCallback,
 		chatId?: string,
+		onToolProgress?: ToolProgressCallback,
 	): Promise<string> {
 		return this.generateMediaReply(
 			{ buffer: audioBuffer, mimeType },
@@ -992,6 +1066,7 @@ export const GeminiService = {
 					"I got confused while listening to the voice message, can you try again?",
 				mediaFallbackText: "[Voice]",
 				onToolCall,
+				onToolProgress,
 				chatId,
 			},
 		);

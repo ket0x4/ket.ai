@@ -1,8 +1,29 @@
 import { describe, expect, test } from "bun:test";
-import { GeminiService } from "../src/services/gemini/index";
-import { ai } from "../src/services/gemini/client";
 import { toolRegistry } from "../src/agent/index";
 import type { AgentTool } from "../src/agent/types";
+import { ai } from "../src/services/gemini/client";
+import { GeminiService } from "../src/services/gemini/index";
+
+interface MockPart {
+	functionResponse?: {
+		name: string;
+		id?: string;
+		response: {
+			result: {
+				artifacts?: Array<{
+					filename: string;
+					data?: string;
+					has_data?: boolean;
+				}>;
+			};
+		};
+	};
+}
+
+interface MockContent {
+	role: string;
+	parts?: MockPart[];
+}
 
 function createMockHistory(text = "Calculate something") {
 	return [
@@ -26,7 +47,7 @@ function createMockHistory(text = "Calculate something") {
 describe("Agent Execution Robustness", () => {
 	test("sanitizes heavy base64 data from tool results before sending to Gemini LLM context", async () => {
 		const originalGenerateContent = ai.models.generateContent;
-		const capturedContents: Array<any> = [];
+		const capturedContents: Array<MockContent[]> = [];
 		let onMediaCalled = false;
 
 		// Register dummy artifact producing tool
@@ -55,7 +76,9 @@ describe("Agent Execution Robustness", () => {
 		// biome-ignore lint/suspicious/noExplicitAny: Mocking SDK
 		(ai.models as any).generateContent = async (params: any) => {
 			turnCount++;
-			capturedContents.push(JSON.parse(JSON.stringify(params.contents)));
+			capturedContents.push(
+				JSON.parse(JSON.stringify(params.contents)) as MockContent[],
+			);
 
 			if (turnCount === 1) {
 				// Turn 1: Request tool execution with call id
@@ -109,22 +132,27 @@ describe("Agent Execution Robustness", () => {
 			const turn2Contents = capturedContents[1];
 			// Find tool response part
 			const userTurn = turn2Contents.find(
-				(c: any) => c.role === "user" && c.parts?.some((p: any) => p.functionResponse),
+				(c: MockContent) =>
+					c.role === "user" &&
+					c.parts?.some((p: MockPart) => Boolean(p.functionResponse)),
 			);
 			expect(userTurn).toBeDefined();
 
-			const functionResp = userTurn.parts.find((p: any) => p.functionResponse)
-				.functionResponse;
+			const functionResp = userTurn?.parts?.find((p: MockPart) =>
+				Boolean(p.functionResponse),
+			)?.functionResponse;
+			expect(functionResp).toBeDefined();
+			if (!functionResp) throw new Error("functionResp not found");
 			expect(functionResp.name).toBe("generate_mock_chart");
 			expect(functionResp.id).toBe("call_mock_123");
 
 			// Crucial check: base64 'data' must NOT exist in the LLM functionResponse
 			const sentArtifacts = functionResp.response.result.artifacts;
 			expect(sentArtifacts).toBeDefined();
-			expect(sentArtifacts.length).toBe(1);
-			expect(sentArtifacts[0].filename).toBe("large_chart.png");
-			expect(sentArtifacts[0].data).toBeUndefined(); // Stripped!
-			expect(sentArtifacts[0].has_data).toBeTrue();
+			expect(sentArtifacts?.length).toBe(1);
+			expect(sentArtifacts?.[0].filename).toBe("large_chart.png");
+			expect(sentArtifacts?.[0].data).toBeUndefined(); // Stripped!
+			expect(sentArtifacts?.[0].has_data).toBeTrue();
 		} finally {
 			ai.models.generateContent = originalGenerateContent;
 			toolRegistry.unregister("generate_mock_chart");
@@ -135,10 +163,19 @@ describe("Agent Execution Robustness", () => {
 		const originalGenerateContent = ai.models.generateContent;
 
 		const testCases = [
-			{ json: { text: "Calculated answer is 42" }, expected: "Calculated answer is 42" },
-			{ json: { message: "Task completed successfully" }, expected: "Task completed successfully" },
+			{
+				json: { text: "Calculated answer is 42" },
+				expected: "Calculated answer is 42",
+			},
+			{
+				json: { message: "Task completed successfully" },
+				expected: "Task completed successfully",
+			},
 			{ json: { summary: "Report ready" }, expected: "Report ready" },
-			{ json: { answer: "The capital is Ankara" }, expected: "The capital is Ankara" },
+			{
+				json: { answer: "The capital is Ankara" },
+				expected: "The capital is Ankara",
+			},
 			{ json: { result: "All tests passed" }, expected: "All tests passed" },
 		];
 
@@ -167,7 +204,8 @@ describe("Agent Execution Robustness", () => {
 		const originalGenerateContent = ai.models.generateContent;
 
 		// Model outputs JSON-like text that fails JSON.parse (e.g. unquoted keys or comments)
-		const rawModelText = "```json\n{\n  unquoted_key: 'value',\n  // note\n  output: 100\n}\n```";
+		const rawModelText =
+			"```json\n{\n  unquoted_key: 'value',\n  // note\n  output: 100\n}\n```";
 
 		// biome-ignore lint/suspicious/noExplicitAny: Mocking SDK
 		(ai.models as any).generateContent = async () => ({

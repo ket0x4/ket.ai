@@ -423,6 +423,31 @@ print("Multi files created")
 		expect(data.artifacts?.[0].filename).toBe("target_data.csv");
 	});
 
+	test("should stream real execution chunks via SSE from sandbox daemon", async () => {
+		const res = await fetch(`http://127.0.0.1:${testPort}/execute`, {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+				Accept: "text/event-stream",
+			},
+			body: JSON.stringify({
+				language: "python",
+				stream: true,
+				code: "import sys\nprint('LINE_1_STREAM')\nsys.stdout.flush()\nprint('LINE_2_STREAM')",
+			}),
+		});
+
+		expect(res.ok).toBeTrue();
+		expect(res.headers.get("content-type")).toContain("text/event-stream");
+
+		const bodyText = await res.text();
+		expect(bodyText).toContain("event: status");
+		expect(bodyText).toContain("event: stdout");
+		expect(bodyText).toContain("LINE_1_STREAM");
+		expect(bodyText).toContain("LINE_2_STREAM");
+		expect(bodyText).toContain("event: result");
+	});
+
 	test("should clean up and terminate sandbox daemon", () => {
 		if (sandboxProcess) {
 			try {

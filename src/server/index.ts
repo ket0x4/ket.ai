@@ -1169,6 +1169,65 @@ async function handleSandbox(
 	}
 }
 
+async function handleSandboxExecute(
+	req: Request,
+	auth: AuthContext,
+): Promise<Response> {
+	if (!auth.isOwner && auth.role !== "admin") {
+		return errorResponse(
+			"Forbidden: Admin or owner role required to execute code",
+			403,
+		);
+	}
+	try {
+		const body = (await req.json()) as Record<string, unknown>;
+		const sandboxUrl = CONFIG.SANDBOX_URL.replace(/\/+$/, "");
+		const targetUrl = `${sandboxUrl}/execute`;
+
+		const isStreaming =
+			Boolean(body.stream) ||
+			req.headers.get("accept")?.includes("text/event-stream") === true;
+
+		const headers: Record<string, string> = {
+			"Content-Type": "application/json",
+		};
+		if (isStreaming) {
+			headers.Accept = "text/event-stream";
+		}
+
+		const upstreamRes = await fetch(targetUrl, {
+			method: "POST",
+			headers,
+			body: JSON.stringify({
+				...body,
+				stream: isStreaming,
+			}),
+		});
+
+		if (isStreaming && upstreamRes.body) {
+			return new Response(upstreamRes.body, {
+				status: upstreamRes.status,
+				headers: {
+					"Content-Type": "text/event-stream; charset=utf-8",
+					"Cache-Control": "no-cache, no-transform",
+					Connection: "keep-alive",
+					"Access-Control-Allow-Origin": "*",
+				},
+			});
+		}
+
+		const data = await upstreamRes.json();
+		return jsonResponse(data, upstreamRes.status);
+	} catch (e) {
+		logger.error("[Server] Error in sandbox direct execute:", e);
+		return errorResponse(
+			"Failed to execute sandbox script: " +
+				(e instanceof Error ? e.message : String(e)),
+			500,
+		);
+	}
+}
+
 function isPlaceholderTitle(title?: string | null): boolean {
 	return (
 		!title ||
@@ -1838,6 +1897,9 @@ function handleAdminAndToolsRoutes(
 	}
 	if (pathname === "/api/sandbox" && req.method === "POST") {
 		return handleSandbox(req, auth);
+	}
+	if (pathname === "/api/sandbox/execute" && req.method === "POST") {
+		return handleSandboxExecute(req, auth);
 	}
 	if (pathname === "/api/logs" && req.method === "GET") {
 		return handleLogsGet(url, auth);

@@ -103,6 +103,54 @@ async function apiFetch<T>(
 	return (await res.json()) as T;
 }
 
+function parseSseMessagePart(
+	part: string,
+	onChunk: (event: {
+		type: "status" | "stdout" | "stderr" | "result" | string;
+		text: string;
+		data?: unknown;
+	}) => void,
+) {
+	const trimmed = part.trim();
+	if (!trimmed) return;
+	let eventType = "message";
+	let dataText = "";
+	for (const line of trimmed.split("\n")) {
+		if (line.startsWith("event: ")) eventType = line.slice(7).trim();
+		else if (line.startsWith("data: ")) dataText = line.slice(6);
+	}
+	let parsedData: unknown = dataText;
+	try {
+		parsedData = JSON.parse(dataText);
+	} catch {}
+	onChunk({ type: eventType, text: dataText, data: parsedData });
+}
+
+async function readSseStream(
+	body: ReadableStream<Uint8Array>,
+	onChunk: (event: {
+		type: "status" | "stdout" | "stderr" | "result" | string;
+		text: string;
+		data?: unknown;
+	}) => void,
+) {
+	const reader = body.getReader();
+	const decoder = new TextDecoder();
+	let buffer = "";
+	while (true) {
+		const { done, value } = await reader.read();
+		if (done) break;
+		if (value) {
+			buffer += decoder.decode(value, { stream: true });
+			const parts = buffer.split("\n\n");
+			buffer = parts.pop() || "";
+			for (const part of parts) {
+				parseSseMessagePart(part, onChunk);
+			}
+		}
+	}
+}
+
 export const api = {
 	auth: {
 		me: () => apiFetch<AuthContext>("/api/me"),
@@ -159,22 +207,37 @@ export const api = {
 			chatId: string,
 			data: { is_allowed?: boolean; reply_probability?: number },
 		) =>
-			apiFetch<{ success: boolean; message?: string }>(`/api/chats/${chatId}`, {
+			apiFetch<{ success: boolean; chat: Chat }>(`/api/chats/${chatId}`, {
 				method: "PATCH",
 				body: JSON.stringify(data),
 			}),
+		delete: (chatId: string) =>
+			apiFetch<{ success: boolean; message: string }>(`/api/chats/${chatId}`, {
+				method: "DELETE",
+			}),
+		allow: (chatId: string) =>
+			apiFetch<{ success: boolean; chat: Chat }>(`/api/chats/${chatId}/allow`, {
+				method: "POST",
+			}),
+		disallow: (chatId: string) =>
+			apiFetch<{ success: boolean; chat: Chat }>(
+				`/api/chats/${chatId}/disallow`,
+				{
+					method: "POST",
+				},
+			),
 	},
 	memories: {
 		list: (params?: {
 			chatId?: string;
-			search?: string;
 			category?: string;
+			search?: string;
 			scope?: string;
 		}) => {
 			const searchParams = new URLSearchParams();
 			if (params?.chatId) searchParams.append("chat_id", params.chatId);
-			if (params?.search) searchParams.append("search", params.search);
 			if (params?.category) searchParams.append("category", params.category);
+			if (params?.search) searchParams.append("search", params.search);
 			if (params?.scope) searchParams.append("scope", params.scope);
 			const qs = searchParams.toString();
 			return apiFetch<Memory[]>(`/api/memories${qs ? `?${qs}` : ""}`);
@@ -268,5 +331,76 @@ export const api = {
 				method: "POST",
 				body: JSON.stringify(data),
 			}),
+		execute: (data: {
+			language: string;
+			code: string;
+			packages?: string[];
+			sessionId?: string;
+			filename?: string;
+			target_files?: string[];
+		}) =>
+			apiFetch<{
+				success: boolean;
+				stdout: string;
+				stderr?: string;
+				exitCode: number;
+				executionTimeMs: number;
+				errorHint?: string;
+				artifacts?: Array<{
+					filename: string;
+					mimeType: string;
+					data: string;
+					type: string;
+					sizeBytes: number;
+				}>;
+				images?: Array<{
+					filename: string;
+					mimeType: string;
+					data: string;
+					type: string;
+					sizeBytes: number;
+				}>;
+			}>("/api/sandbox/execute", {
+				method: "POST",
+				body: JSON.stringify(data),
+			}),
+		executeStream: async (
+			data: {
+				language: string;
+				code: string;
+				packages?: string[];
+				sessionId?: string;
+				filename?: string;
+				target_files?: string[];
+			},
+			onChunk: (event: {
+				type: "status" | "stdout" | "stderr" | "result" | string;
+				text: string;
+				data?: unknown;
+			}) => void,
+		) => {
+			const initData = getInitData();
+			const headers: Record<string, string> = {
+				"Content-Type": "application/json",
+				Accept: "text/event-stream",
+			};
+			if (initData) {
+				headers["x-telegram-init-data"] = initData;
+			}
+			const res = await fetch("/api/sandbox/execute", {
+				method: "POST",
+				headers,
+				body: JSON.stringify({ ...data, stream: true }),
+			});
+			if (!res.ok) {
+				const err = (await res.json().catch(() => ({
+					error: `HTTP ${res.status}: ${res.statusText}`,
+				}))) as { error?: string };
+				throw new Error(err.error || `HTTP ${res.status}`);
+			}
+			if (res.body) {
+				await readSseStream(res.body, onChunk);
+			}
+		},
 	},
 };

@@ -7,18 +7,12 @@ import {
 	Sparkles,
 	Users,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { AccessDenied } from "@/components/AccessDenied";
+import { LoadingState } from "@/components/common/LoadingState";
 import { Header } from "@/components/Header";
-import { MemoryModal } from "@/components/modals/MemoryModal";
-import { PersonaModal } from "@/components/modals/PersonaModal";
 import { DashboardTab } from "@/components/tabs/DashboardTab";
-import { GroupsTab } from "@/components/tabs/GroupsTab";
-import { MemoriesTab } from "@/components/tabs/MemoriesTab";
-import { PersonasTab } from "@/components/tabs/PersonasTab";
-import { SandboxTab } from "@/components/tabs/SandboxTab";
-import { SystemTab } from "@/components/tabs/SystemTab";
 import { Toaster } from "@/components/ui/sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api, getTelegramWebApp } from "@/lib/api";
@@ -31,6 +25,42 @@ import type {
 	TelegramUser,
 	UserRole,
 } from "@/types";
+
+const MemoriesTab = lazy(() =>
+	import("@/components/tabs/MemoriesTab").then((m) => ({
+		default: m.MemoriesTab,
+	})),
+);
+const PersonasTab = lazy(() =>
+	import("@/components/tabs/PersonasTab").then((m) => ({
+		default: m.PersonasTab,
+	})),
+);
+const GroupsTab = lazy(() =>
+	import("@/components/tabs/GroupsTab").then((m) => ({
+		default: m.GroupsTab,
+	})),
+);
+const SystemTab = lazy(() =>
+	import("@/components/tabs/SystemTab").then((m) => ({
+		default: m.SystemTab,
+	})),
+);
+const SandboxTab = lazy(() =>
+	import("@/components/tabs/SandboxTab").then((m) => ({
+		default: m.SandboxTab,
+	})),
+);
+const MemoryModal = lazy(() =>
+	import("@/components/modals/MemoryModal").then((m) => ({
+		default: m.MemoryModal,
+	})),
+);
+const PersonaModal = lazy(() =>
+	import("@/components/modals/PersonaModal").then((m) => ({
+		default: m.PersonaModal,
+	})),
+);
 
 async function fetchAllAppData() {
 	const [stats, chats, memories, personas] = await Promise.all([
@@ -206,91 +236,153 @@ export default function App() {
 
 					{/* Tab 2: Memories */}
 					<TabsContent value="memories">
-						<MemoriesTab
-							memories={memories}
-							chats={chats}
-							currentUser={currentUser}
-							role={role}
-							adminChatIds={adminChatIds}
-							isLoading={isLoadingData}
-							onOpenAddModal={() =>
-								setMemoryModal({ open: true, mode: "add", memory: null })
+						<Suspense
+							fallback={
+								<LoadingState
+									text="Loading Memories..."
+									icon={Brain}
+									className="py-12"
+								/>
 							}
-							onOpenEditModal={(m) =>
-								setMemoryModal({ open: true, mode: "edit", memory: m })
-							}
-							onRefresh={loadAppData}
-						/>
+						>
+							<MemoriesTab
+								memories={memories}
+								chats={chats}
+								currentUser={currentUser}
+								role={role}
+								adminChatIds={adminChatIds}
+								isLoading={isLoadingData}
+								onOpenAddModal={() =>
+									setMemoryModal({ open: true, mode: "add", memory: null })
+								}
+								onOpenEditModal={(m) =>
+									setMemoryModal({ open: true, mode: "edit", memory: m })
+								}
+								onRefresh={loadAppData}
+							/>
+						</Suspense>
 					</TabsContent>
 
 					{/* Tab 3: Personas */}
 					<TabsContent value="personas">
-						<PersonasTab
-							chats={chats}
-							currentUser={currentUser}
-							role={role}
-							adminChatIds={adminChatIds}
-							personas={personas}
-							activePersonas={activePersonas}
-							isLoading={isLoadingData}
-							onOpenAddModal={() =>
-								setPersonaModal({ open: true, mode: "add", persona: null })
+						<Suspense
+							fallback={
+								<LoadingState
+									text="Loading Personas..."
+									icon={Bot}
+									className="py-12"
+								/>
 							}
-							onOpenEditModal={(p) =>
-								setPersonaModal({ open: true, mode: "edit", persona: p })
-							}
-							onRefresh={loadAppData}
-						/>
+						>
+							<PersonasTab
+								chats={chats}
+								currentUser={currentUser}
+								role={role}
+								adminChatIds={adminChatIds}
+								personas={personas}
+								activePersonas={activePersonas}
+								isLoading={isLoadingData}
+								onOpenAddModal={() =>
+									setPersonaModal({ open: true, mode: "add", persona: null })
+								}
+								onOpenEditModal={(p) =>
+									setPersonaModal({ open: true, mode: "edit", persona: p })
+								}
+								onRefresh={loadAppData}
+							/>
+						</Suspense>
 					</TabsContent>
 
 					{/* Tab 4: Groups */}
 					<TabsContent value="groups">
-						<GroupsTab
-							chats={chats}
-							role={role}
-							isLoading={isLoadingData}
-							onRefresh={loadAppData}
-						/>
+						<Suspense
+							fallback={
+								<LoadingState
+									text="Loading Groups..."
+									icon={Users}
+									className="py-12"
+								/>
+							}
+						>
+							<GroupsTab
+								chats={chats}
+								role={role}
+								isLoading={isLoadingData}
+								onRefresh={loadAppData}
+							/>
+						</Suspense>
 					</TabsContent>
 
 					{/* Tab 5: System & Logs (Owner) */}
 					{role === "owner" && (
 						<TabsContent value="system">
-							<SystemTab />
+							<Suspense
+								fallback={
+									<LoadingState
+										text="Loading System & Logs..."
+										icon={Settings}
+										className="py-12"
+									/>
+								}
+							>
+								<SystemTab />
+							</Suspense>
 						</TabsContent>
 					)}
 
 					{/* Tab 6: AI Sandbox (Owner) */}
 					{role === "owner" && (
 						<TabsContent value="sandbox">
-							<SandboxTab chats={chats} personas={personas} />
+							<Suspense
+								fallback={
+									<LoadingState
+										text="Loading AI Sandbox..."
+										icon={Sparkles}
+										className="py-12"
+									/>
+								}
+							>
+								<SandboxTab chats={chats} personas={personas} />
+							</Suspense>
 						</TabsContent>
 					)}
 				</Tabs>
 			</main>
 
 			{/* Memory Modal */}
-			<MemoryModal
-				mode={memoryModal.mode}
-				memory={memoryModal.memory}
-				open={memoryModal.open}
-				onOpenChange={(open) => setMemoryModal((prev) => ({ ...prev, open }))}
-				currentUser={currentUser}
-				chats={chats}
-				role={role}
-				adminChatIds={adminChatIds}
-				memberChatIds={memberChatIds}
-				onSuccess={loadAppData}
-			/>
+			{memoryModal.open && (
+				<Suspense fallback={null}>
+					<MemoryModal
+						mode={memoryModal.mode}
+						memory={memoryModal.memory}
+						open={memoryModal.open}
+						onOpenChange={(open) =>
+							setMemoryModal((prev) => ({ ...prev, open }))
+						}
+						currentUser={currentUser}
+						chats={chats}
+						role={role}
+						adminChatIds={adminChatIds}
+						memberChatIds={memberChatIds}
+						onSuccess={loadAppData}
+					/>
+				</Suspense>
+			)}
 
 			{/* Persona Modal */}
-			<PersonaModal
-				mode={personaModal.mode}
-				persona={personaModal.persona}
-				open={personaModal.open}
-				onOpenChange={(open) => setPersonaModal((prev) => ({ ...prev, open }))}
-				onSuccess={loadAppData}
-			/>
+			{personaModal.open && (
+				<Suspense fallback={null}>
+					<PersonaModal
+						mode={personaModal.mode}
+						persona={personaModal.persona}
+						open={personaModal.open}
+						onOpenChange={(open) =>
+							setPersonaModal((prev) => ({ ...prev, open }))
+						}
+						onSuccess={loadAppData}
+					/>
+				</Suspense>
+			)}
 
 			{/* Modern Sonner Toast Notifications */}
 			<Toaster position="bottom-right" richColors />

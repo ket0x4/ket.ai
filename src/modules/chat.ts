@@ -5,6 +5,7 @@ import { botUsername, withChatLock, withTyping } from "../services/bot";
 import {
 	GeminiService,
 	type GeneratedMediaArtifact,
+	type ToolProgressUpdate,
 } from "../services/gemini/index";
 import { checkAndRunBackgroundMemoryExtraction } from "../services/gemini/memoryWorker";
 import { isConversationFollowUp } from "../utils/conversation";
@@ -146,12 +147,64 @@ function resolveToolStatusMessage(
 	}
 }
 
+function extractRecentStdoutSnippet(fullStdout?: string, maxLines = 3): string {
+	if (!fullStdout) return "";
+	const lines = fullStdout
+		.split("\n")
+		.map((l) => l.trim())
+		.filter(Boolean);
+	if (lines.length === 0) return "";
+	const recent = lines.slice(-maxLines);
+	return recent
+		.map((l) => `> ${l.length > 70 ? `${l.slice(0, 67)}...` : l}`)
+		.join("\n");
+}
+
 function createToolNotifier(
 	ctx: Context,
 	replyToMessageId?: number,
 	logPrefix: string = "[Chat]",
 ) {
 	let statusMessageId: number | undefined;
+	let currentBaseStatus = "";
+	let currentStdout = "";
+	let lastEditTime = 0;
+	let throttleTimer: ReturnType<typeof setTimeout> | null = null;
+	let latestRenderedText = "";
+	let isCleanedUp = false;
+
+	const flushEdit = async () => {
+		if (isCleanedUp || !statusMessageId || !ctx.chat || !latestRenderedText) {
+			return;
+		}
+		const textToSend = latestRenderedText;
+		lastEditTime = Date.now();
+		try {
+			await ctx.api.editMessageText(ctx.chat.id, statusMessageId, textToSend);
+		} catch (e) {
+			logger.debug(`${logPrefix} Failed to edit status message:`, e);
+		}
+	};
+
+	const queueUpdate = (newText: string) => {
+		if (isCleanedUp) return;
+		latestRenderedText = newText;
+		const now = Date.now();
+		const elapsed = now - lastEditTime;
+
+		if (elapsed >= 1500) {
+			if (throttleTimer) {
+				clearTimeout(throttleTimer);
+				throttleTimer = null;
+			}
+			flushEdit();
+		} else if (!throttleTimer) {
+			throttleTimer = setTimeout(() => {
+				throttleTimer = null;
+				flushEdit();
+			}, 1500 - elapsed);
+		}
+	};
 
 	return {
 		onToolCall: async (
@@ -159,27 +212,25 @@ function createToolNotifier(
 			args: Record<string, unknown> = {},
 			_step?: number,
 		) => {
-			const statusMsgText = resolveToolStatusMessage(toolName, args);
+			if (isCleanedUp) return;
+			currentBaseStatus = resolveToolStatusMessage(toolName, args);
+			currentStdout = "";
 
 			if (statusMessageId && ctx.chat) {
 				logger.info(
-					`${logPrefix} Updating tool status notification: "${statusMsgText}"`,
+					`${logPrefix} Updating tool status notification: "${currentBaseStatus}"`,
 				);
-				await ctx.api
-					.editMessageText(ctx.chat.id, statusMessageId, statusMsgText)
-					.catch((e) => {
-						logger.debug(`${logPrefix} Failed to edit status message:`, e);
-					});
+				queueUpdate(currentBaseStatus);
 				return;
 			}
 
 			logger.info(
-				`${logPrefix} Sending tool status notification: "${statusMsgText}"`,
+				`${logPrefix} Sending tool status notification: "${currentBaseStatus}"`,
 			);
 
 			const sentMsg = await ctx
 				.reply(
-					statusMsgText,
+					currentBaseStatus,
 					replyToMessageId
 						? { reply_to_message_id: replyToMessageId }
 						: undefined,
@@ -191,9 +242,35 @@ function createToolNotifier(
 
 			if (sentMsg) {
 				statusMessageId = sentMsg.message_id;
+				lastEditTime = Date.now();
 			}
 		},
+		onToolProgress: async (
+			_toolName: string,
+			progress: ToolProgressUpdate,
+			_step?: number,
+		) => {
+			if (isCleanedUp) return;
+			if (progress.statusText) {
+				currentBaseStatus = `⚡ ${progress.statusText}`;
+			}
+			if (progress.fullStdout) {
+				currentStdout = progress.fullStdout;
+			}
+
+			const snippet = extractRecentStdoutSnippet(currentStdout);
+			const fullMessage = snippet
+				? `${currentBaseStatus}\n────────────────────────\n${snippet}`
+				: currentBaseStatus;
+
+			queueUpdate(fullMessage);
+		},
 		cleanup: async () => {
+			isCleanedUp = true;
+			if (throttleTimer) {
+				clearTimeout(throttleTimer);
+				throttleTimer = null;
+			}
 			if (statusMessageId && ctx.chat) {
 				await ctx.api.deleteMessage(ctx.chat.id, statusMessageId).catch((e) => {
 					logger.warn(`${logPrefix} Failed to delete status message:`, e);
@@ -274,6 +351,7 @@ async function generateAndSendReply(
 		async (media) => {
 			generatedArtifacts.push(...media);
 		},
+		notifier.onToolProgress,
 	);
 
 	// Send generated artifacts (Photos, Spreadsheets, PDF reports, Videos, Audio)

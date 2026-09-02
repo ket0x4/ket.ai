@@ -2,6 +2,12 @@ import { CONFIG } from "../../config";
 import logger from "../../utils/logger";
 import type { AgentTool } from "../types";
 
+export interface CodeExecutionProgressEvent {
+	type: "status" | "stdout" | "stderr";
+	text: string;
+	fullStdoutSoFar?: string;
+}
+
 export interface CodeExecutionArgs {
 	language: "python" | "javascript" | "typescript" | "bash";
 	code: string;
@@ -9,6 +15,8 @@ export interface CodeExecutionArgs {
 	sessionId?: string;
 	filename?: string;
 	target_files?: string[];
+	stream?: boolean;
+	onProgress?: (event: CodeExecutionProgressEvent) => void;
 }
 
 export type ArtifactType = "image" | "document" | "video" | "audio";
@@ -74,6 +82,217 @@ function checkConnectionError(errorMessage: string): boolean {
 	);
 }
 
+interface RawSandboxExecutionResponse {
+	success: boolean;
+	stdout: string;
+	stderr?: string;
+	exitCode: number;
+	executionTimeMs: number;
+	installedPackages?: string[];
+	artifacts?: CodeExecutionArtifact[];
+	images?: CodeExecutionImage[];
+	errorHint?: string;
+	truncated?: boolean;
+	error?: string;
+}
+
+interface SseParserState {
+	accumulatedStdout: string;
+	accumulatedStderr: string;
+	finalResult: RawSandboxExecutionResponse | null;
+}
+
+function extractSseEventLines(part: string): {
+	eventType: string;
+	dataText: string;
+} {
+	let eventType = "message";
+	let dataText = "";
+	for (const line of part.trim().split("\n")) {
+		if (line.startsWith("event: ")) {
+			eventType = line.slice(7).trim();
+		} else if (line.startsWith("data: ")) {
+			dataText = line.slice(6);
+		}
+	}
+	return { eventType, dataText };
+}
+
+function handleSseStatusEvent(
+	dataText: string,
+	state: SseParserState,
+	onProgress?: (event: CodeExecutionProgressEvent) => void,
+) {
+	let message = dataText;
+	try {
+		const obj = JSON.parse(dataText);
+		if (obj.message) message = obj.message;
+	} catch {}
+	onProgress?.({
+		type: "status",
+		text: message,
+		fullStdoutSoFar: state.accumulatedStdout,
+	});
+}
+
+function processSseEvent(
+	part: string,
+	state: SseParserState,
+	onProgress?: (event: CodeExecutionProgressEvent) => void,
+) {
+	if (!part.trim()) return;
+	const { eventType, dataText } = extractSseEventLines(part);
+
+	if (eventType === "stdout") {
+		state.accumulatedStdout += dataText;
+		onProgress?.({
+			type: "stdout",
+			text: dataText,
+			fullStdoutSoFar: state.accumulatedStdout,
+		});
+	} else if (eventType === "stderr") {
+		state.accumulatedStderr += dataText;
+		onProgress?.({
+			type: "stderr",
+			text: dataText,
+			fullStdoutSoFar: state.accumulatedStdout,
+		});
+	} else if (eventType === "status") {
+		handleSseStatusEvent(dataText, state, onProgress);
+	} else if (eventType === "result") {
+		try {
+			state.finalResult = JSON.parse(dataText) as RawSandboxExecutionResponse;
+		} catch (e) {
+			logger.warn("[CodeExecutionTool] Failed to parse result SSE payload:", e);
+		}
+	}
+}
+
+async function parseSseExecutionResponse(
+	response: Response,
+	onProgress?: (event: CodeExecutionProgressEvent) => void,
+): Promise<RawSandboxExecutionResponse> {
+	if (!response.body) {
+		throw new Error("Sandbox response body is empty");
+	}
+
+	const reader = response.body.getReader();
+	const decoder = new TextDecoder();
+	let buffer = "";
+	const state: SseParserState = {
+		accumulatedStdout: "",
+		accumulatedStderr: "",
+		finalResult: null,
+	};
+
+	while (true) {
+		const { done, value } = await reader.read();
+		if (done) break;
+		if (value) {
+			buffer += decoder.decode(value, { stream: true });
+			const parts = buffer.split("\n\n");
+			buffer = parts.pop() || "";
+
+			for (const part of parts) {
+				processSseEvent(part, state, onProgress);
+			}
+		}
+	}
+
+	if (state.finalResult) {
+		return state.finalResult;
+	}
+
+	return {
+		success: state.accumulatedStderr.length === 0,
+		stdout: state.accumulatedStdout,
+		stderr: state.accumulatedStderr || undefined,
+		exitCode: state.accumulatedStderr.length === 0 ? 0 : 1,
+		executionTimeMs: 0,
+	};
+}
+
+async function fetchSandboxExecution(
+	targetUrl: string,
+	payload: Record<string, unknown>,
+	useStreaming: boolean,
+	onProgress?: (event: CodeExecutionProgressEvent) => void,
+): Promise<RawSandboxExecutionResponse> {
+	const controller = new AbortController();
+	const timeoutId = setTimeout(
+		() => controller.abort(),
+		CONFIG.SANDBOX_TIMEOUT_MS + 5000,
+	);
+
+	const headers: Record<string, string> = {
+		"Content-Type": "application/json",
+	};
+	if (useStreaming) {
+		headers.Accept = "text/event-stream";
+	}
+
+	try {
+		const response = await fetch(targetUrl, {
+			method: "POST",
+			headers,
+			body: JSON.stringify(payload),
+			signal: controller.signal,
+		});
+
+		clearTimeout(timeoutId);
+
+		if (!response.ok) {
+			const errorText = await response.text().catch(() => "");
+			logger.error(
+				`[CodeExecutionTool] Sandbox HTTP error ${response.status}: ${errorText}`,
+			);
+			return {
+				success: false,
+				stdout: "",
+				stderr: `Sandbox returned HTTP ${response.status}: ${errorText}`,
+				exitCode: 1,
+				executionTimeMs: 0,
+				error: `Sandbox execution failed with HTTP ${response.status}`,
+			};
+		}
+
+		const isSse = response.headers
+			.get("content-type")
+			?.includes("text/event-stream");
+		return isSse
+			? await parseSseExecutionResponse(response, onProgress)
+			: ((await response.json()) as RawSandboxExecutionResponse);
+	} finally {
+		clearTimeout(timeoutId);
+	}
+}
+
+function formatSandboxResult(
+	data: RawSandboxExecutionResponse,
+): CodeExecutionResult {
+	const artifacts = data.artifacts || data.images || [];
+	const images = data.images || artifacts.filter((a) => a.type === "image");
+
+	logger.info(
+		`[CodeExecutionTool] Sandbox executed in ${data.executionTimeMs}ms with exit code ${data.exitCode} (artifacts: ${artifacts.length}, images: ${images.length})`,
+	);
+
+	return {
+		success: data.success,
+		stdout: data.stdout || "",
+		stderr: data.stderr || undefined,
+		exit_code: data.exitCode,
+		execution_time_ms: data.executionTimeMs,
+		installed_packages: data.installedPackages,
+		artifacts,
+		images,
+		error_hint: data.errorHint,
+		truncated: data.truncated,
+		error: data.error,
+		system_note: buildSystemNote({ ...data, artifacts, images }),
+	};
+}
+
 /**
  * Executes a code snippet inside the dedicated sandboxed container.
  */
@@ -85,7 +304,10 @@ export async function executeInSandbox(
 	const packages = Array.isArray(args.packages) ? args.packages : [];
 	const sessionId = args.sessionId;
 	const filename = args.filename;
-	const targetFiles = Array.isArray(args.target_files) ? args.target_files : undefined;
+	const targetFiles = Array.isArray(args.target_files)
+		? args.target_files
+		: undefined;
+	const useStreaming = Boolean(args.onProgress || args.stream);
 
 	if (!code.trim()) {
 		return {
@@ -102,83 +324,27 @@ export async function executeInSandbox(
 	const targetUrl = `${sandboxUrl}/execute`;
 
 	logger.info(
-		`[CodeExecutionTool] Sending ${language} code (${code.length} chars, ${packages.length} packages, session: ${sessionId || "ephemeral"}) to sandbox at ${targetUrl}...`,
+		`[CodeExecutionTool] Sending ${language} code (${code.length} chars, ${packages.length} packages, session: ${sessionId || "ephemeral"}, stream: ${useStreaming}) to sandbox at ${targetUrl}...`,
 	);
 
 	try {
-		const controller = new AbortController();
-		const timeoutId = setTimeout(
-			() => controller.abort(),
-			CONFIG.SANDBOX_TIMEOUT_MS + 5000,
-		);
-
-		const response = await fetch(targetUrl, {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({
+		const data = await fetchSandboxExecution(
+			targetUrl,
+			{
 				language,
 				code,
 				packages,
 				sessionId,
 				filename,
 				targetFiles,
+				stream: useStreaming,
 				timeoutMs: CONFIG.SANDBOX_TIMEOUT_MS,
-			}),
-			signal: controller.signal,
-		});
-
-		clearTimeout(timeoutId);
-
-		if (!response.ok) {
-			const errorText = await response.text().catch(() => "");
-			logger.error(
-				`[CodeExecutionTool] Sandbox HTTP error ${response.status}: ${errorText}`,
-			);
-			return {
-				success: false,
-				stdout: "",
-				stderr: `Sandbox returned HTTP ${response.status}: ${errorText}`,
-				exit_code: 1,
-				execution_time_ms: 0,
-				error: `Sandbox execution failed with HTTP ${response.status}`,
-			};
-		}
-
-		const data = (await response.json()) as {
-			success: boolean;
-			stdout: string;
-			stderr: string;
-			exitCode: number;
-			executionTimeMs: number;
-			installedPackages?: string[];
-			artifacts?: CodeExecutionArtifact[];
-			images?: CodeExecutionImage[];
-			errorHint?: string;
-			truncated?: boolean;
-			error?: string;
-		};
-
-		const artifacts = data.artifacts || data.images || [];
-		const images = data.images || artifacts.filter((a) => a.type === "image");
-
-		logger.info(
-			`[CodeExecutionTool] Sandbox executed in ${data.executionTimeMs}ms with exit code ${data.exitCode} (artifacts: ${artifacts.length}, images: ${images.length})`,
+			},
+			useStreaming,
+			args.onProgress,
 		);
 
-		return {
-			success: data.success,
-			stdout: data.stdout || "",
-			stderr: data.stderr || undefined,
-			exit_code: data.exitCode,
-			execution_time_ms: data.executionTimeMs,
-			installed_packages: data.installedPackages,
-			artifacts,
-			images,
-			error_hint: data.errorHint,
-			truncated: data.truncated,
-			error: data.error,
-			system_note: buildSystemNote({ ...data, artifacts, images }),
-		};
+		return formatSandboxResult(data);
 	} catch (err: unknown) {
 		const errorMessage = err instanceof Error ? err.message : String(err);
 		logger.error("[CodeExecutionTool] Failed to connect to sandbox:", err);

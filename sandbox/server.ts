@@ -9,6 +9,7 @@ interface ExecuteRequest {
 	sessionId?: string;
 	filename?: string;
 	targetFiles?: string[];
+	stream?: boolean;
 }
 
 export type ArtifactType = "image" | "document" | "video" | "audio";
@@ -461,10 +462,39 @@ function generateErrorHint(
 	return undefined;
 }
 
+async function streamReader(
+	stream: ReadableStream<Uint8Array>,
+	onChunk?: (chunk: string) => void,
+): Promise<string> {
+	const reader = stream.getReader();
+	const decoder = new TextDecoder();
+	let accumulated = "";
+	try {
+		while (true) {
+			const { done, value } = await reader.read();
+			if (done) break;
+			if (value) {
+				const text = decoder.decode(value, { stream: true });
+				accumulated += text;
+				if (onChunk) {
+					try {
+						onChunk(text);
+					} catch {}
+				}
+			}
+		}
+	} finally {
+		reader.releaseLock();
+	}
+	return accumulated;
+}
+
 async function runCommand(
 	cmd: string[],
 	cwd: string,
 	timeoutMs: number,
+	onStdoutChunk?: (chunk: string) => void,
+	onStderrChunk?: (chunk: string) => void,
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
 	const proc = Bun.spawn(cmd, {
 		cwd,
@@ -494,16 +524,16 @@ async function runCommand(
 
 	const executionPromise = (async () => {
 		try {
-			const [stdoutBytes, stderrBytes] = await Promise.all([
-				new Response(proc.stdout).arrayBuffer(),
-				new Response(proc.stderr).arrayBuffer(),
+			const [stdoutText, stderrText] = await Promise.all([
+				streamReader(proc.stdout, onStdoutChunk),
+				streamReader(proc.stderr, onStderrChunk),
 			]);
 			const exitCode = await proc.exited;
 			if (timer) clearTimeout(timer);
 
 			return {
-				stdout: Buffer.from(stdoutBytes).toString("utf-8"),
-				stderr: Buffer.from(stderrBytes).toString("utf-8"),
+				stdout: stdoutText,
+				stderr: stderrText,
 				exitCode,
 			};
 		} catch (err) {
@@ -592,9 +622,210 @@ async function handleExecute(req: Request): Promise<Response> {
 		);
 	}
 
+	const isStreaming =
+		Boolean(body.stream) ||
+		req.headers.get("accept")?.includes("text/event-stream") === true;
+
 	const startTime = Date.now();
 	let packageInstallStderr = "";
 	const installedPackages: string[] = [];
+
+	if (isStreaming) {
+		const stream = new ReadableStream({
+			async start(controller) {
+				const encoder = new TextEncoder();
+				const sendEvent = (event: string, data: unknown) => {
+					try {
+						const payload =
+							typeof data === "string" ? data : JSON.stringify(data);
+						controller.enqueue(
+							encoder.encode(`event: ${event}\ndata: ${payload}\n\n`),
+						);
+					} catch {}
+				};
+
+				try {
+					// Step 1: Install packages if requested
+					if (packages.length > 0) {
+						sendEvent("status", {
+							stage: "installing",
+							message: `Installing packages: ${packages.join(", ")}...`,
+						});
+						let installCmd: string[] = [];
+
+						if (normalizedLang === "python") {
+							installCmd = [
+								"pip",
+								"install",
+								"--cache-dir",
+								"/home/sandboxuser/.cache/pip",
+								...packages,
+							];
+						} else if (
+							normalizedLang === "javascript" ||
+							normalizedLang === "typescript"
+						) {
+							installCmd = ["bun", "add", ...packages];
+						}
+
+						if (installCmd.length > 0) {
+							const pkgResult = await runCommand(
+								installCmd,
+								workspaceDir,
+								60_000,
+								(chunk) => sendEvent("stdout", chunk),
+								(chunk) => sendEvent("stderr", chunk),
+							);
+							if (pkgResult.exitCode !== 0) {
+								console.warn(
+									`[Sandbox:${workspaceDir}] Package install warning / error:`,
+									pkgResult.stderr,
+								);
+								packageInstallStderr = `Package installation warning:\n${pkgResult.stderr}\n`;
+								sendEvent("status", {
+									stage: "install_warning",
+									message: `Package install warning: ${pkgResult.stderr.slice(0, 200)}`,
+								});
+							} else {
+								installedPackages.push(...packages);
+								sendEvent("status", {
+									stage: "install_success",
+									message: `Packages installed successfully: ${packages.join(", ")}`,
+								});
+							}
+						}
+					}
+
+					// Step 2: Take snapshot of existing files in workspace before execution
+					const beforeSnapshot = getWorkspaceSnapshot(workspaceDir);
+
+					// Step 3: Write script file
+					const { scriptFileName, execCommand } = resolveScriptCommand(
+						normalizedLang,
+						filename,
+					);
+					const scriptPath = resolveSafePath(workspaceDir, scriptFileName);
+					writeFileSync(scriptPath, code, "utf-8");
+
+					// Step 4: Execute script with live stream
+					sendEvent("status", {
+						stage: "executing",
+						message: `Executing ${normalizedLang} script (${scriptFileName})...`,
+					});
+
+					const result = await runCommand(
+						execCommand,
+						workspaceDir,
+						timeout,
+						(chunk) => sendEvent("stdout", chunk),
+						(chunk) => sendEvent("stderr", chunk),
+					);
+					const durationMs = Date.now() - startTime;
+
+					const totalStderr = packageInstallStderr
+						? `${packageInstallStderr}\n${result.stderr}`
+						: result.stderr;
+
+					sendEvent("status", {
+						stage: "detecting_artifacts",
+						message: "Scanning workspace for generated files, charts, and media...",
+					});
+
+					// Detect any artifacts generated specifically by this script execution
+					const generatedArtifacts = detectGeneratedArtifacts(
+						workspaceDir,
+						[scriptFileName, "package.json", "bun.lock", ".session_meta.json"],
+						beforeSnapshot,
+						targetFiles,
+					);
+					const generatedImages = generatedArtifacts.filter(
+						(a) => a.type === "image",
+					);
+
+					const stdoutTruncated = truncateOutput(result.stdout);
+					const stderrTruncated = truncateOutput(totalStderr);
+					const errorHint = generateErrorHint(totalStderr, result.exitCode);
+
+					// Save session metadata for continuity
+					if (isPersistent) {
+						try {
+							const metaPath = join(workspaceDir, ".session_meta.json");
+							writeFileSync(
+								metaPath,
+								JSON.stringify(
+									{
+										lastLanguage: normalizedLang,
+										lastScriptFile: scriptFileName,
+										lastExitCode: result.exitCode,
+										lastExecutionTimeMs: durationMs,
+										lastStderrSnippet: totalStderr.slice(0, 500),
+										lastStdoutSnippet: result.stdout.slice(0, 500),
+										lastExecutedAt: new Date().toISOString(),
+										errorHint,
+									},
+									null,
+									2,
+								),
+								"utf-8",
+							);
+						} catch {}
+					}
+
+					const responsePayload: ExecuteResponse = {
+						success: result.exitCode === 0,
+						stdout: stdoutTruncated.text,
+						stderr: stderrTruncated.text,
+						exitCode: result.exitCode,
+						executionTimeMs: durationMs,
+						installedPackages,
+						artifacts:
+							generatedArtifacts.length > 0 ? generatedArtifacts : undefined,
+						images:
+							generatedImages.length > 0 ? generatedImages : undefined,
+						errorHint,
+						truncated: stdoutTruncated.truncated || stderrTruncated.truncated,
+					};
+
+					sendEvent("result", responsePayload);
+				} catch (error) {
+					const durationMs = Date.now() - startTime;
+					const errMessage =
+						error instanceof Error ? error.message : String(error);
+					console.error(`[Sandbox:${workspaceDir}] Streaming execution exception:`, error);
+					sendEvent("result", {
+						success: false,
+						stdout: "",
+						stderr: errMessage,
+						exitCode: 1,
+						executionTimeMs: durationMs,
+						error: errMessage,
+					});
+				} finally {
+					// Clean up isolated temporary workspace
+					if (!isPersistent) {
+						try {
+							rmSync(workspaceDir, { recursive: true, force: true });
+						} catch (cleanupErr) {
+							console.warn(
+								`[Sandbox:${workspaceDir}] Failed to clean up workspace:`,
+								cleanupErr,
+							);
+						}
+					}
+					controller.close();
+				}
+			},
+		});
+
+		return new Response(stream, {
+			headers: {
+				"Content-Type": "text/event-stream; charset=utf-8",
+				"Cache-Control": "no-cache, no-transform",
+				Connection: "keep-alive",
+				"Access-Control-Allow-Origin": "*",
+			},
+		});
+	}
 
 	try {
 		// Step 1: Install packages if requested

@@ -65,6 +65,29 @@ function getSandboxTargetUrl(endpoint: string): string {
 	return `${sandboxUrl}${endpoint}`;
 }
 
+async function postToWorkspaceSandbox<T>(
+	endpoint: string,
+	body: Record<string, unknown>,
+): Promise<{ ok: true; data: T } | { ok: false; error: string }> {
+	const targetUrl = getSandboxTargetUrl(endpoint);
+	const response = await fetch(targetUrl, {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify(body),
+	});
+
+	if (!response.ok) {
+		const errorText = await response.text().catch(() => "");
+		return {
+			ok: false,
+			error: `HTTP ${response.status}: ${errorText}`,
+		};
+	}
+
+	const data = (await response.json()) as T;
+	return { ok: true, data };
+}
+
 export async function readWorkspaceFile(
 	args: ReadWorkspaceFileArgs,
 ): Promise<ReadWorkspaceFileResult> {
@@ -77,34 +100,27 @@ export async function readWorkspaceFile(
 		};
 	}
 
-	const targetUrl = getSandboxTargetUrl("/workspace/read");
 	try {
-		const response = await fetch(targetUrl, {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({
-				filename,
-				sessionId: args.sessionId || "default",
-			}),
-		});
-
-		if (!response.ok) {
-			const errorText = await response.text().catch(() => "");
-			return {
-				success: false,
-				filename,
-				error: `HTTP ${response.status}: ${errorText}`,
-				system_note: `Failed to read ${filename}. Check if the file exists using list_workspace_files.`,
-			};
-		}
-
-		const data = (await response.json()) as {
+		const res = await postToWorkspaceSandbox<{
 			success: boolean;
 			content?: string;
 			sizeBytes?: number;
 			error?: string;
-		};
+		}>("/workspace/read", {
+			filename,
+			sessionId: args.sessionId || "default",
+		});
 
+		if (!res.ok) {
+			return {
+				success: false,
+				filename,
+				error: res.error,
+				system_note: `Failed to read ${filename}. Check if the file exists using list_workspace_files.`,
+			};
+		}
+
+		const data = res.data;
 		return {
 			success: data.success,
 			filename,
@@ -140,34 +156,27 @@ export async function writeWorkspaceFile(
 		};
 	}
 
-	const targetUrl = getSandboxTargetUrl("/workspace/write");
 	try {
-		const response = await fetch(targetUrl, {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({
-				filename,
-				content,
-				sessionId: args.sessionId || "default",
-			}),
+		const res = await postToWorkspaceSandbox<{
+			success: boolean;
+			sizeBytes?: number;
+			error?: string;
+		}>("/workspace/write", {
+			filename,
+			content,
+			sessionId: args.sessionId || "default",
 		});
 
-		if (!response.ok) {
-			const errorText = await response.text().catch(() => "");
+		if (!res.ok) {
 			return {
 				success: false,
 				filename,
-				error: `HTTP ${response.status}: ${errorText}`,
+				error: res.error,
 				system_note: `Failed to write ${filename}.`,
 			};
 		}
 
-		const data = (await response.json()) as {
-			success: boolean;
-			sizeBytes?: number;
-			error?: string;
-		};
-
+		const data = res.data;
 		return {
 			success: data.success,
 			filename,
@@ -192,33 +201,26 @@ export async function writeWorkspaceFile(
 export async function listWorkspaceFiles(
 	args: ListWorkspaceFilesArgs,
 ): Promise<ListWorkspaceFilesResult> {
-	const targetUrl = getSandboxTargetUrl("/workspace/list");
 	try {
-		const response = await fetch(targetUrl, {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({
-				sessionId: args.sessionId || "default",
-			}),
-		});
-
-		if (!response.ok) {
-			const errorText = await response.text().catch(() => "");
-			return {
-				success: false,
-				files: [],
-				totalFiles: 0,
-				error: `HTTP ${response.status}: ${errorText}`,
-			};
-		}
-
-		const data = (await response.json()) as {
+		const res = await postToWorkspaceSandbox<{
 			success: boolean;
 			files?: WorkspaceFileInfo[];
 			totalFiles?: number;
 			error?: string;
-		};
+		}>("/workspace/list", {
+			sessionId: args.sessionId || "default",
+		});
 
+		if (!res.ok) {
+			return {
+				success: false,
+				files: [],
+				totalFiles: 0,
+				error: res.error,
+			};
+		}
+
+		const data = res.data;
 		const files = data.files || [];
 		return {
 			success: data.success,
@@ -243,30 +245,23 @@ export async function listWorkspaceFiles(
 export async function resetWorkspace(
 	args: ResetWorkspaceArgs,
 ): Promise<ResetWorkspaceResult> {
-	const targetUrl = getSandboxTargetUrl("/workspace/reset");
 	try {
-		const response = await fetch(targetUrl, {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({
-				sessionId: args.sessionId || "default",
-			}),
-		});
-
-		if (!response.ok) {
-			const errorText = await response.text().catch(() => "");
-			return {
-				success: false,
-				error: `HTTP ${response.status}: ${errorText}`,
-			};
-		}
-
-		const data = (await response.json()) as {
+		const res = await postToWorkspaceSandbox<{
 			success: boolean;
 			message?: string;
 			error?: string;
-		};
+		}>("/workspace/reset", {
+			sessionId: args.sessionId || "default",
+		});
 
+		if (!res.ok) {
+			return {
+				success: false,
+				error: res.error,
+			};
+		}
+
+		const data = res.data;
 		return {
 			success: data.success,
 			message: data.message,

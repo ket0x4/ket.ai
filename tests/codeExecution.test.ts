@@ -292,4 +292,74 @@ print("Top Seller Books:\n1. Atomic Habits\n2. The Psychology of Money")
 			mockServer.stop(true);
 		}
 	});
+
+	test("should stream execution chunks via SSE and trigger onProgress callback", async () => {
+		const mockServer = Bun.serve({
+			port: 8096,
+			fetch(req) {
+				const url = new URL(req.url);
+				if (url.pathname === "/execute" && req.method === "POST") {
+					const stream = new ReadableStream({
+						start(controller) {
+							const encoder = new TextEncoder();
+							controller.enqueue(
+								encoder.encode(
+									'event: status\ndata: {"stage":"installing","message":"Installing requests..."}\n\n',
+								),
+							);
+							controller.enqueue(
+								encoder.encode(
+									"event: stdout\ndata: Step 1: Connecting to API...\n\n",
+								),
+							);
+							controller.enqueue(
+								encoder.encode(
+									"event: stdout\ndata: Step 2: Downloaded 100 items.\n\n",
+								),
+							);
+							controller.enqueue(
+								encoder.encode(
+									'event: result\ndata: {"success":true,"stdout":"Step 1: Connecting to API...\\nStep 2: Downloaded 100 items.","exitCode":0,"executionTimeMs":220}\n\n',
+								),
+							);
+							controller.close();
+						},
+					});
+
+					return new Response(stream, {
+						headers: {
+							"Content-Type": "text/event-stream",
+						},
+					});
+				}
+				return Response.json({ error: "Not found" }, { status: 404 });
+			},
+		});
+
+		const originalUrl = CONFIG.SANDBOX_URL;
+		CONFIG.SANDBOX_URL = `http://127.0.0.1:${mockServer.port}`;
+
+		const progressEvents: Array<{ type: string; text: string }> = [];
+
+		try {
+			const result = await executeInSandbox({
+				language: "python",
+				code: "print('Step 1')\nprint('Step 2')",
+				onProgress: (evt) => {
+					progressEvents.push({ type: evt.type, text: evt.text });
+				},
+			});
+
+			expect(result.success).toBeTrue();
+			expect(result.stdout).toContain("Step 1: Connecting to API...");
+			expect(result.stdout).toContain("Step 2: Downloaded 100 items.");
+			expect(result.exit_code).toBe(0);
+			expect(progressEvents.length).toBeGreaterThanOrEqual(3);
+			expect(progressEvents.some((e) => e.type === "status")).toBeTrue();
+			expect(progressEvents.some((e) => e.type === "stdout")).toBeTrue();
+		} finally {
+			CONFIG.SANDBOX_URL = originalUrl;
+			mockServer.stop(true);
+		}
+	});
 });
