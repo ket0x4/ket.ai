@@ -1,8 +1,6 @@
 import type { Context } from "grammy";
 import { CONFIG } from "../config/index";
 import type { MessageRow } from "../db/repository";
-import { Repository } from "../db/repository";
-import { isConversationFollowUp } from "../utils/conversation";
 import logger from "../utils/logger";
 import {
 	downloadTelegramFile,
@@ -27,27 +25,19 @@ interface MediaProcessorOptions {
 
 export function isDirectMediaInteraction(
 	ctx: Context,
-	mediaTypeTag: string,
+	_mediaTypeTag: string,
 	extraCondition?: boolean,
 ): boolean {
 	const msg = ctx.message;
 	const chat = ctx.chat;
 	if (!msg || !chat) return false;
 
-	const chatIdStr = chat.id.toString();
-	const isReplyToBot = msg.reply_to_message?.from?.username === botUsername;
+	const isReplyToBot = Boolean(
+		botUsername && msg.reply_to_message?.from?.username === botUsername,
+	);
 	const isPrivateChat = chat.type === "private";
 
-	const isFollowUp = ctx.from
-		? isConversationFollowUp(chatIdStr, ctx.from.id, msg.date)
-		: false;
-	if (isFollowUp) {
-		logger.debug(
-			`[${mediaTypeTag}] Follow-up detected for user ${ctx.from?.first_name} in chat ${chatIdStr}`,
-		);
-	}
-
-	return isReplyToBot || isPrivateChat || isFollowUp || Boolean(extraCondition);
+	return isReplyToBot || isPrivateChat || Boolean(extraCondition);
 }
 
 export async function processMediaInteraction(

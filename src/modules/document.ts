@@ -143,8 +143,16 @@ export function registerDocumentHandlers(bot: Bot) {
 		if (!doc) return;
 
 		const caption = ctx.message.caption || "";
-		const containsNickname = /\bket\b/i.test(caption);
-		const isMentioned = caption.includes(`@${botUsername}`);
+		const botName = botUsername || "ket";
+		const nicknameRegex = new RegExp(
+			`\\b${botName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`,
+			"i",
+		);
+		const containsNickname =
+			nicknameRegex.test(caption) || /\bket\b/i.test(caption);
+		const isMentioned = Boolean(
+			botUsername && caption.includes(`@${botUsername}`),
+		);
 
 		const isDirect = isDirectMediaInteraction(
 			ctx,

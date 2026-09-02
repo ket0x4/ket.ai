@@ -16,11 +16,11 @@ import {
 	type TargetMessageInfo,
 } from "../services/gemini/index";
 import { checkAndRunBackgroundMemoryExtraction } from "../services/gemini/memoryWorker";
-import { isConversationFollowUp } from "../utils/conversation";
 import logger from "../utils/logger";
 import {
 	downloadTelegramFileById,
 	extractPhotoFileId,
+	getAudioMimeType,
 	isDownloadError,
 } from "../utils/mediaDownloader";
 import { sendLongMessage } from "../utils/message";
@@ -72,6 +72,53 @@ async function resolveRepliedPhoto(
 		logger.error("[Chat] Error downloading replied photo:", err);
 	}
 	return undefined;
+}
+
+async function resolveRepliedAudio(
+	ctx: Context,
+): Promise<{ buffer: Buffer; mimeType: string } | undefined> {
+	const replyToMsg = ctx.message?.reply_to_message;
+	if (!replyToMsg) return undefined;
+
+	const voiceFileId = replyToMsg.voice?.file_id || replyToMsg.audio?.file_id;
+	if (!voiceFileId) return undefined;
+
+	const voiceMime = replyToMsg.voice?.mime_type || replyToMsg.audio?.mime_type;
+	logger.info(
+		`[Chat] Reply to voice/audio message detected (file_id: ${voiceFileId}). Downloading audio...`,
+	);
+	try {
+		const downloadResult = await downloadTelegramFileById(
+			ctx,
+			voiceFileId,
+			"voice",
+		);
+		if (!isDownloadError(downloadResult)) {
+			const resolvedMime = getAudioMimeType(downloadResult.filePath, voiceMime);
+			logger.info(
+				`[Chat] Successfully downloaded replied audio (${downloadResult.buffer.length} bytes, mime: ${resolvedMime})`,
+			);
+			return {
+				buffer: downloadResult.buffer,
+				mimeType: resolvedMime,
+			};
+		}
+		logger.warn(
+			`[Chat] Failed to download replied audio: ${downloadResult.error}`,
+		);
+	} catch (err) {
+		logger.error("[Chat] Error downloading replied audio:", err);
+	}
+	return undefined;
+}
+
+async function resolveRepliedMedia(
+	ctx: Context,
+	chatIdStr: string,
+): Promise<{ buffer: Buffer; mimeType: string } | undefined> {
+	const photo = await resolveRepliedPhoto(ctx, chatIdStr);
+	if (photo) return photo;
+	return resolveRepliedAudio(ctx);
 }
 
 async function resolveRepliedDocument(
@@ -139,13 +186,24 @@ function extractReplyMessageText(
 ): string {
 	if (replyToMsg.text) return replyToMsg.text;
 	if (replyToMsg.caption) return replyToMsg.caption;
+
+	const dbMsg = Repository.getMessageWithUser(chatIdStr, replyToMsg.message_id);
+	if (
+		dbMsg?.text &&
+		!dbMsg.text.startsWith("[Photo]") &&
+		!dbMsg.text.startsWith("[Document]")
+	) {
+		return dbMsg.text;
+	}
+
 	if (replyToMsg.photo) return "[Photo]";
 	if (replyToMsg.document) {
 		return `[Document: ${replyToMsg.document.file_name || "file"}]`;
 	}
-	if (replyToMsg.voice) return "[Voice]";
+	if (replyToMsg.voice || replyToMsg.audio) {
+		return dbMsg?.text || "[Ses Kaydı]";
+	}
 
-	const dbMsg = Repository.getMessageWithUser(chatIdStr, replyToMsg.message_id);
 	if (dbMsg?.text) return dbMsg.text;
 
 	return "[Media]";
@@ -197,7 +255,7 @@ async function generateAndSendReply(
 			Promise.resolve(
 				Repository.getRecentMessages(chatIdStr, CONFIG.CHAT_HISTORY_LIMIT),
 			),
-			resolveRepliedPhoto(ctx, chatIdStr),
+			resolveRepliedMedia(ctx, chatIdStr),
 			resolveRepliedDocument(ctx, chatIdStr),
 		]);
 
@@ -239,9 +297,7 @@ async function generateAndSendReply(
 function checkDirectInteraction(
 	text: string,
 	msg: NonNullable<Context["message"]>,
-	from: NonNullable<Context["from"]>,
 	chat: NonNullable<Context["chat"]>,
-	chatIdStr: string,
 ): boolean {
 	const botName = botUsername || "ket";
 	const nicknameRegex = new RegExp(
@@ -249,24 +305,13 @@ function checkDirectInteraction(
 		"i",
 	);
 	const containsNickname = nicknameRegex.test(text) || /\bket\b/i.test(text);
-	const isMentioned = text.includes(`@${botUsername}`);
-	const isReplyToBot = msg.reply_to_message?.from?.username === botUsername;
+	const isMentioned = Boolean(botUsername && text.includes(`@${botUsername}`));
+	const isReplyToBot = Boolean(
+		botUsername && msg.reply_to_message?.from?.username === botUsername,
+	);
 	const isPrivateChat = chat.type === "private";
 
-	const isFollowUp = isConversationFollowUp(chatIdStr, from.id, msg.date);
-	if (isFollowUp) {
-		logger.debug(
-			`[Conversation] Follow-up detected for user ${from.first_name} in chat ${chatIdStr}`,
-		);
-	}
-
-	return (
-		isMentioned ||
-		isReplyToBot ||
-		isPrivateChat ||
-		containsNickname ||
-		isFollowUp
-	);
+	return isMentioned || isReplyToBot || isPrivateChat || containsNickname;
 }
 
 async function trySpontaneousReply(
@@ -312,13 +357,7 @@ export function registerChatHandlers(bot: Bot) {
 		// Trigger background memory worker counter
 		checkAndRunBackgroundMemoryExtraction(chatIdStr).catch(() => {});
 
-		const isDirectInteraction = checkDirectInteraction(
-			text,
-			msg,
-			from,
-			chat,
-			chatIdStr,
-		);
+		const isDirectInteraction = checkDirectInteraction(text, msg, chat);
 
 		// Get chat configuration
 		const chatSettings = Repository.getChat(chatIdStr);
