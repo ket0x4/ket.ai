@@ -9,8 +9,37 @@ services:
       - "3003:3003"
     environment:
       - TZ=Europe/Istanbul
+      - SANDBOX_URL=http://ket-sandbox:8080
     volumes:
       - ./config.json:/app/config.json:rw
       - ./system.txt:/app/system.txt:ro
       - ./data:/app/data:rw
       - ./logs:/app/logs:rw
+    depends_on:
+      - ket-sandbox
+    networks:
+      - ket-net
+
+  ket-sandbox:
+    build:
+      context: ./sandbox
+      dockerfile: Dockerfile
+    container_name: ket-sandbox
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      - TZ=Europe/Istanbul
+      - SANDBOX_PORT=8080
+    deploy:
+      resources:
+        limits:
+          cpus: "1.5"
+          memory: 1536M
+          pids: 150
+    networks:
+      - ket-net
+
+networks:
+  ket-net:
+    driver: bridge

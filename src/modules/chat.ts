@@ -62,6 +62,30 @@ async function resolveRepliedPhoto(
 	return undefined;
 }
 
+function resolveToolStatusMessage(
+	toolName: string,
+	args: Record<string, unknown> = {},
+): string {
+	if (toolName === "web_search") {
+		return CONFIG.MESSAGES.tool_status_web_search || "🔍 Searching the web...";
+	}
+
+	if (toolName === "execute_code") {
+		const packages = Array.isArray(args.packages)
+			? (args.packages as string[])
+			: [];
+		const lang = typeof args.language === "string" ? args.language : "script";
+		if (packages.length > 0) {
+			const pkgList = packages.slice(0, 3).join(", ");
+			const suffix = packages.length > 3 ? "..." : "";
+			return `📦 Installing dependencies (${pkgList}${suffix}) & running ${lang} script in sandbox...`;
+		}
+		return `⚡ Executing ${lang} script in sandbox...`;
+	}
+
+	return `Spawning subagent for (${toolName})...`;
+}
+
 function createToolNotifier(
 	ctx: Context,
 	replyToMessageId?: number,
@@ -70,14 +94,24 @@ function createToolNotifier(
 	let statusMessageId: number | undefined;
 
 	return {
-		onToolCall: async (toolName: string) => {
-			if (statusMessageId) return;
+		onToolCall: async (
+			toolName: string,
+			args: Record<string, unknown> = {},
+			_step?: number,
+		) => {
+			const statusMsgText = resolveToolStatusMessage(toolName, args);
 
-			const statusMsgText =
-				toolName === "web_search"
-					? CONFIG.MESSAGES.tool_status_web_search ||
-						`Spawning Subagent for (${toolName})...`
-					: `Spawning Subagent for (${toolName})...`;
+			if (statusMessageId && ctx.chat) {
+				logger.info(
+					`${logPrefix} Updating tool status notification: "${statusMsgText}"`,
+				);
+				await ctx.api
+					.editMessageText(ctx.chat.id, statusMessageId, statusMsgText)
+					.catch((e) => {
+						logger.debug(`${logPrefix} Failed to edit status message:`, e);
+					});
+				return;
+			}
 
 			logger.info(
 				`${logPrefix} Sending tool status notification: "${statusMsgText}"`,

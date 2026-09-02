@@ -518,7 +518,7 @@ export const GeminiService = {
 			const contents = buildInitialContents(inputPayload, options.media);
 
 			const toolsConfig =
-				CONFIG.ENABLE_WEB_SEARCH && toolRegistry.count > 0
+				toolRegistry.count > 0
 					? [
 							{
 								functionDeclarations: toolRegistry.getFunctionDeclarations(),

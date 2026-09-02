@@ -11,6 +11,9 @@ interface ConfigJson {
 	bot_owner_id?: number;
 	allowed_chat_ids?: (number | string)[];
 	enable_web_search?: boolean;
+	enable_code_execution?: boolean;
+	sandbox_url?: string;
+	sandbox_timeout_ms?: number;
 	max_agent_steps?: number;
 	gemini_min_request_interval_ms?: number;
 	log_level?: string;
@@ -70,6 +73,20 @@ export const CONFIG = {
 		typeof configJson.enable_web_search === "boolean"
 			? configJson.enable_web_search
 			: process.env.ENABLE_WEB_SEARCH !== "false",
+	ENABLE_CODE_EXECUTION:
+		typeof configJson.enable_code_execution === "boolean"
+			? configJson.enable_code_execution
+			: process.env.ENABLE_CODE_EXECUTION !== "false",
+	SANDBOX_URL:
+		configJson.sandbox_url ||
+		process.env.SANDBOX_URL ||
+		"http://localhost:8080",
+	SANDBOX_TIMEOUT_MS:
+		typeof configJson.sandbox_timeout_ms === "number"
+			? configJson.sandbox_timeout_ms
+			: process.env.SANDBOX_TIMEOUT_MS
+				? parseInt(process.env.SANDBOX_TIMEOUT_MS, 10)
+				: 45000,
 	MAX_AGENT_STEPS:
 		typeof configJson.max_agent_steps === "number"
 			? configJson.max_agent_steps
@@ -139,6 +156,9 @@ export const CONFIG = {
 			"Only group admins or my owner can use this command!",
 		tool_status_web_search:
 			configJson.messages?.tool_status_web_search || "Spawning subagent...",
+		tool_status_code_execution:
+			configJson.messages?.tool_status_code_execution ||
+			"⚡ Executing code in sandbox...",
 	},
 };
 
@@ -176,6 +196,9 @@ export function updateBotSettings(settings: {
 	default_reply_probability?: number;
 	chat_history_limit?: number;
 	enable_web_search?: boolean;
+	enable_code_execution?: boolean;
+	sandbox_url?: string;
+	sandbox_timeout_ms?: number;
 	max_agent_steps?: number;
 	gemini_min_request_interval_ms?: number;
 	log_level?: "debug" | "info" | "warn" | "error";
@@ -197,6 +220,18 @@ export function updateBotSettings(settings: {
 	if (settings.enable_web_search !== undefined) {
 		CONFIG.ENABLE_WEB_SEARCH = settings.enable_web_search;
 		configJson.enable_web_search = settings.enable_web_search;
+	}
+	if (settings.enable_code_execution !== undefined) {
+		CONFIG.ENABLE_CODE_EXECUTION = settings.enable_code_execution;
+		configJson.enable_code_execution = settings.enable_code_execution;
+	}
+	if (settings.sandbox_url !== undefined) {
+		CONFIG.SANDBOX_URL = settings.sandbox_url;
+		configJson.sandbox_url = settings.sandbox_url;
+	}
+	if (settings.sandbox_timeout_ms !== undefined) {
+		CONFIG.SANDBOX_TIMEOUT_MS = settings.sandbox_timeout_ms;
+		configJson.sandbox_timeout_ms = settings.sandbox_timeout_ms;
 	}
 	if (settings.max_agent_steps !== undefined) {
 		CONFIG.MAX_AGENT_STEPS = settings.max_agent_steps;

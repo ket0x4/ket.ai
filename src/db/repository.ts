@@ -1,6 +1,6 @@
 import { CONFIG } from "../config/index";
 import logger from "../utils/logger";
-import { dotProduct, normalizeVector } from "../utils/vector";
+import { normalizeVector } from "../utils/vector";
 import { db } from "./index";
 
 interface ChatRow {
