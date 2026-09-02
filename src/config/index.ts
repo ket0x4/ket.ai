@@ -78,8 +78,8 @@ export const CONFIG = {
 			? configJson.enable_code_execution
 			: process.env.ENABLE_CODE_EXECUTION !== "false",
 	SANDBOX_URL:
-		configJson.sandbox_url ||
 		process.env.SANDBOX_URL ||
+		configJson.sandbox_url ||
 		"http://localhost:8080",
 	SANDBOX_TIMEOUT_MS:
 		typeof configJson.sandbox_timeout_ms === "number"
