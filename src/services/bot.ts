@@ -28,7 +28,7 @@ export async function withChatLock<T>(
 ): Promise<T> {
 	const currentLock = chatLocks.get(chatId) || Promise.resolve();
 
-	let releaseLock: () => void;
+	let releaseLock!: () => void;
 	const newLock = new Promise<void>((resolve) => {
 		releaseLock = resolve;
 	});
@@ -45,7 +45,6 @@ export async function withChatLock<T>(
 		await currentLock;
 		return await fn();
 	} finally {
-		// @ts-expect-error releaseLock is initialized inside new Promise executor synchronously
 		releaseLock();
 		if (chatLocks.get(chatId) === newLock) {
 			chatLocks.delete(chatId);
@@ -72,10 +71,21 @@ function saveOutgoingMessage(
 	});
 }
 
-function isTransientStatusMessage(text: string): boolean {
+export function isTransientStatusMessage(text: string): boolean {
+	if (!text) return false;
+	const trimmed = text.trim();
 	return (
-		text === CONFIG.MESSAGES.tool_status_web_search ||
-		text.includes("gimme a sec bro, checking")
+		trimmed === CONFIG.MESSAGES.tool_status_web_search ||
+		trimmed.startsWith("🔍 Searching") ||
+		trimmed.startsWith("⚡ Executing") ||
+		trimmed.startsWith("⚡ ") ||
+		trimmed.startsWith("📦 Installing") ||
+		trimmed.startsWith("📄 Reading workspace") ||
+		trimmed.startsWith("✏️ Writing workspace") ||
+		trimmed.startsWith("📁 Scanning session") ||
+		trimmed.startsWith("🧹 Cleaning and resetting") ||
+		trimmed.startsWith("Spawning subagent") ||
+		trimmed.includes("────────────────────────")
 	);
 }
 
@@ -128,10 +138,19 @@ function archiveOutgoingMessage(
 	}
 }
 
-// Intercept outgoing sendMessage and editMessageText API calls to save/update the bot's own replies in SQLite history.
+// Intercept outgoing sendMessage, editMessageText, and deleteMessage API calls to sync SQLite history.
 bot.api.config.use(async (prev, method, payload, signal) => {
 	const result = await prev(method, payload, signal);
-	archiveOutgoingMessage(method, payload, result);
+	if (method === "deleteMessage" && payload && typeof payload === "object") {
+		const payloadRecord = payload as Record<string, unknown>;
+		const chatId = String(payloadRecord.chat_id ?? "");
+		const msgId = Number(payloadRecord.message_id ?? 0);
+		if (chatId && msgId) {
+			Repository.deleteMessage(chatId, msgId);
+		}
+	} else {
+		archiveOutgoingMessage(method, payload, result);
+	}
 	return result;
 });
 

@@ -333,6 +333,21 @@ async function handleJsonReply(
 	}
 }
 
+function tryExtractJsonString(text: string): string | null {
+	const trimmed = text.trim();
+	if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+		return trimmed;
+	}
+	const jsonFenceMatch = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+	if (jsonFenceMatch) {
+		const inner = jsonFenceMatch[1].trim();
+		if (inner.startsWith("{") || inner.startsWith("[")) {
+			return inner;
+		}
+	}
+	return null;
+}
+
 async function parseAndProcessReply(
 	responseText: string,
 	chatIdStr: string,
@@ -344,26 +359,24 @@ async function parseAndProcessReply(
 		return responseText;
 	}
 
-	if (!responseText?.trim()) {
+	const trimmed = responseText?.trim() || "";
+	if (!trimmed) {
 		fsm.transition("COMPLETED");
 		return "";
 	}
 
-	const cleanedText = responseText
-		.replace(/^```(?:json)?\n?|\n?```$/g, "")
-		.trim();
-
-	if (isStrayBracket(cleanedText)) {
+	if (isStrayBracket(trimmed)) {
 		logger.warn(
-			`[Gemini:${fsm.getTraceId()}] Model returned stray bracket/empty payload: "${cleanedText}". Suppressing reply.`,
+			`[Gemini:${fsm.getTraceId()}] Model returned stray bracket/empty payload: "${trimmed}". Suppressing reply.`,
 		);
 		fsm.transition("COMPLETED");
 		return "";
 	}
 
-	if (cleanedText.startsWith("{") || cleanedText.startsWith("[")) {
+	const jsonStr = tryExtractJsonString(trimmed);
+	if (jsonStr) {
 		const jsonReply = await handleJsonReply(
-			cleanedText,
+			jsonStr,
 			responseText,
 			chatIdStr,
 			fsm,
@@ -373,9 +386,9 @@ async function parseAndProcessReply(
 		if (jsonReply) return jsonReply;
 	}
 
-	// Plain text response (e.g. from tool execution or unstructured output)
+	// Markdown or plain text response (e.g. from tool execution or unstructured output)
 	fsm.transition("COMPLETED");
-	return cleanedText;
+	return trimmed;
 }
 
 export const GeminiService = {

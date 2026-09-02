@@ -65,6 +65,19 @@ function getSandboxTargetUrl(endpoint: string): string {
 	return `${sandboxUrl}${endpoint}`;
 }
 
+function resolveSessionId(
+	context?: ToolExecutionContext,
+	argsSessionId?: string,
+): string {
+	// Security: context.sessionId is authoritative from authenticated bot session
+	return context?.sessionId || argsSessionId || "default";
+}
+
+function validateFilename(filename?: string): string | null {
+	const trimmed = filename?.trim();
+	return trimmed || null;
+}
+
 async function postToWorkspaceSandbox<T>(
 	endpoint: string,
 	body: Record<string, unknown>,
@@ -92,7 +105,7 @@ export async function readWorkspaceFile(
 	args: ReadWorkspaceFileArgs,
 	context?: ToolExecutionContext,
 ): Promise<ReadWorkspaceFileResult> {
-	const filename = args.filename?.trim();
+	const filename = validateFilename(args.filename);
 	if (!filename) {
 		return {
 			success: false,
@@ -101,8 +114,7 @@ export async function readWorkspaceFile(
 		};
 	}
 
-	// Security: context.sessionId is authoritative from authenticated bot session
-	const resolvedSessionId = context?.sessionId || args.sessionId || "default";
+	const resolvedSessionId = resolveSessionId(context, args.sessionId);
 
 	try {
 		const res = await postToWorkspaceSandbox<{
@@ -151,8 +163,7 @@ export async function writeWorkspaceFile(
 	args: WriteWorkspaceFileArgs,
 	context?: ToolExecutionContext,
 ): Promise<WriteWorkspaceFileResult> {
-	const filename = args.filename?.trim();
-	const content = args.content ?? "";
+	const filename = validateFilename(args.filename);
 	if (!filename) {
 		return {
 			success: false,
@@ -161,8 +172,8 @@ export async function writeWorkspaceFile(
 		};
 	}
 
-	// Security: context.sessionId is authoritative from authenticated bot session
-	const resolvedSessionId = context?.sessionId || args.sessionId || "default";
+	const content = args.content ?? "";
+	const resolvedSessionId = resolveSessionId(context, args.sessionId);
 
 	try {
 		const res = await postToWorkspaceSandbox<{
@@ -210,8 +221,7 @@ export async function listWorkspaceFiles(
 	args: ListWorkspaceFilesArgs = {},
 	context?: ToolExecutionContext,
 ): Promise<ListWorkspaceFilesResult> {
-	// Security: context.sessionId is authoritative from authenticated bot session
-	const resolvedSessionId = context?.sessionId || args.sessionId || "default";
+	const resolvedSessionId = resolveSessionId(context, args.sessionId);
 
 	try {
 		const res = await postToWorkspaceSandbox<{
@@ -258,8 +268,7 @@ export async function resetWorkspace(
 	args: ResetWorkspaceArgs = {},
 	context?: ToolExecutionContext,
 ): Promise<ResetWorkspaceResult> {
-	// Security: context.sessionId is authoritative from authenticated bot session
-	const resolvedSessionId = context?.sessionId || args.sessionId || "default";
+	const resolvedSessionId = resolveSessionId(context, args.sessionId);
 
 	try {
 		const res = await postToWorkspaceSandbox<{

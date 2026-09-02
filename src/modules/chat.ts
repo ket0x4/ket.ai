@@ -377,7 +377,12 @@ function checkDirectInteraction(
 	chat: NonNullable<Context["chat"]>,
 	chatIdStr: string,
 ): boolean {
-	const containsNickname = /\bket\b/i.test(text);
+	const botName = botUsername || "ket";
+	const nicknameRegex = new RegExp(
+		`\\b${botName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`,
+		"i",
+	);
+	const containsNickname = nicknameRegex.test(text) || /\bket\b/i.test(text);
 	const isMentioned = text.includes(`@${botUsername}`);
 	const isReplyToBot = msg.reply_to_message?.from?.username === botUsername;
 	const isPrivateChat = chat.type === "private";

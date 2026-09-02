@@ -106,6 +106,9 @@ const stmts = {
 		"SELECT COUNT(*) as count FROM messages WHERE chat_id = ?",
 	),
 	deleteMessages: db.prepare("DELETE FROM messages WHERE chat_id = ?"),
+	deleteMessage: db.prepare(
+		"DELETE FROM messages WHERE chat_id = ? AND message_id = ?",
+	),
 	deleteMemories: db.prepare("DELETE FROM memories WHERE chat_id = ?"),
 	resetTopic: db.prepare(
 		"UPDATE chats SET current_topic = NULL WHERE chat_id = ?",
@@ -589,6 +592,22 @@ export const Repository = {
 			count: number;
 		} | null;
 		return result ? result.count : 0;
+	},
+
+	/**
+	 * Deletes a single message from chat history by chat_id and message_id.
+	 */
+	deleteMessage(chatId: string, messageId: number): boolean {
+		try {
+			const info = stmts.deleteMessage.run(chatId, messageId);
+			return info.changes > 0;
+		} catch (e) {
+			logger.error(
+				`[DB] Error deleting message ${messageId} in chat ${chatId}:`,
+				e,
+			);
+			return false;
+		}
 	},
 
 	/**

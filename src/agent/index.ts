@@ -1,4 +1,4 @@
-import { CONFIG } from "../config";
+import { CONFIG, onBotSettingsUpdated } from "../config";
 import {
 	type AgentExecutorOptions,
 	executeFunctionCallsInParallel,
@@ -39,18 +39,46 @@ import type {
 } from "./types";
 import { type ValidationResult, validateToolArguments } from "./validator";
 
-// Register default built-in tools
-if (CONFIG.ENABLE_WEB_SEARCH) {
-	toolRegistry.register(webSearchTool);
+const CODE_TOOLS: AgentTool[] = [
+	codeExecutionTool,
+	readWorkspaceFileTool,
+	writeWorkspaceFileTool,
+	listWorkspaceFilesTool,
+	resetWorkspaceTool,
+];
+
+/**
+ * Synchronizes the global toolRegistry with the current CONFIG settings.
+ */
+export function syncToolsWithConfig(): void {
+	if (CONFIG.ENABLE_WEB_SEARCH) {
+		if (!toolRegistry.hasTool(webSearchTool.name)) {
+			toolRegistry.register(webSearchTool);
+		}
+	} else {
+		toolRegistry.unregister(webSearchTool.name);
+	}
+
+	if (CONFIG.ENABLE_CODE_EXECUTION) {
+		for (const tool of CODE_TOOLS) {
+			if (!toolRegistry.hasTool(tool.name)) {
+				toolRegistry.register(tool);
+			}
+		}
+	} else {
+		for (const tool of CODE_TOOLS) {
+			toolRegistry.unregister(tool.name);
+		}
+	}
 }
 
-if (CONFIG.ENABLE_CODE_EXECUTION) {
-	toolRegistry.register(codeExecutionTool);
-	toolRegistry.register(readWorkspaceFileTool);
-	toolRegistry.register(writeWorkspaceFileTool);
-	toolRegistry.register(listWorkspaceFilesTool);
-	toolRegistry.register(resetWorkspaceTool);
-}
+// Register default built-in tools based on initial config
+syncToolsWithConfig();
+
+// Keep tool registry synchronized if settings change dynamically at runtime
+onBotSettingsUpdated(() => {
+	syncToolsWithConfig();
+});
 
 export type {
 	AgentExecutorOptions,

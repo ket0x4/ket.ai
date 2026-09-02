@@ -414,9 +414,21 @@ export async function runWithRetry<T>(
 	throw lastError;
 }
 
-export function cleanUserText(text: string | null): string {
+export function cleanUserText(
+	text: string | null,
+	botUsernameOverride?: string,
+): string {
 	if (!text) return "";
-	return text.replace(/\bket\b/gi, "").trim();
+	const names = new Set<string>(["ket"]);
+	if (botUsernameOverride?.trim()) {
+		names.add(botUsernameOverride.trim());
+	}
+	const escapedNames = Array.from(names)
+		.map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+		.join("|");
+
+	const regex = new RegExp(`(^|\\s)@?(?:${escapedNames})\\b`, "gi");
+	return text.replace(regex, " ").replace(/\s+/g, " ").trim();
 }
 
 export function buildHistoryList(history: MessageRow[]) {

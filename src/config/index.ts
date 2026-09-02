@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 
 interface ConfigJson {
 	telegram_bot_token?: string;
@@ -188,6 +188,18 @@ if (
 	console.warn("WARNING: DEFAULT_REPLY_PROBABILITY should be between 0 and 1.");
 }
 
+type SettingsListener = () => void;
+const settingsListeners: Set<SettingsListener> = new Set();
+
+/**
+ * Registers a listener that triggers whenever bot settings are updated.
+ * Returns an unsubscribe function.
+ */
+export function onBotSettingsUpdated(listener: SettingsListener): () => void {
+	settingsListeners.add(listener);
+	return () => settingsListeners.delete(listener);
+}
+
 /**
  * Updates bot configuration settings and persists changes to config.json.
  */
@@ -203,8 +215,6 @@ export function updateBotSettings(settings: {
 	gemini_min_request_interval_ms?: number;
 	log_level?: "debug" | "info" | "warn" | "error";
 }): void {
-	const { writeFileSync } = require("node:fs");
-
 	if (settings.gemini_model !== undefined) {
 		CONFIG.GEMINI_MODEL = settings.gemini_model;
 		configJson.gemini_model = settings.gemini_model;
@@ -256,5 +266,13 @@ export function updateBotSettings(settings: {
 		);
 	} catch (e) {
 		console.error("[Config] Error writing config.json:", e);
+	}
+
+	for (const listener of settingsListeners) {
+		try {
+			listener();
+		} catch (e) {
+			console.error("[Config] Error in settings listener:", e);
+		}
 	}
 }

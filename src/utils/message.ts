@@ -29,6 +29,87 @@ function findSplitPoint(text: string, limit: number): number {
 }
 
 /**
+ * Escapes special HTML characters (&, <, >) for safe Telegram HTML parsing.
+ */
+export function escapeHtml(text: string): string {
+	return text
+		.replace(/&/g, "&amp;")
+		.replace(/</g, "&lt;")
+		.replace(/>/g, "&gt;");
+}
+
+/**
+ * Converts standard Markdown (fenced code blocks, inline code, bold, italic, strikethrough, links)
+ * to Telegram-compatible HTML entities with full syntax highlighting and robust error resilience.
+ */
+export function markdownToTelegramHtml(markdown: string): string {
+	if (!markdown?.trim()) return "";
+
+	// Step 1: Extract and replace code blocks with unique placeholders
+	const codeBlocks: string[] = [];
+	let text = markdown.replace(
+		/```([a-zA-Z0-9_#+-]*)\n?([\s\S]*?)```/g,
+		(_match, lang, code) => {
+			const escapedCode = escapeHtml(code.replace(/^\n+|\n+$/g, ""));
+			const language = lang?.trim()?.toLowerCase();
+			const placeholder = `@@@CODEBLOCK${codeBlocks.length}@@@`;
+			if (language) {
+				codeBlocks.push(
+					`<pre><code class="language-${language}">${escapedCode}</code></pre>`,
+				);
+			} else {
+				codeBlocks.push(`<pre>${escapedCode}</pre>`);
+			}
+			return placeholder;
+		},
+	);
+
+	// Step 2: Extract and replace inline code with unique placeholders
+	const inlineCodes: string[] = [];
+	text = text.replace(/`([^`\n]+)`/g, (_match, code) => {
+		const escapedCode = escapeHtml(code);
+		const placeholder = `@@@INLINECODE${inlineCodes.length}@@@`;
+		inlineCodes.push(`<code>${escapedCode}</code>`);
+		return placeholder;
+	});
+
+	// Step 3: Escape HTML entities in the remaining normal text
+	text = escapeHtml(text);
+
+	// Step 4: Convert Markdown formatting in normal text
+	// 4a. Bold: **text** or __text__
+	text = text.replace(/\*\*(.*?)\*\*/g, "<b>$1</b>");
+	text = text.replace(/__(.*?)__/g, "<b>$1</b>");
+
+	// 4b. Bold: *text* (word boundary or preceded/followed by space/punctuation)
+	text = text.replace(/(^|[\s(])\*([^*\n]+)\*([\s).,!?:]|$)/g, "$1<b>$2</b>$3");
+
+	// 4c. Italic: _text_ (word boundary or preceded/followed by space/punctuation)
+	text = text.replace(/(^|[\s(])_([^_\n]+)_([\s).,!?:]|$)/g, "$1<i>$2</i>$3");
+
+	// 4d. Strikethrough: ~~text~~
+	text = text.replace(/~~(.*?)~~/g, "<s>$1</s>");
+
+	// 4e. Links: [label](url)
+	text = text.replace(
+		/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g,
+		'<a href="$2">$1</a>',
+	);
+
+	// Step 5: Restore inline codes
+	for (let i = 0; i < inlineCodes.length; i++) {
+		text = text.replace(`@@@INLINECODE${i}@@@`, inlineCodes[i]);
+	}
+
+	// Step 6: Restore code blocks
+	for (let i = 0; i < codeBlocks.length; i++) {
+		text = text.replace(`@@@CODEBLOCK${i}@@@`, codeBlocks[i]);
+	}
+
+	return text;
+}
+
+/**
  * Ensures code fences (```) spanning across split message chunks are properly closed
  * at chunk ends and reopened at the start of subsequent chunks for valid Telegram Markdown.
  */
@@ -56,6 +137,41 @@ export function balanceCodeFences(chunks: string[]): string[] {
 			chunk = `${chunk}\n\`\`\``;
 		} else {
 			openCodeLanguage = null;
+		}
+
+		result.push(chunk);
+	}
+
+	return result;
+}
+
+/**
+ * Ensures <pre> tags spanning across split message chunks are properly closed and reopened.
+ */
+export function balanceHtmlTags(chunks: string[]): string[] {
+	const result: string[] = [];
+	let openPreTag: string | null = null;
+
+	for (let i = 0; i < chunks.length; i++) {
+		let chunk = chunks[i];
+
+		if (openPreTag !== null) {
+			chunk = `${openPreTag}${chunk}`;
+		}
+
+		const preOpenMatches = Array.from(
+			chunk.matchAll(/<pre(?:><code(?:\s+class="([^"]*)")?>)?/g),
+		);
+		const preCloseCount = (chunk.match(/<\/pre>/g) || []).length;
+
+		if (preOpenMatches.length > preCloseCount) {
+			const lastMatch = preOpenMatches[preOpenMatches.length - 1];
+			const fullTag = lastMatch[0];
+			openPreTag = fullTag;
+			const isCodeNested = fullTag.includes("<code");
+			chunk = isCodeNested ? `${chunk}</code></pre>` : `${chunk}</pre>`;
+		} else {
+			openPreTag = null;
 		}
 
 		result.push(chunk);
@@ -132,6 +248,7 @@ async function sendChunkWithFallback(
 	options: SendOptions,
 	parseMode?: ParseMode,
 	isFirst = false,
+	rawChunk?: string,
 ): Promise<void> {
 	const replyTo = isFirst ? options.reply_to_message_id : undefined;
 	try {
@@ -146,7 +263,7 @@ async function sendChunkWithFallback(
 				`[Message] Failed to send message with parse_mode '${parseMode}'. Falling back to plain text reply:`,
 				e,
 			);
-			await ctx.reply(chunk, {
+			await ctx.reply(rawChunk || chunk, {
 				...options,
 				parse_mode: undefined,
 				reply_to_message_id: replyTo,
@@ -157,10 +274,39 @@ async function sendChunkWithFallback(
 	}
 }
 
+function prepareMessageChunks(
+	text: string,
+	isHtmlMode: boolean,
+	parseMode?: ParseMode,
+): { chunks: string[]; rawChunks: string[] } {
+	const rawChunks = splitMessage(text);
+	if (rawChunks.length === 0) {
+		return { chunks: [], rawChunks: [] };
+	}
+
+	if (isHtmlMode) {
+		const htmlText = markdownToTelegramHtml(text);
+		const rawHtmlChunks = splitMessage(htmlText);
+		return {
+			chunks: balanceHtmlTags(rawHtmlChunks),
+			rawChunks,
+		};
+	}
+
+	if (parseMode === "Markdown" || parseMode === "MarkdownV2") {
+		return {
+			chunks: balanceCodeFences(rawChunks),
+			rawChunks,
+		};
+	}
+
+	return { chunks: rawChunks, rawChunks };
+}
+
 /**
- * Sends a (potentially long) message to Telegram.
- * Defaults to Markdown parse_mode to properly render code blocks and formatting.
- * If Telegram fails to parse markdown entities, automatically falls back to plain text.
+ * Sends a (potentially long) message to Telegram with full Markdown and code formatting support.
+ * Converts standard Markdown to robust Telegram HTML by default (with code block syntax highlighting).
+ * If Telegram fails to parse formatting entities, automatically falls back to plain text delivery.
  * If edit_message_id is provided, edits that message with the first chunk.
  * Subsequent chunks (if any) are sent as new messages.
  */
@@ -171,20 +317,23 @@ export async function sendLongMessage(
 ): Promise<void> {
 	if (!text?.trim()) return;
 
-	const parseMode: ParseMode | undefined =
-		options.parse_mode !== undefined ? options.parse_mode : "Markdown";
+	const isHtmlMode =
+		options.parse_mode === "HTML" || options.parse_mode === undefined;
+	const parseMode: ParseMode | undefined = isHtmlMode
+		? "HTML"
+		: options.parse_mode;
 
-	const rawChunks = splitMessage(text);
-	if (rawChunks.length === 0) return;
-
-	const chunks =
-		parseMode === "Markdown" || parseMode === "MarkdownV2"
-			? balanceCodeFences(rawChunks)
-			: rawChunks;
+	const { chunks, rawChunks } = prepareMessageChunks(
+		text,
+		isHtmlMode,
+		parseMode,
+	);
+	if (chunks.length === 0) return;
 
 	for (let i = 0; i < chunks.length; i++) {
 		const isFirst = i === 0;
 		const chunk = chunks[i];
+		const rawChunk = rawChunks[i] || chunk;
 
 		if (isFirst && options.edit_message_id && ctx.chat) {
 			const edited = await tryEditStatusMessage(
@@ -197,7 +346,14 @@ export async function sendLongMessage(
 			if (edited) continue;
 		}
 
-		await sendChunkWithFallback(ctx, chunk, options, parseMode, isFirst);
+		await sendChunkWithFallback(
+			ctx,
+			chunk,
+			options,
+			parseMode,
+			isFirst,
+			rawChunk,
+		);
 	}
 }
 
