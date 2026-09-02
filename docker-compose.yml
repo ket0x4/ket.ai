@@ -25,7 +25,7 @@ services:
     container_name: ket-sandbox
     restart: unless-stopped
     ports:
-      - "8080:8080"
+      - "3276:8080"
     environment:
       - TZ=Europe/Istanbul
       - SANDBOX_PORT=8080
