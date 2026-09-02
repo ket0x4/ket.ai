@@ -49,6 +49,22 @@ test("AgentStateMachine throws and fails on invalid transition", () => {
 	expect(fsm.getError()).not.toBeNull();
 });
 
+test("AgentStateMachine supports transitions from EXECUTING_TOOLS when max steps reached", () => {
+	const fsm = new AgentStateMachine();
+	fsm.transition("INITIALIZING");
+	fsm.transition("CALLING_MODEL");
+	fsm.transition("EXECUTING_TOOLS");
+	expect(fsm.getState()).toBe("EXECUTING_TOOLS");
+
+	// Can transition directly to PARSING_RESPONSE or COMPLETED
+	fsm.transition("PARSING_RESPONSE");
+	expect(fsm.getState()).toBe("PARSING_RESPONSE");
+
+	fsm.transition("COMPLETED");
+	expect(fsm.getState()).toBe("COMPLETED");
+	expect(fsm.isTerminal()).toBe(true);
+});
+
 test("AgentStateMachine fail() transitions to FAILED and records error", () => {
 	const fsm = new AgentStateMachine();
 	fsm.transition("INITIALIZING");

@@ -458,6 +458,11 @@ async function runAgentStepLoop(
 		responseText = response.text?.trim() || "";
 		break;
 	}
+
+	if (fsm.getState() === "EXECUTING_TOOLS") {
+		fsm.transition("PARSING_RESPONSE", { reason: "max_steps_reached" });
+	}
+
 	return responseText;
 }
 
@@ -485,6 +490,53 @@ function buildGenConfig(
 	return genConfig;
 }
 
+function isStrayBracket(text: string): boolean {
+	return text === "}" || text === "{" || text === "[]" || text === "{}";
+}
+
+async function handleJsonReply(
+	cleanedText: string,
+	rawText: string,
+	chatIdStr: string,
+	fsm: AgentStateMachine,
+	history: MessageRow[] = [],
+	lastMsg?: MessageRow,
+): Promise<string> {
+	try {
+		const parsed = JSON.parse(cleanedText);
+
+		fsm.transition("PERSISTING_DATA");
+		const senderUserId =
+			lastMsg && !lastMsg.is_bot_reply ? lastMsg.user_id : undefined;
+
+		if (
+			Array.isArray(parsed.new_memory_updates) &&
+			parsed.new_memory_updates.length > 0
+		) {
+			processExtractedMemories(
+				chatIdStr,
+				parsed.new_memory_updates,
+				history,
+				senderUserId,
+			).catch((err) => {
+				logger.error(
+					`[Gemini:${fsm.getTraceId()}] Error persisting extracted memories:`,
+					err,
+				);
+			});
+		}
+
+		fsm.transition("COMPLETED");
+		return typeof parsed.reply === "string" ? parsed.reply.trim() : "";
+	} catch {
+		logger.warn(
+			`[Gemini:${fsm.getTraceId()}] Parse error on model JSON response. Suppressing reply. Raw text: "${rawText}"`,
+		);
+		fsm.transition("COMPLETED");
+		return "";
+	}
+}
+
 async function parseAndProcessReply(
 	responseText: string,
 	chatIdStr: string,
@@ -492,6 +544,10 @@ async function parseAndProcessReply(
 	history: MessageRow[] = [],
 	lastMsg?: MessageRow,
 ): Promise<string> {
+	if (fsm.isTerminal()) {
+		return responseText;
+	}
+
 	if (!responseText?.trim()) {
 		fsm.transition("COMPLETED");
 		return "";
@@ -501,13 +557,7 @@ async function parseAndProcessReply(
 		.replace(/^```(?:json)?\n?|\n?```$/g, "")
 		.trim();
 
-	// If response is an isolated brace/bracket, suppress it
-	if (
-		cleanedText === "}" ||
-		cleanedText === "{" ||
-		cleanedText === "[]" ||
-		cleanedText === "{}"
-	) {
+	if (isStrayBracket(cleanedText)) {
 		logger.warn(
 			`[Gemini:${fsm.getTraceId()}] Model returned stray bracket/empty payload: "${cleanedText}". Suppressing reply.`,
 		);
@@ -515,42 +565,15 @@ async function parseAndProcessReply(
 		return "";
 	}
 
-	// If response starts like a JSON structure
 	if (cleanedText.startsWith("{") || cleanedText.startsWith("[")) {
-		try {
-			const parsed = JSON.parse(cleanedText);
-
-			fsm.transition("PERSISTING_DATA");
-			const senderUserId =
-				lastMsg && !lastMsg.is_bot_reply ? lastMsg.user_id : undefined;
-
-			// Asynchronously persist memories in the background so Telegram reply latency is zero
-			if (
-				Array.isArray(parsed.new_memory_updates) &&
-				parsed.new_memory_updates.length > 0
-			) {
-				processExtractedMemories(
-					chatIdStr,
-					parsed.new_memory_updates,
-					history,
-					senderUserId,
-				).catch((err) => {
-					logger.error(
-						`[Gemini:${fsm.getTraceId()}] Error persisting extracted memories:`,
-						err,
-					);
-				});
-			}
-
-			fsm.transition("COMPLETED");
-			return typeof parsed.reply === "string" ? parsed.reply.trim() : "";
-		} catch {
-			logger.warn(
-				`[Gemini:${fsm.getTraceId()}] Parse error on model JSON response. Suppressing reply. Raw text: "${responseText}"`,
-			);
-			fsm.transition("COMPLETED");
-			return "";
-		}
+		return handleJsonReply(
+			cleanedText,
+			responseText,
+			chatIdStr,
+			fsm,
+			history,
+			lastMsg,
+		);
 	}
 
 	// Plain text response (e.g. from tool execution or unstructured output)
