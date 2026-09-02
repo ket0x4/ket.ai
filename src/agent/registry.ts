@@ -1,5 +1,11 @@
 import logger from "../utils/logger";
-import type { AgentTool, FunctionDeclaration } from "./types";
+import type {
+	AgentTool,
+	FunctionDeclaration,
+	ToolExecutionContext,
+} from "./types";
+import { validateToolArguments } from "./validator";
+
 /** @internal */
 export class ToolRegistry {
 	private tools: Map<string, AgentTool> = new Map();
@@ -44,6 +50,13 @@ export class ToolRegistry {
 	}
 
 	/**
+	 * Returns all registered tools.
+	 */
+	public getAllTools(): AgentTool[] {
+		return Array.from(this.tools.values());
+	}
+
+	/**
 	 * Converts registered tools into function declarations suitable for Gemini SDK.
 	 */
 	public getFunctionDeclarations(): FunctionDeclaration[] {
@@ -59,11 +72,12 @@ export class ToolRegistry {
 	}
 
 	/**
-	 * Executes a registered tool by name with provided arguments.
+	 * Executes a registered tool by name with provided arguments and optional execution context.
 	 */
 	public async executeTool(
 		name: string,
 		args: Record<string, unknown>,
+		context?: ToolExecutionContext,
 	): Promise<unknown> {
 		const tool = this.tools.get(name);
 		if (!tool) {
@@ -71,12 +85,23 @@ export class ToolRegistry {
 			return { error: `Tool '${name}' is not registered.` };
 		}
 
+		// Validate arguments against tool parameter schema
+		const validation = validateToolArguments(args, tool.parameters);
+		if (!validation.valid) {
+			logger.warn(
+				`[ToolRegistry] Tool '${name}' argument validation failed: ${validation.error}`,
+			);
+			return {
+				error: `Validation error: ${validation.error}`,
+			};
+		}
+
 		try {
 			logger.info(
 				`[ToolRegistry] Executing tool '${name}' with args:`,
 				JSON.stringify(args),
 			);
-			const result = await tool.execute(args);
+			const result = await tool.execute(args, context);
 			logger.debug(
 				`[ToolRegistry] Tool '${name}' execution result:`,
 				JSON.stringify(result),

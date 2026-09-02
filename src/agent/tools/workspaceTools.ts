@@ -1,6 +1,6 @@
 import { CONFIG } from "../../config";
 import logger from "../../utils/logger";
-import type { AgentTool } from "../types";
+import type { AgentTool, ToolExecutionContext } from "../types";
 
 export interface ReadWorkspaceFileArgs {
 	filename: string;
@@ -90,6 +90,7 @@ async function postToWorkspaceSandbox<T>(
 
 export async function readWorkspaceFile(
 	args: ReadWorkspaceFileArgs,
+	context?: ToolExecutionContext,
 ): Promise<ReadWorkspaceFileResult> {
 	const filename = args.filename?.trim();
 	if (!filename) {
@@ -100,6 +101,9 @@ export async function readWorkspaceFile(
 		};
 	}
 
+	// Security: context.sessionId is authoritative from authenticated bot session
+	const resolvedSessionId = context?.sessionId || args.sessionId || "default";
+
 	try {
 		const res = await postToWorkspaceSandbox<{
 			success: boolean;
@@ -108,7 +112,7 @@ export async function readWorkspaceFile(
 			error?: string;
 		}>("/workspace/read", {
 			filename,
-			sessionId: args.sessionId || "default",
+			sessionId: resolvedSessionId,
 		});
 
 		if (!res.ok) {
@@ -145,6 +149,7 @@ export async function readWorkspaceFile(
 
 export async function writeWorkspaceFile(
 	args: WriteWorkspaceFileArgs,
+	context?: ToolExecutionContext,
 ): Promise<WriteWorkspaceFileResult> {
 	const filename = args.filename?.trim();
 	const content = args.content ?? "";
@@ -156,6 +161,9 @@ export async function writeWorkspaceFile(
 		};
 	}
 
+	// Security: context.sessionId is authoritative from authenticated bot session
+	const resolvedSessionId = context?.sessionId || args.sessionId || "default";
+
 	try {
 		const res = await postToWorkspaceSandbox<{
 			success: boolean;
@@ -164,7 +172,7 @@ export async function writeWorkspaceFile(
 		}>("/workspace/write", {
 			filename,
 			content,
-			sessionId: args.sessionId || "default",
+			sessionId: resolvedSessionId,
 		});
 
 		if (!res.ok) {
@@ -199,8 +207,12 @@ export async function writeWorkspaceFile(
 }
 
 export async function listWorkspaceFiles(
-	args: ListWorkspaceFilesArgs,
+	args: ListWorkspaceFilesArgs = {},
+	context?: ToolExecutionContext,
 ): Promise<ListWorkspaceFilesResult> {
+	// Security: context.sessionId is authoritative from authenticated bot session
+	const resolvedSessionId = context?.sessionId || args.sessionId || "default";
+
 	try {
 		const res = await postToWorkspaceSandbox<{
 			success: boolean;
@@ -208,7 +220,7 @@ export async function listWorkspaceFiles(
 			totalFiles?: number;
 			error?: string;
 		}>("/workspace/list", {
-			sessionId: args.sessionId || "default",
+			sessionId: resolvedSessionId,
 		});
 
 		if (!res.ok) {
@@ -243,15 +255,19 @@ export async function listWorkspaceFiles(
 }
 
 export async function resetWorkspace(
-	args: ResetWorkspaceArgs,
+	args: ResetWorkspaceArgs = {},
+	context?: ToolExecutionContext,
 ): Promise<ResetWorkspaceResult> {
+	// Security: context.sessionId is authoritative from authenticated bot session
+	const resolvedSessionId = context?.sessionId || args.sessionId || "default";
+
 	try {
 		const res = await postToWorkspaceSandbox<{
 			success: boolean;
 			message?: string;
 			error?: string;
 		}>("/workspace/reset", {
-			sessionId: args.sessionId || "default",
+			sessionId: resolvedSessionId,
 		});
 
 		if (!res.ok) {
@@ -297,7 +313,10 @@ export const readWorkspaceFileTool: AgentTool<
 		},
 		required: ["filename"],
 	},
-	execute: async (args: ReadWorkspaceFileArgs) => readWorkspaceFile(args),
+	execute: async (
+		args: ReadWorkspaceFileArgs,
+		context?: ToolExecutionContext,
+	) => readWorkspaceFile(args, context),
 };
 
 export const writeWorkspaceFileTool: AgentTool<
@@ -322,7 +341,10 @@ export const writeWorkspaceFileTool: AgentTool<
 		},
 		required: ["filename", "content"],
 	},
-	execute: async (args: WriteWorkspaceFileArgs) => writeWorkspaceFile(args),
+	execute: async (
+		args: WriteWorkspaceFileArgs,
+		context?: ToolExecutionContext,
+	) => writeWorkspaceFile(args, context),
 };
 
 export const listWorkspaceFilesTool: AgentTool<
@@ -336,7 +358,10 @@ export const listWorkspaceFilesTool: AgentTool<
 		type: "OBJECT",
 		properties: {},
 	},
-	execute: async (args: ListWorkspaceFilesArgs) => listWorkspaceFiles(args),
+	execute: async (
+		args: ListWorkspaceFilesArgs,
+		context?: ToolExecutionContext,
+	) => listWorkspaceFiles(args, context),
 };
 
 export const resetWorkspaceTool: AgentTool<
@@ -350,5 +375,6 @@ export const resetWorkspaceTool: AgentTool<
 		type: "OBJECT",
 		properties: {},
 	},
-	execute: async (args: ResetWorkspaceArgs) => resetWorkspace(args),
+	execute: async (args: ResetWorkspaceArgs, context?: ToolExecutionContext) =>
+		resetWorkspace(args, context),
 };

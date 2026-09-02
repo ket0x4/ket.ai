@@ -1,6 +1,6 @@
 import { CONFIG } from "../../config";
 import logger from "../../utils/logger";
-import type { AgentTool } from "../types";
+import type { AgentTool, ToolExecutionContext } from "../types";
 
 export interface CodeExecutionProgressEvent {
 	type: "status" | "stdout" | "stderr";
@@ -409,7 +409,26 @@ export const codeExecutionTool: AgentTool<
 		},
 		required: ["language", "code"],
 	},
-	execute: async (args: CodeExecutionArgs) => {
-		return executeInSandbox(args);
+	execute: async (args: CodeExecutionArgs, context?: ToolExecutionContext) => {
+		const mergedArgs: CodeExecutionArgs = { ...args };
+
+		// Security: context.sessionId is authoritative from authenticated bot session
+		mergedArgs.sessionId = context?.sessionId || mergedArgs.sessionId;
+
+		if (context?.onProgress && !mergedArgs.onProgress) {
+			mergedArgs.onProgress = (event) => {
+				context.onProgress?.({
+					type: event.type,
+					statusText: event.type === "status" ? event.text : undefined,
+					stdoutSnippet:
+						event.type === "stdout" || event.type === "stderr"
+							? event.text
+							: undefined,
+					fullStdout: event.fullStdoutSoFar,
+				});
+			};
+		}
+
+		return executeInSandbox(mergedArgs);
 	},
 };

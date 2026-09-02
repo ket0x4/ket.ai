@@ -152,6 +152,36 @@ print("FIXED_VAL:", items[idx])
 		expect(traversalRead.success).toBeFalse();
 	});
 
+	test("should block sibling directory prefix traversal attacks", async () => {
+		const traversalRead = await readWorkspaceFile({
+			filename: `../${sessionId}_evil/secret.txt`,
+			sessionId,
+		});
+		expect(traversalRead.success).toBeFalse();
+	});
+
+	test("should prioritize authenticated context.sessionId over untrusted tool args.sessionId", async () => {
+		const legitimateSession = "auth_session_legit_100";
+		const victimSession = "auth_session_victim_200";
+
+		// Write secret file to victim session
+		await writeWorkspaceFile(
+			{ filename: "victim_secrets.txt", content: "SECRET_PASSWORD_123" },
+			{ sessionId: victimSession },
+		);
+
+		// An attacker in legitimateSession attempts to spoof victimSession via args.sessionId
+		// while context.sessionId is set to legitimateSession
+		const spoofAttempt = await readWorkspaceFile(
+			{ filename: "victim_secrets.txt", sessionId: victimSession },
+			{ sessionId: legitimateSession }, // Authoritative context from bot
+		);
+
+		// Must NOT read victim's file!
+		expect(spoofAttempt.success).toBeFalse();
+		expect(spoofAttempt.content).toBeUndefined();
+	});
+
 	test("should reset workspace cleanly", async () => {
 		const resetRes = await resetWorkspace({ sessionId });
 		expect(resetRes.success).toBeTrue();

@@ -1,10 +1,15 @@
-import { AgentStateMachine, toolRegistry } from "../../agent/index";
-import type { CodeExecutionProgressEvent } from "../../agent/tools/codeExecution";
+import {
+	AgentStateMachine,
+	type MediaGeneratedCallback,
+	runAgentLoop,
+	type ToolCallCallback,
+	type ToolProgressCallback,
+	toolRegistry,
+} from "../../agent/index";
 import { CONFIG } from "../../config";
 import type { MessageRow } from "../../db/repository";
 import { Repository } from "../../db/repository";
 import logger from "../../utils/logger";
-import { ToolTraceLogger } from "../../utils/toolTrace";
 import { ai } from "./client";
 import { describeImage, transcribeAudio } from "./mediaPerception";
 import { getRelevantMemories, processNewMemory } from "./memory";
@@ -17,38 +22,14 @@ import {
 	runWithRetry,
 } from "./utils";
 
-export type ArtifactMediaType = "image" | "document" | "video" | "audio";
-
-export interface GeneratedMediaArtifact {
-	filename: string;
-	mimeType: string;
-	buffer: Buffer;
-	type: ArtifactMediaType;
-	sizeBytes: number;
-}
-
-export interface ToolProgressUpdate {
-	statusText?: string;
-	stdoutSnippet?: string;
-	fullStdout?: string;
-	type?: "status" | "stdout" | "stderr";
-}
-
-export type ToolCallCallback = (
-	toolName: string,
-	args: Record<string, unknown>,
-	step: number,
-) => Promise<void> | void;
-
-export type ToolProgressCallback = (
-	toolName: string,
-	progress: ToolProgressUpdate,
-	step: number,
-) => Promise<void> | void;
-
-export type MediaGeneratedCallback = (
-	media: GeneratedMediaArtifact[],
-) => Promise<void> | void;
+export type {
+	ArtifactMediaType,
+	GeneratedMediaArtifact,
+	MediaGeneratedCallback,
+	ToolCallCallback,
+	ToolProgressCallback,
+	ToolProgressUpdate,
+} from "../../agent/index";
 
 const lastSummarizedCount = new Map<string, number>();
 const MAX_TRACKED_CHATS = 200;
@@ -196,231 +177,6 @@ function buildInitialContents(
 	return [{ role: "user", parts: initialParts }];
 }
 
-async function notifyToolCallbacks(
-	functionCalls: Array<{ name?: string; args?: Record<string, unknown> }>,
-	step: number,
-	onToolCall?: ToolCallCallback,
-): Promise<void> {
-	if (!onToolCall) return;
-	for (const fc of functionCalls) {
-		if (!fc?.name) continue;
-		try {
-			await onToolCall(fc.name, fc.args || {}, step);
-		} catch (err) {
-			logger.warn("[Agent] Error executing onToolCall callback:", err);
-		}
-	}
-}
-
-function inferArtifactType(
-	mimeType?: string,
-	explicitType?: ArtifactMediaType,
-): ArtifactMediaType {
-	if (explicitType) return explicitType;
-	if (mimeType?.startsWith("image/")) return "image";
-	if (mimeType?.startsWith("video/")) return "video";
-	if (mimeType?.startsWith("audio/")) return "audio";
-	return "document";
-}
-
-function extractRawArtifacts(result: unknown): unknown[] {
-	if (!result || typeof result !== "object") return [];
-	const obj = result as { artifacts?: unknown; images?: unknown };
-	if (Array.isArray(obj.artifacts)) return obj.artifacts;
-	if (Array.isArray(obj.images)) return obj.images;
-	return [];
-}
-
-function parseGeneratedArtifact(art: {
-	filename?: string;
-	mimeType?: string;
-	data?: string;
-	type?: ArtifactMediaType;
-	sizeBytes?: number;
-}): GeneratedMediaArtifact | null {
-	if (!art.data || typeof art.data !== "string") return null;
-	const buf = Buffer.from(art.data, "base64");
-	return {
-		filename: art.filename || "output.dat",
-		mimeType: art.mimeType || "application/octet-stream",
-		buffer: buf,
-		type: inferArtifactType(art.mimeType, art.type),
-		sizeBytes: art.sizeBytes || buf.length,
-	};
-}
-
-async function handleToolMediaArtifacts(
-	result: unknown,
-	traceId: string,
-	onMediaGenerated?: MediaGeneratedCallback,
-): Promise<void> {
-	if (!onMediaGenerated) return;
-	const rawArtifacts = extractRawArtifacts(result);
-	if (rawArtifacts.length === 0) return;
-
-	const artifacts: GeneratedMediaArtifact[] = [];
-	for (const raw of rawArtifacts) {
-		const parsed = parseGeneratedArtifact(
-			raw as Parameters<typeof parseGeneratedArtifact>[0],
-		);
-		if (parsed) artifacts.push(parsed);
-	}
-
-	if (artifacts.length > 0) {
-		try {
-			await onMediaGenerated(artifacts);
-		} catch (err) {
-			logger.warn(
-				`[Agent:${traceId}] Error in onMediaGenerated callback:`,
-				err,
-			);
-		}
-	}
-}
-
-function sanitizeToolResultForLLM(result: unknown): unknown {
-	if (!result || typeof result !== "object") return result;
-
-	const obj = { ...(result as Record<string, unknown>) };
-
-	// Strip heavy base64 data from artifacts so LLM context window is not poisoned
-	if (Array.isArray(obj.artifacts)) {
-		obj.artifacts = obj.artifacts.map((art) => {
-			if (art && typeof art === "object") {
-				const { data, ...rest } = art as Record<string, unknown>;
-				return {
-					...rest,
-					has_data: Boolean(data),
-					data_size_bytes: typeof data === "string" ? data.length : undefined,
-				};
-			}
-			return art;
-		});
-	}
-
-	// Strip heavy base64 data from images so LLM context window is not poisoned
-	if (Array.isArray(obj.images)) {
-		obj.images = obj.images.map((img) => {
-			if (img && typeof img === "object") {
-				const { data, ...rest } = img as Record<string, unknown>;
-				return {
-					...rest,
-					has_data: Boolean(data),
-					data_size_bytes: typeof data === "string" ? data.length : undefined,
-				};
-			}
-			return img;
-		});
-	}
-
-	return obj;
-}
-
-async function executeSingleTool(
-	fc: { name?: string; args?: Record<string, unknown>; id?: string },
-	chatIdStr: string,
-	step: number,
-	traceId: string,
-	onMediaGenerated?: MediaGeneratedCallback,
-	onToolProgress?: ToolProgressCallback,
-): Promise<Record<string, unknown> | null> {
-	if (!fc?.name) return null;
-	const name = fc.name;
-	const args: Record<string, unknown> = {
-		sessionId: chatIdStr || "default",
-		...(fc.args || {}),
-	};
-
-	if (name === "execute_code" && onToolProgress) {
-		args.onProgress = (event: CodeExecutionProgressEvent) => {
-			try {
-				onToolProgress(
-					name,
-					{
-						type: event.type,
-						statusText: event.type === "status" ? event.text : undefined,
-						stdoutSnippet:
-							event.type === "stdout" || event.type === "stderr"
-								? event.text
-								: undefined,
-						fullStdout: event.fullStdoutSoFar,
-					},
-					step,
-				);
-			} catch (err) {
-				logger.debug(`[Agent:${traceId}] Error in onToolProgress:`, err);
-			}
-		};
-	}
-
-	logger.info(`[Agent:${traceId}] Executing tool '${name}'...`);
-	const startTime = Date.now();
-	const result = await toolRegistry.executeTool(name, args);
-	const durationMs = Date.now() - startTime;
-
-	// Deliver full base64 media artifacts directly to user/Telegram
-	await handleToolMediaArtifacts(result, traceId, onMediaGenerated);
-
-	const snippet =
-		typeof result === "string"
-			? result.substring(0, 300)
-			: JSON.stringify(result).substring(0, 300);
-	ToolTraceLogger.add({
-		chatId: chatIdStr,
-		traceId,
-		toolName: name,
-		args,
-		resultSnippet: snippet,
-		executionTimeMs: durationMs,
-		step,
-	});
-
-	// Sanitize result for LLM (removes base64 payload to prevent context window explosion)
-	const llmSafeResult = sanitizeToolResultForLLM(result);
-
-	const functionResponseObj: Record<string, unknown> = {
-		name,
-		response: { result: llmSafeResult },
-	};
-	if (fc.id) {
-		functionResponseObj.id = fc.id;
-	}
-
-	return {
-		functionResponse: functionResponseObj,
-	};
-}
-
-async function handleToolExecution(
-	functionCalls: Array<{
-		id?: string;
-		name?: string;
-		args?: Record<string, unknown>;
-	}>,
-	chatIdStr: string,
-	step: number,
-	traceId: string,
-	onToolCall?: ToolCallCallback,
-	onMediaGenerated?: MediaGeneratedCallback,
-	onToolProgress?: ToolProgressCallback,
-): Promise<Array<Record<string, unknown>>> {
-	await notifyToolCallbacks(functionCalls, step, onToolCall);
-
-	const toolResponseParts: Array<Record<string, unknown>> = [];
-	for (const fc of functionCalls) {
-		const part = await executeSingleTool(
-			fc,
-			chatIdStr,
-			step,
-			traceId,
-			onMediaGenerated,
-			onToolProgress,
-		);
-		if (part) toolResponseParts.push(part);
-	}
-	return toolResponseParts;
-}
-
 async function processExtractedMemories(
 	chatIdStr: string,
 	memoryUpdates: unknown[],
@@ -467,147 +223,6 @@ async function processExtractedMemories(
 			priority: "low",
 		});
 	}
-}
-
-function extractFunctionCalls(response: {
-	functionCalls?: Array<{
-		id?: string;
-		name?: string;
-		args?: Record<string, unknown>;
-	}>;
-	candidates?: Array<{
-		content?: {
-			parts?: Array<{
-				functionCall?: {
-					id?: string;
-					name?: string;
-					args?: Record<string, unknown>;
-				};
-			}>;
-		};
-	}>;
-}): Array<{
-	id?: string;
-	name: string;
-	args?: Record<string, unknown>;
-}> {
-	const rawParts = response.candidates?.[0]?.content?.parts;
-	const candidateCalls =
-		response.functionCalls ||
-		rawParts?.filter((p) => p.functionCall?.name).map((p) => p.functionCall);
-	return (candidateCalls || []).filter(
-		(
-			fc,
-		): fc is {
-			id?: string;
-			name: string;
-			args?: Record<string, unknown>;
-		} => Boolean(fc?.name),
-	);
-}
-
-async function runAgentStepLoop(
-	contents: Array<Record<string, unknown>>,
-	genConfig: Record<string, unknown>,
-	chatIdStr: string,
-	fsm: AgentStateMachine,
-	onToolCall?: ToolCallCallback,
-	onMediaGenerated?: MediaGeneratedCallback,
-	onToolProgress?: ToolProgressCallback,
-): Promise<string> {
-	let responseText = "";
-
-	while (fsm.getStep() < CONFIG.MAX_AGENT_STEPS) {
-		const step = fsm.incrementStep();
-		fsm.transition("CALLING_MODEL", { step });
-
-		const response = await runWithRetry(
-			() =>
-				ai.models.generateContent({
-					model: CONFIG.GEMINI_MODEL,
-					// biome-ignore lint/suspicious/noExplicitAny: SDK expects content structure
-					contents: contents as any,
-					// biome-ignore lint/suspicious/noExplicitAny: SDK expects config structure
-					config: genConfig as any,
-				}),
-			{ priority: "high" },
-		);
-
-		const functionCalls = extractFunctionCalls(response);
-
-		if (functionCalls.length > 0) {
-			fsm.transition("EXECUTING_TOOLS", {
-				step,
-				toolCount: functionCalls.length,
-			});
-			logger.info(
-				`[Agent:${fsm.getTraceId()}] Gemini requested ${functionCalls.length} tool call(s) at step ${step}`,
-			);
-
-			const modelContent = response.candidates?.[0]?.content;
-			if (modelContent) {
-				contents.push(modelContent as Record<string, unknown>);
-			} else {
-				contents.push({
-					role: "model",
-					parts: functionCalls.map((fc) => ({ functionCall: fc })),
-				});
-			}
-
-			const toolParts = await handleToolExecution(
-				functionCalls,
-				chatIdStr,
-				step,
-				fsm.getTraceId(),
-				onToolCall,
-				onMediaGenerated,
-				onToolProgress,
-			);
-			contents.push({ role: "user", parts: toolParts });
-			continue;
-		}
-
-		fsm.transition("PARSING_RESPONSE", { step });
-		responseText = response.text?.trim() || "";
-		break;
-	}
-
-	// If loop terminated after tool execution without a final text response,
-	// invoke the model one final time without tools to summarize and answer the user
-	if (!responseText && fsm.getState() === "EXECUTING_TOOLS") {
-		try {
-			logger.info(
-				`[Agent:${fsm.getTraceId()}] Tool execution finished at step limit. Generating final summary reply...`,
-			);
-			fsm.transition("CALLING_MODEL", { finalStep: true });
-			const finalGenConfig = {
-				...genConfig,
-				tools: undefined,
-			};
-			const finalResponse = await runWithRetry(
-				() =>
-					ai.models.generateContent({
-						model: CONFIG.GEMINI_MODEL,
-						// biome-ignore lint/suspicious/noExplicitAny: SDK expects content structure
-						contents: contents as any,
-						// biome-ignore lint/suspicious/noExplicitAny: SDK expects config structure
-						config: finalGenConfig as any,
-					}),
-				{ priority: "high" },
-			);
-			responseText = finalResponse.text?.trim() || "";
-			fsm.transition("PARSING_RESPONSE", { step: "final" });
-		} catch (err) {
-			logger.warn(
-				`[Agent:${fsm.getTraceId()}] Error generating final summary after tool execution:`,
-				err,
-			);
-		}
-	} else if (fsm.getState() === "EXECUTING_TOOLS") {
-		fsm.transition("PARSING_RESPONSE", { reason: "max_steps_reached" });
-	}
-
-	return responseText;
 }
 
 function buildGenConfig(
@@ -833,15 +448,13 @@ export const GeminiService = {
 			};
 			const genConfig = buildGenConfig(effectiveOptions, toolsConfig);
 
-			const responseText = await runAgentStepLoop(
-				contents,
-				genConfig,
-				chatIdStr,
-				fsm,
-				options.onToolCall,
-				options.onMediaGenerated,
-				options.onToolProgress,
-			);
+			const responseText = await runAgentLoop(contents, genConfig, fsm, {
+				chatId: chatIdStr,
+				sessionId: chatIdStr,
+				onToolCall: options.onToolCall,
+				onToolProgress: options.onToolProgress,
+				onMediaGenerated: options.onMediaGenerated,
+			});
 
 			const reply = await parseAndProcessReply(
 				responseText,

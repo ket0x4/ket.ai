@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { extname, join } from "node:path";
+import { extname, isAbsolute, join, relative, resolve } from "node:path";
 
 interface ExecuteRequest {
 	language: "python" | "javascript" | "typescript" | "bash";
@@ -96,8 +96,11 @@ function resolveWorkspace(sessionId?: string): {
 
 function resolveSafePath(workspaceDir: string, relativePath: string): string {
 	const clean = relativePath.trim().replace(/^(\.\.(\/|\\|$))+/, "");
-	const targetPath = join(workspaceDir, clean);
-	if (!targetPath.startsWith(workspaceDir)) {
+	const normalizedWorkspace = resolve(workspaceDir);
+	const targetPath = resolve(normalizedWorkspace, clean);
+	const rel = relative(normalizedWorkspace, targetPath);
+
+	if (rel.startsWith("..") || isAbsolute(rel)) {
 		throw new Error(
 			"Access denied: Path traversal outside workspace is forbidden.",
 		);
