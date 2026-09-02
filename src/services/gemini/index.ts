@@ -263,8 +263,46 @@ async function handleToolMediaArtifacts(
 	}
 }
 
+function sanitizeToolResultForLLM(result: unknown): unknown {
+	if (!result || typeof result !== "object") return result;
+
+	const obj = { ...(result as Record<string, unknown>) };
+
+	// Strip heavy base64 data from artifacts so LLM context window is not poisoned
+	if (Array.isArray(obj.artifacts)) {
+		obj.artifacts = obj.artifacts.map((art) => {
+			if (art && typeof art === "object") {
+				const { data, ...rest } = art as Record<string, unknown>;
+				return {
+					...rest,
+					has_data: Boolean(data),
+					data_size_bytes: typeof data === "string" ? data.length : undefined,
+				};
+			}
+			return art;
+		});
+	}
+
+	// Strip heavy base64 data from images so LLM context window is not poisoned
+	if (Array.isArray(obj.images)) {
+		obj.images = obj.images.map((img) => {
+			if (img && typeof img === "object") {
+				const { data, ...rest } = img as Record<string, unknown>;
+				return {
+					...rest,
+					has_data: Boolean(data),
+					data_size_bytes: typeof data === "string" ? data.length : undefined,
+				};
+			}
+			return img;
+		});
+	}
+
+	return obj;
+}
+
 async function executeSingleTool(
-	fc: { name?: string; args?: Record<string, unknown> },
+	fc: { name?: string; args?: Record<string, unknown>; id?: string },
 	chatIdStr: string,
 	step: number,
 	traceId: string,
@@ -281,6 +319,7 @@ async function executeSingleTool(
 	const result = await toolRegistry.executeTool(name, args);
 	const durationMs = Date.now() - startTime;
 
+	// Deliver full base64 media artifacts directly to user/Telegram
 	await handleToolMediaArtifacts(result, traceId, onMediaGenerated);
 
 	const snippet =
@@ -297,16 +336,28 @@ async function executeSingleTool(
 		step,
 	});
 
+	// Sanitize result for LLM (removes base64 payload to prevent context window explosion)
+	const llmSafeResult = sanitizeToolResultForLLM(result);
+
+	const functionResponseObj: Record<string, unknown> = {
+		name,
+		response: { result: llmSafeResult },
+	};
+	if (fc.id) {
+		functionResponseObj.id = fc.id;
+	}
+
 	return {
-		functionResponse: {
-			name,
-			response: { result },
-		},
+		functionResponse: functionResponseObj,
 	};
 }
 
 async function handleToolExecution(
-	functionCalls: Array<{ name?: string; args?: Record<string, unknown> }>,
+	functionCalls: Array<{
+		id?: string;
+		name?: string;
+		args?: Record<string, unknown>;
+	}>,
 	chatIdStr: string,
 	step: number,
 	traceId: string,
@@ -406,6 +457,7 @@ async function runAgentStepLoop(
 		const rawParts = response.candidates?.[0]?.content?.parts as
 			| Array<{
 					functionCall?: {
+						id?: string;
 						name?: string;
 						args?: Record<string, unknown>;
 					};
@@ -418,9 +470,10 @@ async function runAgentStepLoop(
 			(
 				fc,
 			): fc is {
+				id?: string;
 				name?: string;
 				args?: Record<string, unknown>;
-			} => Boolean(fc),
+			} => Boolean(fc?.name),
 		);
 
 		if (functionCalls.length > 0) {
@@ -459,7 +512,38 @@ async function runAgentStepLoop(
 		break;
 	}
 
-	if (fsm.getState() === "EXECUTING_TOOLS") {
+	// If loop terminated after tool execution without a final text response,
+	// invoke the model one final time without tools to summarize and answer the user
+	if (!responseText && fsm.getState() === "EXECUTING_TOOLS") {
+		try {
+			logger.info(
+				`[Agent:${fsm.getTraceId()}] Tool execution finished at step limit. Generating final summary reply...`,
+			);
+			fsm.transition("CALLING_MODEL", { finalStep: true });
+			const finalGenConfig = {
+				...genConfig,
+				tools: undefined,
+			};
+			const finalResponse = await runWithRetry(
+				() =>
+					ai.models.generateContent({
+						model: CONFIG.GEMINI_MODEL,
+						// biome-ignore lint/suspicious/noExplicitAny: SDK expects content structure
+						contents: contents as any,
+						// biome-ignore lint/suspicious/noExplicitAny: SDK expects config structure
+						config: finalGenConfig as any,
+					}),
+				{ priority: "high" },
+			);
+			responseText = finalResponse.text?.trim() || "";
+			fsm.transition("PARSING_RESPONSE", { step: "final" });
+		} catch (err) {
+			logger.warn(
+				`[Agent:${fsm.getTraceId()}] Error generating final summary after tool execution:`,
+				err,
+			);
+		}
+	} else if (fsm.getState() === "EXECUTING_TOOLS") {
 		fsm.transition("PARSING_RESPONSE", { reason: "max_steps_reached" });
 	}
 
@@ -472,7 +556,7 @@ function buildGenConfig(
 ): Record<string, unknown> {
 	const genConfig: Record<string, unknown> = {
 		systemInstruction: getSystemInstruction(options.personaPrompt),
-		temperature: options.media ? 0.8 : 0.85,
+		temperature: toolsConfig ? 0.45 : options.media ? 0.7 : 0.75,
 		maxOutputTokens: 2048,
 		thinkingConfig: getThinkingConfig(CONFIG.GEMINI_MODEL),
 		tools: toolsConfig,
@@ -510,6 +594,8 @@ async function handleJsonReply(
 			lastMsg && !lastMsg.is_bot_reply ? lastMsg.user_id : undefined;
 
 		if (
+			parsed &&
+			typeof parsed === "object" &&
 			Array.isArray(parsed.new_memory_updates) &&
 			parsed.new_memory_updates.length > 0
 		) {
@@ -527,13 +613,42 @@ async function handleJsonReply(
 		}
 
 		fsm.transition("COMPLETED");
-		return typeof parsed.reply === "string" ? parsed.reply.trim() : "";
+
+		// Search for standard reply fields in priority order
+		if (typeof parsed?.reply === "string" && parsed.reply.trim()) {
+			return parsed.reply.trim();
+		}
+		if (typeof parsed?.summary === "string" && parsed.summary.trim()) {
+			return parsed.summary.trim();
+		}
+		if (typeof parsed?.text === "string" && parsed.text.trim()) {
+			return parsed.text.trim();
+		}
+		if (typeof parsed?.message === "string" && parsed.message.trim()) {
+			return parsed.message.trim();
+		}
+		if (typeof parsed?.answer === "string" && parsed.answer.trim()) {
+			return parsed.answer.trim();
+		}
+		if (typeof parsed?.result === "string" && parsed.result.trim()) {
+			return parsed.result.trim();
+		}
+		if (typeof parsed?.output === "string" && parsed.output.trim()) {
+			return parsed.output.trim();
+		}
+
+		// If it is a non-empty object without explicit text keys, fallback to cleanedText
+		if (parsed && typeof parsed === "object" && Object.keys(parsed).length > 0) {
+			return cleanedText;
+		}
+
+		return "";
 	} catch {
 		logger.warn(
-			`[Gemini:${fsm.getTraceId()}] Parse error on model JSON response. Suppressing reply. Raw text: "${rawText}"`,
+			`[Gemini:${fsm.getTraceId()}] Parse error on model JSON response. Using cleaned plain text. Raw text: "${rawText}"`,
 		);
 		fsm.transition("COMPLETED");
-		return "";
+		return cleanedText;
 	}
 }
 
@@ -566,7 +681,7 @@ async function parseAndProcessReply(
 	}
 
 	if (cleanedText.startsWith("{") || cleanedText.startsWith("[")) {
-		return handleJsonReply(
+		const jsonReply = await handleJsonReply(
 			cleanedText,
 			responseText,
 			chatIdStr,
@@ -574,6 +689,7 @@ async function parseAndProcessReply(
 			history,
 			lastMsg,
 		);
+		if (jsonReply) return jsonReply;
 	}
 
 	// Plain text response (e.g. from tool execution or unstructured output)

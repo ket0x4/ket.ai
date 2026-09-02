@@ -8,6 +8,7 @@ export interface CodeExecutionArgs {
 	packages?: string[];
 	sessionId?: string;
 	filename?: string;
+	target_files?: string[];
 }
 
 export type ArtifactType = "image" | "document" | "video" | "audio";
@@ -44,15 +45,15 @@ function buildSystemNote(data: {
 	errorHint?: string;
 }): string {
 	let systemNote = data.success
-		? "Code execution succeeded. Use the output to formulate your final concise reply."
-		: "Code execution finished with errors. You may analyze the stderr or give the user the best possible answer.";
+		? "Code execution succeeded. Use the stdout/output to formulate your final concise reply to the user. Do not pretend you did not run the code."
+		: "Code execution finished with errors. You may analyze stderr, correct your script, or provide the user with the best possible answer.";
 
 	const allArtifacts = data.artifacts || data.images || [];
 	if (allArtifacts.length > 0) {
 		const fileList = allArtifacts
 			.map((art) => `${art.filename} (${art.type || "file"})`)
 			.join(", ");
-		systemNote += ` Generated artifact(s) [${fileList}] will be automatically delivered/displayed to the user. Describe or summarize the findings in your reply.`;
+		systemNote += ` Generated artifact(s) [${fileList}] will be automatically delivered/displayed to the user in Telegram. Briefly describe or summarize what was created in your reply.`;
 	}
 
 	if (data.errorHint) {
@@ -84,6 +85,7 @@ export async function executeInSandbox(
 	const packages = Array.isArray(args.packages) ? args.packages : [];
 	const sessionId = args.sessionId;
 	const filename = args.filename;
+	const targetFiles = Array.isArray(args.target_files) ? args.target_files : undefined;
 
 	if (!code.trim()) {
 		return {
@@ -119,6 +121,7 @@ export async function executeInSandbox(
 				packages,
 				sessionId,
 				filename,
+				targetFiles,
 				timeoutMs: CONFIG.SANDBOX_TIMEOUT_MS,
 			}),
 			signal: controller.signal,
@@ -228,6 +231,14 @@ export const codeExecutionTool: AgentTool<
 				type: "STRING",
 				description:
 					"Optional custom filename to save and execute the script as (e.g. 'main.py', 'crawler.ts'). Defaults to standard extension.",
+			},
+			target_files: {
+				type: "ARRAY",
+				description:
+					"Optional list of specific filenames intended for final delivery to the user (e.g. ['sales_chart.png', 'report.xlsx', 'final_video.mp4']). If specified, intermediate frame/temp files will be excluded.",
+				items: {
+					type: "STRING",
+				},
 			},
 		},
 		required: ["language", "code"],

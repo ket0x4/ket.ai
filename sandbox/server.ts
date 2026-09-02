@@ -8,6 +8,7 @@ interface ExecuteRequest {
 	timeoutMs?: number;
 	sessionId?: string;
 	filename?: string;
+	targetFiles?: string[];
 }
 
 export type ArtifactType = "image" | "document" | "video" | "audio";
@@ -49,7 +50,7 @@ const MAX_TIMEOUT_MS = 120_000;
 const DEFAULT_TIMEOUT_MS = 45_000;
 const MAX_OUTPUT_BYTES = 64 * 1024; // 64 KB
 const MAX_ARTIFACT_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB per artifact
-const MAX_ARTIFACTS_COUNT = 8;
+const MAX_ARTIFACTS_COUNT = 5; // Standardized to max 5 artifacts
 const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB (backward compatibility)
 const MAX_IMAGES_COUNT = 5;
 const MAX_SESSION_DIR_BYTES = 50 * 1024 * 1024; // 50 MB
@@ -118,6 +119,29 @@ function getDirectorySizeBytes(dirPath: string): number {
 		}
 	} catch {}
 	return total;
+}
+
+/**
+ * Captures snapshot of existing files in the workspace directory before execution.
+ */
+function getWorkspaceSnapshot(
+	workspaceDir: string,
+): Map<string, { size: number; mtimeMs: number }> {
+	const map = new Map<string, { size: number; mtimeMs: number }>();
+	try {
+		if (!existsSync(workspaceDir)) return map;
+		const entries = readdirSync(workspaceDir);
+		for (const file of entries) {
+			try {
+				const filePath = join(workspaceDir, file);
+				const stats = statSync(filePath);
+				if (stats.isFile()) {
+					map.set(file, { size: stats.size, mtimeMs: stats.mtimeMs });
+				}
+			} catch {}
+		}
+	} catch {}
+	return map;
 }
 
 function truncateOutput(output: string): { text: string; truncated: boolean } {
@@ -204,41 +228,110 @@ const ARTIFACT_MIME_MAP: Record<string, { mimeType: string; type: ArtifactType }
 	".aac": { mimeType: "audio/aac", type: "audio" },
 };
 
+function isIntermediateArtifact(filename: string): boolean {
+	const lower = filename.toLowerCase();
+	if (
+		lower.startsWith("temp_") ||
+		lower.startsWith("tmp_") ||
+		lower.endsWith(".tmp") ||
+		lower.endsWith(".bak")
+	) {
+		return true;
+	}
+	if (
+		lower.startsWith("frame_") &&
+		(lower.endsWith(".png") || lower.endsWith(".jpg") || lower.endsWith(".jpeg") || lower.endsWith(".webp"))
+	) {
+		return true;
+	}
+	return false;
+}
+
 /**
- * Scans the workspace directory for generated artifacts (images, spreadsheets, PDFs, data files, videos).
+ * Scans the workspace directory for generated artifacts using delta snapshotting and intent filtering.
  */
 function detectGeneratedArtifacts(
 	workspaceDir: string,
 	ignoredFileNames: string[] = [],
+	beforeSnapshot?: Map<string, { size: number; mtimeMs: number }>,
+	targetFiles?: string[],
 ): GeneratedArtifact[] {
 	const artifacts: GeneratedArtifact[] = [];
+	const targetSet =
+		Array.isArray(targetFiles) && targetFiles.length > 0
+			? new Set(
+					targetFiles
+						.map((f) => (typeof f === "string" ? f.trim().toLowerCase() : ""))
+						.filter(Boolean),
+				)
+			: null;
+
 	try {
 		const entries = readdirSync(workspaceDir);
+		const candidateFiles: Array<{
+			file: string;
+			stats: ReturnType<typeof statSync>;
+			ext: string;
+			entry: { mimeType: string; type: ArtifactType };
+			isExplicit: boolean;
+		}> = [];
+
 		for (const file of entries) {
 			if (ignoredFileNames.includes(file) || file.startsWith(".")) continue;
+
+			const isExplicit = Boolean(targetSet?.has(file.toLowerCase()));
+
+			// If not explicitly requested, filter out intermediate frame / temp files
+			if (!isExplicit && isIntermediateArtifact(file)) continue;
 
 			const filePath = join(workspaceDir, file);
 			try {
 				const stats = statSync(filePath);
 				if (!stats.isFile()) continue;
 
+				// Delta check: only consider newly created or modified files in this run
+				if (beforeSnapshot && beforeSnapshot.has(file)) {
+					const prev = beforeSnapshot.get(file)!;
+					// If size and mtime are identical, it was not created/modified in this turn
+					if (stats.size === prev.size && stats.mtimeMs <= prev.mtimeMs) {
+						continue;
+					}
+				}
+
 				const ext = extname(file).toLowerCase();
 				const entry = ARTIFACT_MIME_MAP[ext];
 				if (entry && stats.size > 0 && stats.size <= MAX_ARTIFACT_SIZE_BYTES) {
-					const fileBuffer = readFileSync(filePath);
-					artifacts.push({
-						filename: file,
-						mimeType: entry.mimeType,
-						type: entry.type,
-						data: fileBuffer.toString("base64"),
-						sizeBytes: stats.size,
-					});
-
-					if (artifacts.length >= MAX_ARTIFACTS_COUNT) break;
+					candidateFiles.push({ file, stats, ext, entry, isExplicit });
 				}
 			} catch (err) {
 				console.warn(`[Sandbox] Failed to read potential artifact ${file}:`, err);
 			}
+		}
+
+		// Check if any video was generated in this turn
+		const hasVideo = candidateFiles.some((c) => c.entry.type === "video");
+
+		for (const item of candidateFiles) {
+			// If targetFiles was specified and this file is not in targetFiles, skip
+			if (targetSet && !item.isExplicit) {
+				continue;
+			}
+
+			// If a video was generated and targetFiles was not explicitly set, omit images (which are usually frames)
+			if (hasVideo && !item.isExplicit && item.entry.type === "image") {
+				continue;
+			}
+
+			const fileBuffer = readFileSync(join(workspaceDir, item.file));
+			artifacts.push({
+				filename: item.file,
+				mimeType: item.entry.mimeType,
+				type: item.entry.type,
+				data: fileBuffer.toString("base64"),
+				sizeBytes: item.stats.size,
+			});
+
+			if (artifacts.length >= MAX_ARTIFACTS_COUNT) break;
 		}
 	} catch (err) {
 		console.warn(`[Sandbox] Error scanning workspace for artifacts:`, err);
@@ -252,10 +345,15 @@ function detectGeneratedArtifacts(
 function detectGeneratedImages(
 	workspaceDir: string,
 	ignoredFileNames: string[] = [],
+	beforeSnapshot?: Map<string, { size: number; mtimeMs: number }>,
+	targetFiles?: string[],
 ): GeneratedImage[] {
-	return detectGeneratedArtifacts(workspaceDir, ignoredFileNames).filter(
-		(a) => a.type === "image",
-	);
+	return detectGeneratedArtifacts(
+		workspaceDir,
+		ignoredFileNames,
+		beforeSnapshot,
+		targetFiles,
+	).filter((a) => a.type === "image");
 }
 
 /**
@@ -452,7 +550,7 @@ async function handleExecute(req: Request): Promise<Response> {
 		);
 	}
 
-	const { language, code, sessionId, filename } = body;
+	const { language, code, sessionId, filename, targetFiles } = body;
 	if (!code || typeof code !== "string") {
 		return Response.json(
 			{ success: false, error: "Missing or invalid 'code' string parameter" },
@@ -535,7 +633,10 @@ async function handleExecute(req: Request): Promise<Response> {
 			}
 		}
 
-		// Step 2: Write script file
+		// Step 2: Take snapshot of existing files in workspace before execution
+		const beforeSnapshot = getWorkspaceSnapshot(workspaceDir);
+
+		// Step 3: Write script file
 		const { scriptFileName, execCommand } = resolveScriptCommand(
 			normalizedLang,
 			filename,
@@ -543,7 +644,7 @@ async function handleExecute(req: Request): Promise<Response> {
 		const scriptPath = resolveSafePath(workspaceDir, scriptFileName);
 		writeFileSync(scriptPath, code, "utf-8");
 
-		// Step 3: Execute script
+		// Step 4: Execute script
 		console.log(
 			`[Sandbox:${workspaceDir}] Executing ${normalizedLang} script (${scriptFileName}, timeout: ${timeout}ms)...`,
 		);
@@ -554,13 +655,13 @@ async function handleExecute(req: Request): Promise<Response> {
 			? `${packageInstallStderr}\n${result.stderr}`
 			: result.stderr;
 
-		// Detect any artifacts generated by the script (images, spreadsheets, PDFs, videos, etc.)
-		const generatedArtifacts = detectGeneratedArtifacts(workspaceDir, [
-			scriptFileName,
-			"package.json",
-			"bun.lock",
-			".session_meta.json",
-		]);
+		// Detect any artifacts generated specifically by this script execution
+		const generatedArtifacts = detectGeneratedArtifacts(
+			workspaceDir,
+			[scriptFileName, "package.json", "bun.lock", ".session_meta.json"],
+			beforeSnapshot,
+			targetFiles,
+		);
 		const generatedImages = generatedArtifacts.filter((a) => a.type === "image");
 
 		const stdoutTruncated = truncateOutput(result.stdout);

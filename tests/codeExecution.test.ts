@@ -14,6 +14,7 @@ describe("CodeExecutionTool", () => {
 		expect(codeExecutionTool.parameters.properties.language).toBeDefined();
 		expect(codeExecutionTool.parameters.properties.code).toBeDefined();
 		expect(codeExecutionTool.parameters.properties.packages).toBeDefined();
+		expect(codeExecutionTool.parameters.properties.target_files).toBeDefined();
 		expect(codeExecutionTool.parameters.required).toEqual(["language", "code"]);
 	});
 

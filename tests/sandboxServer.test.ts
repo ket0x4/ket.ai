@@ -299,6 +299,130 @@ print("Saved data.csv")
 		expect(dataBot.errorHint).toContain("curl_cffi");
 	});
 
+	test("should only detect new artifacts created in current execution across multi-turn persistent sessions (delta snapshot)", async () => {
+		const sessionId = `delta_test_${Date.now()}`;
+		const pngBase64 =
+			"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+
+		// Turn 1: Generates old_chart.png in persistent session
+		const res1 = await fetch(`http://127.0.0.1:${testPort}/execute`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				sessionId,
+				language: "python",
+				code: `
+import base64
+with open("old_chart.png", "wb") as f:
+    f.write(base64.b64decode("${pngBase64}"))
+print("Turn 1 complete")
+`,
+			}),
+		});
+
+		expect(res1.ok).toBeTrue();
+		const data1 = (await res1.json()) as {
+			artifacts?: Array<{ filename: string }>;
+		};
+		expect(data1.artifacts).toBeDefined();
+		expect(data1.artifacts?.length).toBe(1);
+		expect(data1.artifacts?.[0].filename).toBe("old_chart.png");
+
+		// Sleep briefly so filesystem timestamps tick forward
+		await new Promise((r) => setTimeout(r, 50));
+
+		// Turn 2: Generates new_report.csv in the SAME persistent session
+		const res2 = await fetch(`http://127.0.0.1:${testPort}/execute`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				sessionId,
+				language: "python",
+				code: `
+with open("new_report.csv", "w") as f:
+    f.write("a,b\\n1,2\\n")
+print("Turn 2 complete")
+`,
+			}),
+		});
+
+		expect(res2.ok).toBeTrue();
+		const data2 = (await res2.json()) as {
+			artifacts?: Array<{ filename: string }>;
+		};
+		expect(data2.artifacts).toBeDefined();
+		// Crucial: Turn 2 must ONLY return new_report.csv, NOT old_chart.png!
+		expect(data2.artifacts?.length).toBe(1);
+		expect(data2.artifacts?.[0].filename).toBe("new_report.csv");
+	});
+
+	test("should exclude intermediate frames when a video artifact is generated", async () => {
+		const sessionId = `video_test_${Date.now()}`;
+		const dummyBytes = "AAAAHGZ0eXBtcDQyAAAAAG1wNDJpc29t"; // mp4 signature snippet
+		const pngBase64 =
+			"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+
+		const res = await fetch(`http://127.0.0.1:${testPort}/execute`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				sessionId,
+				language: "python",
+				code: `
+import base64
+# Create intermediate frames
+with open("frame_001.png", "wb") as f:
+    f.write(base64.b64decode("${pngBase64}"))
+with open("frame_002.png", "wb") as f:
+    f.write(base64.b64decode("${pngBase64}"))
+# Create final video
+with open("final_render.mp4", "wb") as f:
+    f.write(b"${dummyBytes}")
+print("Video render complete")
+`,
+			}),
+		});
+
+		expect(res.ok).toBeTrue();
+		const data = (await res.json()) as {
+			artifacts?: Array<{ filename: string; type: string }>;
+		};
+		expect(data.artifacts).toBeDefined();
+		// Must only return the video, frames must be filtered out
+		expect(data.artifacts?.length).toBe(1);
+		expect(data.artifacts?.[0].filename).toBe("final_render.mp4");
+		expect(data.artifacts?.[0].type).toBe("video");
+	});
+
+	test("should honor targetFiles parameter and only deliver explicitly targeted files", async () => {
+		const sessionId = `target_files_test_${Date.now()}`;
+
+		const res = await fetch(`http://127.0.0.1:${testPort}/execute`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				sessionId,
+				language: "python",
+				targetFiles: ["target_data.csv"],
+				code: `
+with open("target_data.csv", "w") as f:
+    f.write("target,1\\n")
+with open("ignored_data.json", "w") as f:
+    f.write("{\\"ignored\\": true}")
+print("Multi files created")
+`,
+			}),
+		});
+
+		expect(res.ok).toBeTrue();
+		const data = (await res.json()) as {
+			artifacts?: Array<{ filename: string }>;
+		};
+		expect(data.artifacts).toBeDefined();
+		expect(data.artifacts?.length).toBe(1);
+		expect(data.artifacts?.[0].filename).toBe("target_data.csv");
+	});
+
 	test("should clean up and terminate sandbox daemon", () => {
 		if (sandboxProcess) {
 			try {
