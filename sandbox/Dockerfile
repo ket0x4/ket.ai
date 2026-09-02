@@ -1,49 +1,47 @@
-# Ultra-lightweight Pre-warmed Sandbox Container for Ket AI (Alpine Edge)
-# Includes: Python 3, Bun, Chromium Headless, BeautifulSoup4, Requests, Httpx, Pandas, etc.
+# Lightweight Pre-warmed Sandbox Container for Ket AI (Python 3.12 Slim + Bun + Playwright)
+# Base: Debian-based Python 3.12 slim with full glibc compatibility
 
-FROM oven/bun:alpine AS bun-source
+FROM oven/bun:debian AS bun-source
 
-FROM alpine:edge
+FROM python:3.12-slim
 
-# Set timezone and environment
+# Prevent interactive prompts during package installs
+ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=Europe/Istanbul
 ENV PYTHONUNBUFFERED=1
 ENV PORT=8080
 ENV SANDBOX_PORT=8080
-ENV CHROME_BIN=/usr/bin/chromium-browser
-ENV CHROME_PATH=/usr/lib/chromium/
-ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
-ENV PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium-browser
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
-# Install Python 3, pip, pre-compiled data/scraping packages, Chromium, and system utilities
-RUN apk update && apk add --no-cache \
-    python3 \
-    py3-pip \
-    py3-requests \
-    py3-beautifulsoup4 \
-    py3-lxml \
-    py3-pandas \
-    py3-httpx \
-    chromium \
-    bash \
+# Install essential CLI utilities
+RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     wget \
     jq \
     ca-certificates \
-    tzdata \
-    libstdc++ \
-    && rm -rf /var/cache/apk/*
+    git \
+    unzip \
+    && rm -rf /var/lib/apt/lists/*
 
-# Copy Bun runtime from official Bun alpine image
+# Copy Bun runtime from official Bun debian image
 COPY --from=bun-source /usr/local/bin/bun /usr/local/bin/bun
 
-# Install Playwright python package for chromium control
-RUN pip3 install --no-cache-dir --break-system-packages playwright
+# Install pre-compiled Python libraries
+RUN pip install --no-cache-dir \
+    requests \
+    httpx \
+    beautifulsoup4 \
+    lxml \
+    pandas \
+    playwright
+
+# Install Playwright Chromium headless browser with minimal dependencies
+RUN playwright install --with-deps chromium
 
 # Create unprivileged sandbox user
-RUN adduser -D -u 1000 -s /bin/bash sandboxuser && \
-    mkdir -p /tmp/sandboxes /home/sandboxuser/app && \
-    chown -R sandboxuser:sandboxuser /tmp/sandboxes /home/sandboxuser
+RUN useradd -m -u 1000 -s /bin/bash sandboxuser && \
+    mkdir -p /tmp/sandboxes /home/sandboxuser/app /ms-playwright && \
+    chown -R sandboxuser:sandboxuser /tmp/sandboxes /home/sandboxuser /ms-playwright
 
 WORKDIR /home/sandboxuser/app
 
