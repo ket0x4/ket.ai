@@ -162,10 +162,18 @@ export interface SandboxVerboseData {
 	};
 }
 
+export interface SandboxGeneratedImage {
+	filename: string;
+	mimeType: string;
+	data: string; // base64
+	sizeBytes?: number;
+}
+
 export interface SandboxResponse {
 	reply: string;
 	executionTimeMs: number;
 	model: string;
+	images?: SandboxGeneratedImage[];
 	verbose?: SandboxVerboseData;
 }
 

@@ -11,9 +11,10 @@ ENV TZ=Europe/Istanbul
 ENV PYTHONUNBUFFERED=1
 ENV PORT=8080
 ENV SANDBOX_PORT=8080
+ENV MPLBACKEND=Agg
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
-# Install essential CLI utilities
+# Install essential CLI utilities and fonts for plotting
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     wget \
@@ -21,18 +22,29 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     git \
     unzip \
+    fonts-dejavu-core \
+    fonts-liberation \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy Bun runtime from official Bun debian image
 COPY --from=bun-source /usr/local/bin/bun /usr/local/bin/bun
 
-# Install pre-compiled Python libraries
+# Install pre-compiled Python libraries (Data Science, Math, Scraping & Visualization)
 RUN pip install --no-cache-dir \
     requests \
     httpx \
     beautifulsoup4 \
     lxml \
+    numpy \
     pandas \
+    matplotlib \
+    seaborn \
+    pillow \
+    sympy \
+    scipy \
+    openpyxl \
+    yfinance \
+    duckdb \
     playwright
 
 # Install Playwright Chromium headless browser with minimal dependencies

@@ -1,8 +1,11 @@
-import type { Bot, Context } from "grammy";
+import { type Bot, type Context, InputFile } from "grammy";
 import { CONFIG } from "../config";
 import { Repository } from "../db/repository";
 import { botUsername, withChatLock, withTyping } from "../services/bot";
-import { GeminiService } from "../services/gemini/index";
+import {
+	GeminiService,
+	type GeneratedMediaArtifact,
+} from "../services/gemini/index";
 import { checkAndRunBackgroundMemoryExtraction } from "../services/gemini/memoryWorker";
 import { isConversationFollowUp } from "../utils/conversation";
 import logger from "../utils/logger";
@@ -163,6 +166,7 @@ async function generateAndSendReply(
 
 	const logPrefix = isSpontaneous ? "[Spontaneous]" : "[Chat]";
 	const notifier = createToolNotifier(ctx, replyToMessageId, logPrefix);
+	const generatedImages: GeneratedMediaArtifact[] = [];
 
 	const reply = await GeminiService.generateReply(
 		history,
@@ -171,7 +175,21 @@ async function generateAndSendReply(
 		notifier.onToolCall,
 		chatIdStr,
 		mediaPayload,
+		async (media) => {
+			generatedImages.push(...media);
+		},
 	);
+
+	// Send generated chart/plot photos (e.g. from Matplotlib or Playwright)
+	for (const img of generatedImages) {
+		try {
+			await ctx.replyWithPhoto(new InputFile(img.buffer, img.filename), {
+				reply_to_message_id: replyToMessageId,
+			});
+		} catch (err) {
+			logger.warn("[Chat] Failed to send generated photo to Telegram:", err);
+		}
+	}
 
 	// Send final reply
 	await sendLongMessage(

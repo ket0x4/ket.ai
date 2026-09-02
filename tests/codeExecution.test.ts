@@ -98,7 +98,7 @@ print("Top Seller Books:\n1. Atomic Habits\n2. The Psychology of Money")
 		}
 	});
 
-	test("should handle sandbox execution errors (non-zero exit code)", async () => {
+	test("should handle sandbox execution errors (non-zero exit code) and extract hints", async () => {
 		const mockServer = Bun.serve({
 			port: 8091,
 			fetch(req) {
@@ -108,6 +108,8 @@ print("Top Seller Books:\n1. Atomic Habits\n2. The Psychology of Money")
 						success: false,
 						stdout: "",
 						stderr: "ModuleNotFoundError: No module named 'nonexistent_lib'",
+						errorHint:
+							"Hint: Python module 'nonexistent_lib' is missing. You can pass packages: ['nonexistent_lib'] in your tool arguments to auto-install it.",
 						exitCode: 1,
 						executionTimeMs: 80,
 						truncated: false,
@@ -129,7 +131,61 @@ print("Top Seller Books:\n1. Atomic Habits\n2. The Psychology of Money")
 			expect(result.success).toBeFalse();
 			expect(result.exit_code).toBe(1);
 			expect(result.stderr).toContain("ModuleNotFoundError");
-			expect(result.system_note).toContain("finished with errors");
+			expect(result.error_hint).toContain("nonexistent_lib");
+			expect(result.system_note).toContain(
+				"Hint: Python module 'nonexistent_lib' is missing",
+			);
+		} finally {
+			CONFIG.SANDBOX_URL = originalUrl;
+			mockServer.stop(true);
+		}
+	});
+
+	test("should parse generated image artifacts and update system_note", async () => {
+		const mockServer = Bun.serve({
+			port: 8092,
+			fetch(req) {
+				const url = new URL(req.url);
+				if (url.pathname === "/execute" && req.method === "POST") {
+					return Response.json({
+						success: true,
+						stdout: "Plot generated successfully",
+						stderr: "",
+						exitCode: 0,
+						executionTimeMs: 210,
+						images: [
+							{
+								filename: "chart.png",
+								mimeType: "image/png",
+								data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+								sizeBytes: 68,
+							},
+						],
+						truncated: false,
+					});
+				}
+				return Response.json({ error: "Not found" }, { status: 404 });
+			},
+		});
+
+		const originalUrl = CONFIG.SANDBOX_URL;
+		CONFIG.SANDBOX_URL = `http://127.0.0.1:${mockServer.port}`;
+
+		try {
+			const result = await codeExecutionTool.execute({
+				language: "python",
+				code: "import matplotlib.pyplot as plt\nplt.savefig('chart.png')",
+			});
+
+			expect(result.success).toBeTrue();
+			expect(result.images).toBeDefined();
+			expect(result.images?.length).toBe(1);
+			expect(result.images?.[0].filename).toBe("chart.png");
+			expect(result.images?.[0].mimeType).toBe("image/png");
+			expect(result.system_note).toContain("chart.png");
+			expect(result.system_note).toContain(
+				"automatically displayed/sent to the user",
+			);
 		} finally {
 			CONFIG.SANDBOX_URL = originalUrl;
 			mockServer.stop(true);

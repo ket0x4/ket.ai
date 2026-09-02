@@ -377,6 +377,7 @@ export const SandboxTab: FC<SandboxTabProps> = ({
 						<SandboxResponseView
 							reply={response?.reply}
 							personaName={response?.verbose?.personaName}
+							images={response?.images}
 							isExecuting={isExecuting}
 						/>
 					)}

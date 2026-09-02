@@ -8,6 +8,13 @@ export interface CodeExecutionArgs {
 	packages?: string[];
 }
 
+export interface CodeExecutionImage {
+	filename: string;
+	mimeType: string;
+	data: string; // base64
+	sizeBytes: number;
+}
+
 export interface CodeExecutionResult {
 	success: boolean;
 	stdout: string;
@@ -15,9 +22,43 @@ export interface CodeExecutionResult {
 	exit_code: number;
 	execution_time_ms: number;
 	installed_packages?: string[];
+	images?: CodeExecutionImage[];
+	error_hint?: string;
 	truncated?: boolean;
 	error?: string;
 	system_note?: string;
+}
+
+function buildSystemNote(data: {
+	success: boolean;
+	images?: CodeExecutionImage[];
+	errorHint?: string;
+}): string {
+	let systemNote = data.success
+		? "Code execution succeeded. Use the output to formulate your final concise reply."
+		: "Code execution finished with errors. You may analyze the stderr or give the user the best possible answer.";
+
+	if (data.images && data.images.length > 0) {
+		const fileList = data.images.map((img) => img.filename).join(", ");
+		systemNote += ` Generated image(s) [${fileList}] will be automatically displayed/sent to the user. Describe or summarize the visual findings in your reply.`;
+	}
+
+	if (data.errorHint) {
+		systemNote = `${data.errorHint} | ${systemNote}`;
+	}
+	return systemNote;
+}
+
+function checkConnectionError(errorMessage: string): boolean {
+	const lowerMsg = errorMessage.toLowerCase();
+	return (
+		lowerMsg.includes("econnrefused") ||
+		lowerMsg.includes("fetch failed") ||
+		lowerMsg.includes("aborterror") ||
+		lowerMsg.includes("unable to connect") ||
+		lowerMsg.includes("connection refused") ||
+		lowerMsg.includes("failed to connect")
+	);
 }
 
 /**
@@ -57,9 +98,7 @@ export async function executeInSandbox(
 
 		const response = await fetch(targetUrl, {
 			method: "POST",
-			headers: {
-				"Content-Type": "application/json",
-			},
+			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({
 				language,
 				code,
@@ -93,12 +132,14 @@ export async function executeInSandbox(
 			exitCode: number;
 			executionTimeMs: number;
 			installedPackages?: string[];
+			images?: CodeExecutionImage[];
+			errorHint?: string;
 			truncated?: boolean;
 			error?: string;
 		};
 
 		logger.info(
-			`[CodeExecutionTool] Sandbox executed in ${data.executionTimeMs}ms with exit code ${data.exitCode}`,
+			`[CodeExecutionTool] Sandbox executed in ${data.executionTimeMs}ms with exit code ${data.exitCode} (images: ${data.images?.length || 0})`,
 		);
 
 		return {
@@ -108,25 +149,17 @@ export async function executeInSandbox(
 			exit_code: data.exitCode,
 			execution_time_ms: data.executionTimeMs,
 			installed_packages: data.installedPackages,
+			images: data.images,
+			error_hint: data.errorHint,
 			truncated: data.truncated,
 			error: data.error,
-			system_note: data.success
-				? "Code execution succeeded. Use the output to formulate your final concise reply."
-				: "Code execution finished with errors. You may analyze the stderr or give the user the best possible answer.",
+			system_note: buildSystemNote(data),
 		};
 	} catch (err: unknown) {
 		const errorMessage = err instanceof Error ? err.message : String(err);
 		logger.error("[CodeExecutionTool] Failed to connect to sandbox:", err);
 
-		const lowerMsg = errorMessage.toLowerCase();
-		const isConnectionError =
-			lowerMsg.includes("econnrefused") ||
-			lowerMsg.includes("fetch failed") ||
-			lowerMsg.includes("aborterror") ||
-			lowerMsg.includes("unable to connect") ||
-			lowerMsg.includes("connection refused") ||
-			lowerMsg.includes("failed to connect");
-
+		const isConnectionError = checkConnectionError(errorMessage);
 		return {
 			success: false,
 			stdout: "",
@@ -148,7 +181,7 @@ export const codeExecutionTool: AgentTool<
 > = {
 	name: "execute_code",
 	description:
-		"Executes Python, JavaScript, TypeScript, or Bash scripts in a sandboxed Linux container with web access and Playwright browser support. Use this when asked for real-time scraped information (e.g. Amazon bestseller books, live web data), data processing, automation, or math calculations. You can specify packages to install (e.g. ['requests', 'beautifulsoup4', 'playwright']).",
+		"Executes Python, JavaScript, TypeScript, or Bash scripts in a sandboxed Linux container with web access, pre-loaded data science packages (numpy, pandas, matplotlib, seaborn, pillow, sympy, scipy, beautifulsoup4, requests), and Playwright browser support. You can generate charts and plots (e.g. using matplotlib.pyplot and saving to 'chart.png') or take screenshots with Playwright, and they will automatically be delivered as photos to the user.",
 	parameters: {
 		type: "OBJECT",
 		properties: {

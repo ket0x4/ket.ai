@@ -16,10 +16,20 @@ import {
 	runWithRetry,
 } from "./utils";
 
+export interface GeneratedMediaArtifact {
+	filename: string;
+	mimeType: string;
+	buffer: Buffer;
+}
+
 type ToolCallCallback = (
 	toolName: string,
 	args: Record<string, unknown>,
 	step: number,
+) => Promise<void> | void;
+
+type MediaGeneratedCallback = (
+	media: GeneratedMediaArtifact[],
 ) => Promise<void> | void;
 
 const lastSummarizedCount = new Map<string, number>();
@@ -37,6 +47,7 @@ interface GenerateResponseOptions {
 	mediaFallbackText: string;
 	traceId?: string;
 	onToolCall?: ToolCallCallback;
+	onMediaGenerated?: MediaGeneratedCallback;
 }
 
 function resolveLastMessageText(
@@ -182,11 +193,54 @@ async function notifyToolCallbacks(
 	}
 }
 
+async function handleToolMediaArtifacts(
+	result: unknown,
+	traceId: string,
+	onMediaGenerated?: MediaGeneratedCallback,
+): Promise<void> {
+	if (
+		!result ||
+		typeof result !== "object" ||
+		!("images" in result) ||
+		!Array.isArray(result.images) ||
+		result.images.length === 0
+	) {
+		return;
+	}
+
+	const artifacts: GeneratedMediaArtifact[] = [];
+	for (const img of result.images as Array<{
+		filename?: string;
+		mimeType?: string;
+		data?: string;
+	}>) {
+		if (img.data && typeof img.data === "string") {
+			artifacts.push({
+				filename: img.filename || "output.png",
+				mimeType: img.mimeType || "image/png",
+				buffer: Buffer.from(img.data, "base64"),
+			});
+		}
+	}
+
+	if (artifacts.length > 0 && onMediaGenerated) {
+		try {
+			await onMediaGenerated(artifacts);
+		} catch (err) {
+			logger.warn(
+				`[Agent:${traceId}] Error in onMediaGenerated callback:`,
+				err,
+			);
+		}
+	}
+}
+
 async function executeSingleTool(
 	fc: { name?: string; args?: Record<string, unknown> },
 	chatIdStr: string,
 	step: number,
 	traceId: string,
+	onMediaGenerated?: MediaGeneratedCallback,
 ): Promise<Record<string, unknown> | null> {
 	if (!fc?.name) return null;
 	const name = fc.name;
@@ -195,6 +249,8 @@ async function executeSingleTool(
 	const startTime = Date.now();
 	const result = await toolRegistry.executeTool(name, args);
 	const durationMs = Date.now() - startTime;
+
+	await handleToolMediaArtifacts(result, traceId, onMediaGenerated);
 
 	const snippet =
 		typeof result === "string"
@@ -224,12 +280,19 @@ async function handleToolExecution(
 	step: number,
 	traceId: string,
 	onToolCall?: ToolCallCallback,
+	onMediaGenerated?: MediaGeneratedCallback,
 ): Promise<Array<Record<string, unknown>>> {
 	await notifyToolCallbacks(functionCalls, step, onToolCall);
 
 	const toolResponseParts: Array<Record<string, unknown>> = [];
 	for (const fc of functionCalls) {
-		const part = await executeSingleTool(fc, chatIdStr, step, traceId);
+		const part = await executeSingleTool(
+			fc,
+			chatIdStr,
+			step,
+			traceId,
+			onMediaGenerated,
+		);
 		if (part) toolResponseParts.push(part);
 	}
 	return toolResponseParts;
@@ -289,6 +352,7 @@ async function runAgentStepLoop(
 	chatIdStr: string,
 	fsm: AgentStateMachine,
 	onToolCall?: ToolCallCallback,
+	onMediaGenerated?: MediaGeneratedCallback,
 ): Promise<string> {
 	let responseText = "";
 
@@ -353,6 +417,7 @@ async function runAgentStepLoop(
 				step,
 				fsm.getTraceId(),
 				onToolCall,
+				onMediaGenerated,
 			);
 			contents.push({ role: "user", parts: toolParts });
 			continue;
@@ -538,6 +603,7 @@ export const GeminiService = {
 				chatIdStr,
 				fsm,
 				options.onToolCall,
+				options.onMediaGenerated,
 			);
 
 			const reply = await parseAndProcessReply(
@@ -598,6 +664,7 @@ export const GeminiService = {
 		onToolCall?: ToolCallCallback,
 		chatId?: string,
 		media?: { buffer: Buffer; mimeType: string },
+		onMediaGenerated?: MediaGeneratedCallback,
 	): Promise<string> {
 		return this._generateResponse(history, topicSummary, {
 			chatId,
@@ -617,6 +684,7 @@ export const GeminiService = {
 				: CONFIG.MESSAGES.gemini_error_reply_fallback,
 			mediaFallbackText: media ? "[Photo]" : "[Media]",
 			onToolCall,
+			onMediaGenerated,
 		});
 	},
 

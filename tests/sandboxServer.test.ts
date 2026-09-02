@@ -122,6 +122,111 @@ console.log(JSON.stringify(books));
 		expect(data.exitCode).toBe(124);
 	});
 
+	test("should detect and return generated image artifacts as base64", async () => {
+		// Script generates a small PNG file
+		const pngBase64 =
+			"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+		const res = await fetch(`http://127.0.0.1:${testPort}/execute`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				language: "python",
+				code: `
+import base64
+with open("plot.png", "wb") as f:
+    f.write(base64.b64decode("${pngBase64}"))
+print("Saved plot.png")
+`,
+			}),
+		});
+
+		expect(res.ok).toBeTrue();
+		const data = (await res.json()) as {
+			success: boolean;
+			stdout: string;
+			images?: Array<{
+				filename: string;
+				mimeType: string;
+				data: string;
+				sizeBytes: number;
+			}>;
+		};
+
+		expect(data.success).toBeTrue();
+		expect(data.images).toBeDefined();
+		expect(data.images?.length).toBe(1);
+		expect(data.images?.[0].filename).toBe("plot.png");
+		expect(data.images?.[0].mimeType).toBe("image/png");
+		expect(data.images?.[0].data).toBe(pngBase64);
+		expect(data.images?.[0].sizeBytes).toBeGreaterThan(0);
+	});
+
+	test("should isolate environment variables and hide host secrets from scripts", async () => {
+		const res = await fetch(`http://127.0.0.1:${testPort}/execute`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				language: "python",
+				code: `
+import os
+print("TELEGRAM_BOT_TOKEN:", os.environ.get("TELEGRAM_BOT_TOKEN", "NOT_FOUND"))
+print("GEMINI_API_KEY:", os.environ.get("GEMINI_API_KEY", "NOT_FOUND"))
+print("MPLBACKEND:", os.environ.get("MPLBACKEND", "NOT_FOUND"))
+`,
+			}),
+		});
+
+		expect(res.ok).toBeTrue();
+		const data = (await res.json()) as {
+			success: boolean;
+			stdout: string;
+		};
+
+		expect(data.success).toBeTrue();
+		expect(data.stdout).toContain("TELEGRAM_BOT_TOKEN: NOT_FOUND");
+		expect(data.stdout).toContain("GEMINI_API_KEY: NOT_FOUND");
+		expect(data.stdout).toContain("MPLBACKEND: Agg");
+	});
+
+	test("should provide intelligent error hints for ModuleNotFoundError and SyntaxError", async () => {
+		const resMissing = await fetch(`http://127.0.0.1:${testPort}/execute`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				language: "python",
+				code: "import non_existent_custom_pkg",
+			}),
+		});
+
+		expect(resMissing.ok).toBeTrue();
+		const dataMissing = (await resMissing.json()) as {
+			success: boolean;
+			errorHint?: string;
+		};
+		expect(dataMissing.success).toBeFalse();
+		expect(dataMissing.errorHint).toContain("non_existent_custom_pkg");
+		expect(dataMissing.errorHint).toContain(
+			"packages: ['non_existent_custom_pkg']",
+		);
+
+		const resSyntax = await fetch(`http://127.0.0.1:${testPort}/execute`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				language: "python",
+				code: "def invalid_syntax(:",
+			}),
+		});
+
+		expect(resSyntax.ok).toBeTrue();
+		const dataSyntax = (await resSyntax.json()) as {
+			success: boolean;
+			errorHint?: string;
+		};
+		expect(dataSyntax.success).toBeFalse();
+		expect(dataSyntax.errorHint).toContain("SyntaxError");
+	});
+
 	test("should clean up and terminate sandbox daemon", () => {
 		if (sandboxProcess) {
 			try {

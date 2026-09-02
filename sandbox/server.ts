@@ -1,11 +1,18 @@
-import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { extname, join } from "node:path";
 
 interface ExecuteRequest {
 	language: "python" | "javascript" | "typescript" | "bash";
 	code: string;
 	packages?: string[];
 	timeoutMs?: number;
+}
+
+export interface GeneratedImage {
+	filename: string;
+	mimeType: string;
+	data: string; // base64
+	sizeBytes: number;
 }
 
 interface ExecuteResponse {
@@ -15,7 +22,9 @@ interface ExecuteResponse {
 	exitCode: number;
 	executionTimeMs: number;
 	error?: string;
+	errorHint?: string;
 	installedPackages?: string[];
+	images?: GeneratedImage[];
 	truncated?: boolean;
 }
 
@@ -23,6 +32,8 @@ const PORT = Number(process.env.SANDBOX_PORT || 8080);
 const MAX_TIMEOUT_MS = 120_000;
 const DEFAULT_TIMEOUT_MS = 45_000;
 const MAX_OUTPUT_BYTES = 64 * 1024; // 64 KB
+const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB per image
+const MAX_IMAGES_COUNT = 5;
 const SANDBOX_BASE_DIR = process.env.SANDBOX_BASE_DIR || "/tmp/sandboxes";
 
 // Ensure base sandbox directory exists
@@ -55,6 +66,129 @@ function truncateOutput(output: string): { text: string; truncated: boolean } {
 	return { text: output, truncated: false };
 }
 
+/**
+ * Returns a sanitized, minimal environment to isolate untrusted scripts
+ * and prevent leaking host secrets (API keys, bot tokens, DB configs).
+ */
+function getSafeEnv(): Record<string, string> {
+	return {
+		PATH:
+			process.env.PATH ||
+			"/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+		LANG: process.env.LANG || "C.UTF-8",
+		LC_ALL: process.env.LC_ALL || "C.UTF-8",
+		TZ: process.env.TZ || "Europe/Istanbul",
+		HOME: process.env.HOME || "/home/sandboxuser",
+		USER: process.env.USER || "sandboxuser",
+		TMPDIR: "/tmp",
+		PYTHONUNBUFFERED: "1",
+		MPLBACKEND: "Agg",
+		PLAYWRIGHT_BROWSERS_PATH:
+			process.env.PLAYWRIGHT_BROWSERS_PATH || "/ms-playwright",
+		PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH:
+			process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH ||
+			"/usr/bin/chromium-browser",
+		CHROME_BIN: process.env.CHROME_BIN || "/usr/bin/chromium-browser",
+	};
+}
+
+const IMAGE_MIME_MAP: Record<string, string> = {
+	".png": "image/png",
+	".jpg": "image/jpeg",
+	".jpeg": "image/jpeg",
+	".webp": "image/webp",
+	".svg": "image/svg+xml",
+	".gif": "image/gif",
+};
+
+/**
+ * Scans the workspace directory for generated images/plots (e.g. from Matplotlib or Playwright screenshots).
+ */
+function detectGeneratedImages(
+	workspaceDir: string,
+	ignoredFileNames: string[] = [],
+): GeneratedImage[] {
+	const images: GeneratedImage[] = [];
+	try {
+		const entries = readdirSync(workspaceDir);
+		for (const file of entries) {
+			if (ignoredFileNames.includes(file)) continue;
+
+			const filePath = join(workspaceDir, file);
+			try {
+				const stats = statSync(filePath);
+				if (!stats.isFile()) continue;
+
+				const ext = extname(file).toLowerCase();
+				const mimeType = IMAGE_MIME_MAP[ext];
+				if (mimeType && stats.size > 0 && stats.size <= MAX_IMAGE_SIZE_BYTES) {
+					const fileBuffer = readFileSync(filePath);
+					images.push({
+						filename: file,
+						mimeType,
+						data: fileBuffer.toString("base64"),
+						sizeBytes: stats.size,
+					});
+
+					if (images.length >= MAX_IMAGES_COUNT) break;
+				}
+			} catch (err) {
+				console.warn(`[Sandbox] Failed to read potential artifact ${file}:`, err);
+			}
+		}
+	} catch (err) {
+		console.warn(`[Sandbox] Error scanning workspace for images:`, err);
+	}
+	return images;
+}
+
+/**
+ * Parses stderr to provide intelligent self-healing hints for the LLM agent.
+ */
+function generateErrorHint(
+	stderr: string,
+	exitCode: number,
+): string | undefined {
+	if (exitCode === 0 && !stderr) return undefined;
+
+	// 1. Missing Python module
+	const moduleMatch = stderr.match(
+		/ModuleNotFoundError: No module named '([a-zA-Z0-9_.-]+)'/,
+	);
+	if (moduleMatch) {
+		return `Hint: Python module '${moduleMatch[1]}' is missing. You can pass packages: ['${moduleMatch[1]}'] in your tool arguments to auto-install it.`;
+	}
+
+	// 2. Missing JS/TS package
+	const jsModuleMatch = stderr.match(
+		/(?:Cannot find module|Cannot find package) '([a-zA-Z0-9_@/.-]+)'/,
+	);
+	if (jsModuleMatch) {
+		return `Hint: Package '${jsModuleMatch[1]}' is missing. You can pass packages: ['${jsModuleMatch[1]}'] in your tool arguments to auto-install it.`;
+	}
+
+	// 3. Syntax error
+	const syntaxMatch = stderr.match(/SyntaxError: (.*)/);
+	if (syntaxMatch) {
+		return `Hint: Python SyntaxError detected (${syntaxMatch[1]}). Please verify your script syntax and indentation.`;
+	}
+
+	// 4. Timeout
+	if (exitCode === 124 || stderr.includes("timed out")) {
+		return "Hint: Script execution timed out. If performing web scraping or heavy computation, consider reducing loops or queries.";
+	}
+
+	// 5. NameError
+	const nameMatch = stderr.match(
+		/NameError: name '([a-zA-Z0-9_]+)' is not defined/,
+	);
+	if (nameMatch) {
+		return `Hint: Variable or function '${nameMatch[1]}' is not defined before use.`;
+	}
+
+	return undefined;
+}
+
 async function runCommand(
 	cmd: string[],
 	cwd: string,
@@ -64,16 +198,7 @@ async function runCommand(
 		cwd,
 		stdout: "pipe",
 		stderr: "pipe",
-		env: {
-			...process.env,
-			PYTHONUNBUFFERED: "1",
-			PLAYWRIGHT_BROWSERS_PATH:
-				process.env.PLAYWRIGHT_BROWSERS_PATH || "/ms-playwright",
-			PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH:
-				process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH ||
-				"/usr/bin/chromium-browser",
-			CHROME_BIN: process.env.CHROME_BIN || "/usr/bin/chromium-browser",
-		},
+		env: getSafeEnv(),
 	});
 
 	let timer: Timer | undefined;
@@ -221,8 +346,16 @@ async function handleExecute(req: Request): Promise<Response> {
 			? `${packageInstallStderr}\n${result.stderr}`
 			: result.stderr;
 
+		// Detect any images generated by the script (e.g. Matplotlib plots, screenshots)
+		const generatedImages = detectGeneratedImages(workspaceDir, [
+			scriptFileName,
+			"package.json",
+			"bun.lock",
+		]);
+
 		const stdoutTruncated = truncateOutput(result.stdout);
 		const stderrTruncated = truncateOutput(totalStderr);
+		const errorHint = generateErrorHint(totalStderr, result.exitCode);
 
 		const responsePayload: ExecuteResponse = {
 			success: result.exitCode === 0,
@@ -231,6 +364,8 @@ async function handleExecute(req: Request): Promise<Response> {
 			exitCode: result.exitCode,
 			executionTimeMs: durationMs,
 			installedPackages,
+			images: generatedImages.length > 0 ? generatedImages : undefined,
+			errorHint,
 			truncated: stdoutTruncated.truncated || stderrTruncated.truncated,
 		};
 
