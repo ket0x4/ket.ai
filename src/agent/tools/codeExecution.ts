@@ -53,8 +53,8 @@ function buildSystemNote(data: {
 	errorHint?: string;
 }): string {
 	let systemNote = data.success
-		? "Code execution succeeded. Use the stdout/output to formulate your final concise reply to the user. Do not pretend you did not run the code."
-		: "Code execution finished with errors. You may analyze stderr, correct your script, or provide the user with the best possible answer.";
+		? "Code execution succeeded. Format code snippets, stdout/text outputs, calculation results, or data tables cleanly using Markdown code blocks (```language ... ```) or inline code (`...`) in your reply to the user. Do not pretend you did not run the code."
+		: "Code execution finished with errors. Format any error details, stderr, or code snippets cleanly in Markdown code blocks (``` ... ```) and explain or provide the best possible answer.";
 
 	const allArtifacts = data.artifacts || data.images || [];
 	if (allArtifacts.length > 0) {

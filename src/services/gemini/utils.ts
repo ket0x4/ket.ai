@@ -28,11 +28,11 @@ function loadSystemPrompt(): string {
 // Load once at module initialization
 cachedSystemPrompt = loadSystemPrompt();
 
-const NO_EMOJI_RULE =
-	"\n\n### FORMATTING RULE ###\nNever use emojis or emoticons in your responses. Always respond in clean, modern, natural, plain text format.";
+const FORMATTING_RULE =
+	"\n\n### FORMATTING RULE ###\nNever use emojis or emoticons in your responses. When presenting code, tool execution outputs, terminal logs, calculations, or structured data, always format them with clean Markdown code blocks (e.g. ```python, ```bash, ```text) or inline `code`. Use bold (*text*) for emphasis.";
 
 export function getSystemInstruction(personaPrompt?: string): string {
-	const base = `${cachedSystemPrompt}${NO_EMOJI_RULE}`;
+	const base = `${cachedSystemPrompt}${FORMATTING_RULE}`;
 	if (!personaPrompt?.trim()) {
 		return base;
 	}
