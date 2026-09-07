@@ -35,26 +35,20 @@ export function registerVoiceHandlers(bot: Bot) {
 				const transcription = await transcribeAudio(buffer, mimeType);
 				const cleanTranscription = transcription.trim();
 
-				const chatIdStr = ctx.chat?.id.toString();
-				const msgId = ctx.message?.message_id;
-
-				if (chatIdStr && msgId && cleanTranscription) {
-					Repository.updateMessageText(
-						chatIdStr,
-						msgId,
-						`[Ses Kaydı]: ${cleanTranscription}`,
-					);
-				}
-
 				if (!cleanTranscription) {
 					return "Ses kaydında anlaşılır bir konuşma duyamadım, tekrar edebilir misin?";
 				}
 
+				const formattedText = `[Ses Kaydı]: ${cleanTranscription}`;
+				const chatIdStr = ctx.chat?.id.toString();
+				const msgId = ctx.message?.message_id;
+
+				if (chatIdStr && msgId) {
+					Repository.updateMessageText(chatIdStr, msgId, formattedText);
+				}
+
 				const updatedTargetMessage = targetMessage
-					? {
-							...targetMessage,
-							text: `[Ses Kaydı]: ${cleanTranscription}`,
-						}
+					? { ...targetMessage, text: formattedText }
 					: undefined;
 
 				return GeminiService.generateReply(

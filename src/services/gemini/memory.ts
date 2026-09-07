@@ -16,21 +16,14 @@ import {
 const newMemoriesCount = new Map<string, number>();
 const MAX_TRACKED_CHATS = 200;
 
-function formatEmbeddingContent(
-	text: string,
-	taskType: "RETRIEVAL_DOCUMENT" | "RETRIEVAL_QUERY" | "SEMANTIC_SIMILARITY",
-): string {
-	const clean = text.trim();
-	if (taskType === "RETRIEVAL_QUERY") {
-		return `task: search result | query: ${clean}`;
-	}
-	if (taskType === "RETRIEVAL_DOCUMENT") {
-		return `title: none | text: ${clean}`;
-	}
-	if (taskType === "SEMANTIC_SIMILARITY") {
-		return `task: sentence similarity | query: ${clean}`;
-	}
-	return clean;
+const TASK_PREFIXES: Record<string, string> = {
+	RETRIEVAL_QUERY: "task: search result | query: ",
+	RETRIEVAL_DOCUMENT: "title: none | text: ",
+	SEMANTIC_SIMILARITY: "task: sentence similarity | query: ",
+};
+
+function formatEmbeddingContent(text: string, taskType: string): string {
+	return `${TASK_PREFIXES[taskType] ?? ""}${text.trim()}`;
 }
 
 export async function generateEmbedding(
@@ -39,7 +32,6 @@ export async function generateEmbedding(
 		| "RETRIEVAL_DOCUMENT"
 		| "RETRIEVAL_QUERY"
 		| "SEMANTIC_SIMILARITY" = "RETRIEVAL_DOCUMENT",
-	_priority?: string,
 ): Promise<number[]> {
 	try {
 		const formattedContents = formatEmbeddingContent(text, taskType);
@@ -455,7 +447,6 @@ export async function queryMemoriesWithDiagnostics(
 	const queryEmbedding = await generateEmbedding(
 		enrichedQuery,
 		"RETRIEVAL_QUERY",
-		"high",
 	);
 	const embeddingTimeMs = Date.now() - startTime;
 
