@@ -6,7 +6,7 @@ type JSONSchemaType =
 	| "ARRAY"
 	| "OBJECT";
 
-export interface ToolParameterSchema {
+interface ToolParameterSchema {
 	type: JSONSchemaType;
 	description?: string;
 	properties?: Record<string, ToolParameterSchema>;

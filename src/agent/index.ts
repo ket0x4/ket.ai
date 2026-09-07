@@ -1,7 +1,6 @@
 import { CONFIG, onBotSettingsUpdated } from "../config/index";
 import {
 	executeFunctionCallsInParallel,
-	executeSingleToolCall,
 	extractFunctionCalls,
 	type MediaGeneratedCallback,
 	runAgentLoop,
@@ -53,9 +52,7 @@ export type {
 	ToolProgressCallback,
 };
 export {
-	codeExecutionTool,
 	executeFunctionCallsInParallel,
-	executeSingleToolCall,
 	extractFunctionCalls,
 	runAgentLoop,
 	sanitizeToolResultForLLM,

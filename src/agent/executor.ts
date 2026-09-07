@@ -78,7 +78,7 @@ export function extractFunctionCalls(response: {
 /**
  * Executes a single function call, logs trace, sanitizes result, and handles artifacts.
  */
-export async function executeSingleToolCall(
+async function executeSingleToolCall(
 	fc: RawFunctionCall,
 	context: ToolExecutionContext,
 	onMediaGenerated?: MediaGeneratedCallback,
