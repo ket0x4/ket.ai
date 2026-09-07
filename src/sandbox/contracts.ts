@@ -1,8 +1,8 @@
-export type SandboxLanguage = "python" | "javascript" | "typescript" | "bash";
+type SandboxLanguage = "python" | "javascript" | "typescript" | "bash";
 
-export type SandboxArtifactType = "image" | "document" | "video" | "audio";
+type SandboxArtifactType = "image" | "document" | "video" | "audio";
 
-export interface SandboxArtifact {
+interface SandboxArtifact {
 	filename: string;
 	mimeType: string;
 	data: string;
