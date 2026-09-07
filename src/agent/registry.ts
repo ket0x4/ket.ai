@@ -9,7 +9,7 @@ import type {
 } from "./types";
 
 export class ToolRegistry {
-	private tools = new Map<string, AgentTool>();
+private readonly tools: Map<string, AgentTool> = new Map();
 
 	constructor(preloadDefaults = false) {
 		if (preloadDefaults) {
@@ -18,34 +18,49 @@ export class ToolRegistry {
 		}
 	}
 
+	public register(tool: AgentTool): void {
+		if (!tool.name || typeof tool.execute !== "function") {
+			throw new Error(
+				`[ToolRegistry] Invalid tool definition for '${tool.name || "unnamed"}'`,
+			);
+		}
+
+		}
+	}
+
 	register(tool: AgentTool): void {
 		this.tools.set(tool.name, tool);
 	}
 
-	unregister(name: string): boolean {
-		return this.tools.delete(name);
+
+	public unregister(name: string): boolean {
+		const removed = this.tools.delete(name);
+		if (removed) {
+			logger.info(`[ToolRegistry] Unregistered tool: ${name}`);
+		}
+		return removed;
 	}
 
-	hasTool(name: string): boolean {
+	public hasTool(name: string): boolean {
 		if (!this.tools.has(name)) return false;
 		if (name === "web_search") return Boolean(CONFIG.ENABLE_WEB_SEARCH);
 		if (name === "execute_code") return Boolean(CONFIG.ENABLE_CODE_EXECUTION);
 		return true;
 	}
 
-	getTool(name: string): AgentTool | undefined {
+	public getTool(name: string): AgentTool | undefined {
 		return this.hasTool(name) ? this.tools.get(name) : undefined;
 	}
 
-	getAllTools(): AgentTool[] {
+	public getAllTools(): AgentTool[] {
 		return Array.from(this.tools.values()).filter((t) => this.hasTool(t.name));
 	}
 
-	get count(): number {
+	public get count(): number {
 		return this.getAllTools().length;
 	}
 
-	getFunctionDeclarations(): FunctionDeclaration[] {
+	public getFunctionDeclarations(): FunctionDeclaration[] {
 		return this.getAllTools().map((t) => ({
 			name: t.name,
 			description: t.description,
@@ -53,7 +68,7 @@ export class ToolRegistry {
 		}));
 	}
 
-	async executeTool(
+	public async executeTool(
 		name: string,
 		args: Record<string, unknown>,
 		context?: ToolExecutionContext,
