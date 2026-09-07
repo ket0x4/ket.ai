@@ -41,8 +41,4 @@ export const ToolTraceLogger = {
 	getAll(): ToolTraceEntry[] {
 		return [...traceBuffer].reverse();
 	},
-
-	clear(): void {
-		traceBuffer.length = 0;
-	},
 };

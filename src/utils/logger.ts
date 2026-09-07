@@ -1,7 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
 import util from "node:util";
-import zlib from "node:zlib";
 import { CONFIG } from "../config/index.js";
 
 type LogLevel = "debug" | "info" | "warn" | "error";
@@ -21,27 +20,15 @@ const COLOR_CODES: Record<LogLevel, string> = {
 };
 const RESET_COLOR = "\x1b[0m";
 
-// ponytail: streamlined direct file logger without background workers or write queue
 class Logger {
 	private logDir: string;
-	private archiveDir: string;
 	private minLevel: LogLevel;
-	public maxSizeBytes: number;
 
 	constructor() {
 		this.logDir = path.resolve(process.cwd(), CONFIG.LOG_DIR);
-		this.archiveDir = path.join(this.logDir, "archive");
 		this.minLevel = CONFIG.LOG_LEVEL;
-		this.maxSizeBytes = CONFIG.LOG_MAX_SIZE_MB * 1024 * 1024;
-		this.ensureDirectories();
-	}
-
-	private ensureDirectories(): void {
 		if (!fs.existsSync(this.logDir)) {
 			fs.mkdirSync(this.logDir, { recursive: true });
-		}
-		if (!fs.existsSync(this.archiveDir)) {
-			fs.mkdirSync(this.archiveDir, { recursive: true });
 		}
 	}
 
@@ -69,29 +56,11 @@ class Logger {
 
 	private writeToFile(filePath: string, line: string): void {
 		try {
-			this.ensureDirectories();
-			if (fs.existsSync(filePath)) {
-				const size = fs.statSync(filePath).size;
-				if (size >= this.maxSizeBytes) {
-					const fileBase = path.basename(filePath, ".log");
-					const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-					const archivePath = path.join(
-						this.archiveDir,
-						`${fileBase}-${timestamp}.log.gz`,
-					);
-					const compressed = zlib.gzipSync(fs.readFileSync(filePath));
-					fs.writeFileSync(archivePath, compressed);
-					fs.truncateSync(filePath, 0);
-				}
-			}
 			fs.appendFileSync(filePath, `${line}\n`, "utf-8");
 		} catch (e) {
 			console.error(`[Logger] Failed to write log to ${filePath}:`, e);
 		}
 	}
-
-	public flush(): void {}
-	public shutdown(): void {}
 
 	public log(level: LogLevel, message: string, ...args: unknown[]): void {
 		if (LOG_LEVEL_SEVERITY[level] < LOG_LEVEL_SEVERITY[this.minLevel]) {

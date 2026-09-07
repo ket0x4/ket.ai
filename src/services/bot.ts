@@ -84,21 +84,14 @@ export function saveOutgoingMessage(
 	});
 }
 
+const TRANSIENT_STATUS_REGEX = /^(?:🔍|⚡|📦|📄|✏️|📤|📁|🧹|Spawning subagent)/u;
+
 export function isTransientStatusMessage(text: string): boolean {
 	if (!text) return false;
 	const trimmed = text.trim();
 	return (
 		trimmed === CONFIG.MESSAGES.tool_status_web_search ||
-		trimmed.startsWith("🔍 Searching") ||
-		trimmed.startsWith("⚡ Executing") ||
-		trimmed.startsWith("⚡ ") ||
-		trimmed.startsWith("📦 Installing") ||
-		trimmed.startsWith("📄 Reading workspace") ||
-		trimmed.startsWith("✏️ Writing workspace") ||
-		trimmed.startsWith("📤 Preparing and sending") ||
-		trimmed.startsWith("📁 Scanning session") ||
-		trimmed.startsWith("🧹 Cleaning and resetting") ||
-		trimmed.startsWith("Spawning subagent") ||
+		TRANSIENT_STATUS_REGEX.test(trimmed) ||
 		trimmed.includes("────────────────────────")
 	);
 }

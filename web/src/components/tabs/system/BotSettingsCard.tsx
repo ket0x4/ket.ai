@@ -5,7 +5,6 @@ import {
 	Settings,
 	Sliders,
 	Sparkles,
-	Trash2,
 } from "lucide-react";
 import {
 	type ElementType,
@@ -58,8 +57,6 @@ export const BotSettingsCard: FC = () => {
 	});
 
 	const { isLoading: isSaving, execute: executeSave } = useAsyncAction();
-	const { isLoading: isClearingCache, execute: executeClearCache } =
-		useAsyncAction();
 
 	const loadSettings = useCallback(async () => {
 		try {
@@ -83,14 +80,6 @@ export const BotSettingsCard: FC = () => {
 		});
 	};
 
-	const handleClearCache = async () => {
-		if (!window.confirm("Clear memory vector embedding cache?")) return;
-		await executeClearCache(() => api.settings.clearCache(), {
-			successMessage: "Embedding cache purged successfully.",
-			errorMessage: "Cache clear failed",
-		});
-	};
-
 	const replyProbPct = Math.round(
 		(settings.default_reply_probability ?? 0.05) * 100,
 	);
@@ -108,16 +97,6 @@ export const BotSettingsCard: FC = () => {
 						behavior.
 					</CardDescription>
 				</div>
-				<Button
-					variant="outline"
-					size="sm"
-					onClick={handleClearCache}
-					disabled={isClearingCache}
-					className="text-xs h-8 text-amber-400 hover:text-amber-300 shrink-0 self-start sm:self-center"
-				>
-					<Trash2 className="w-3.5 h-3.5 mr-1" />
-					<span>{isClearingCache ? "Clearing..." : "Purge Cache"}</span>
-				</Button>
 			</CardHeader>
 
 			<CardContent className="space-y-5">

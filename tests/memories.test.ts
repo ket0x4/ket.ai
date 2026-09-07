@@ -232,7 +232,6 @@ test("Category-aware scoring preserves PROFILE facts and decays TEMPORARY facts"
 		ninetyDaysAgo,
 		testChatId,
 	]);
-	Repository.clearMemoryCache(testChatId);
 
 	const originalEmbed = ai.models.embedContent;
 	// biome-ignore lint/suspicious/noExplicitAny: mock
@@ -495,7 +494,6 @@ test("Tiered capacity eviction prioritizes expired and temporary before profile"
 		"UPDATE memories SET created_at = ? WHERE chat_id = ? AND category = 'DYNAMIC'",
 		[now - 20 * 86400, testChatId],
 	);
-	Repository.clearMemoryCache(testChatId);
 
 	// Simulate adding a new memory when capacity limit is reached
 	// We call deleteOldestMemory directly to verify tiered eviction hierarchy

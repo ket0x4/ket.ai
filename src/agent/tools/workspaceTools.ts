@@ -1,12 +1,8 @@
 import { extname } from "node:path";
-import { sandboxClient } from "../../sandbox/client";
+import { requestJson } from "../../sandbox/client";
 import logger from "../../utils/logger";
 import { inferArtifactType } from "../sanitizer";
-import type {
-	ArtifactMediaType,
-	GeneratedMediaArtifact,
-	ToolExecutionContext,
-} from "../types";
+import type { ArtifactMediaType, ToolExecutionContext } from "../types";
 
 interface ReadWorkspaceFileArgs {
 	filename: string;
@@ -32,43 +28,10 @@ interface WriteWorkspaceFileArgs {
 	sendToUser?: boolean;
 }
 
-interface WriteWorkspaceFileResult {
+export interface WriteWorkspaceFileResult {
 	success: boolean;
 	filename: string;
 	sizeBytes?: number;
-	error?: string;
-	system_note?: string;
-}
-
-interface SendWorkspaceFileArgs {
-	filename: string;
-	caption?: string;
-	sessionId?: string;
-}
-
-interface SendWorkspaceFileResult {
-	success: boolean;
-	filename: string;
-	sizeBytes?: number;
-	error?: string;
-	system_note?: string;
-}
-
-interface ListWorkspaceFilesArgs {
-	sessionId?: string;
-}
-
-interface WorkspaceFileInfo {
-	filename: string;
-	sizeBytes: number;
-	modifiedAt: string;
-	isImage: boolean;
-}
-
-interface ListWorkspaceFilesResult {
-	success: boolean;
-	files: WorkspaceFileInfo[];
-	totalFiles: number;
 	error?: string;
 	system_note?: string;
 }
@@ -88,59 +51,12 @@ function resolveSessionId(
 	context?: ToolExecutionContext,
 	argsSessionId?: string,
 ): string {
-	// Security: context.sessionId is authoritative from authenticated bot session
 	return context?.sessionId || argsSessionId || "default";
 }
 
 function validateFilename(filename?: string): string | null {
 	const trimmed = filename?.trim();
 	return trimmed || null;
-}
-
-async function postToWorkspaceSandbox<T>(
-	endpoint: string,
-	body: Record<string, unknown>,
-): Promise<{ ok: true; data: T } | { ok: false; error: string }> {
-	try {
-		let data: unknown;
-		switch (endpoint) {
-			case "/workspace/read":
-				data = await sandboxClient.readFile(
-					body as {
-						sessionId: string;
-						filename: string;
-						encoding?: "utf-8" | "base64";
-					},
-				);
-				break;
-			case "/workspace/write":
-				data = await sandboxClient.writeFile(
-					body as {
-						sessionId: string;
-						filename: string;
-						content: string;
-						encoding?: "utf-8" | "base64";
-					},
-				);
-				break;
-			case "/workspace/list":
-				data = await sandboxClient.listFiles(body as { sessionId: string });
-				break;
-			case "/workspace/reset":
-				data = await sandboxClient.resetWorkspace(
-					body as { sessionId: string },
-				);
-				break;
-			default:
-				throw new Error(`Unsupported workspace endpoint: ${endpoint}`);
-		}
-		return { ok: true, data: data as T };
-	} catch (error) {
-		return {
-			ok: false,
-			error: error instanceof Error ? error.message : String(error),
-		};
-	}
 }
 
 function getWorkspaceFileMime(filename: string): {
@@ -168,8 +84,9 @@ export async function readWorkspaceFile(
 	const resolvedSessionId = resolveSessionId(context, args.sessionId);
 
 	try {
-		const res = await postToWorkspaceSandbox<{
+		const data = await requestJson<{
 			success: boolean;
+			filename: string;
 			content?: string;
 			data?: string;
 			sizeBytes?: number;
@@ -180,16 +97,6 @@ export async function readWorkspaceFile(
 			encoding: args.encoding,
 		});
 
-		if (!res.ok) {
-			return {
-				success: false,
-				filename,
-				error: res.error,
-				system_note: `Failed to read ${filename}. Check if the file exists using list_workspace_files.`,
-			};
-		}
-
-		const data = res.data;
 		return {
 			success: data.success,
 			filename,
@@ -230,8 +137,9 @@ export async function writeWorkspaceFile(
 	const resolvedSessionId = resolveSessionId(context, args.sessionId);
 
 	try {
-		const res = await postToWorkspaceSandbox<{
+		const data = await requestJson<{
 			success: boolean;
+			filename: string;
 			sizeBytes?: number;
 			error?: string;
 		}>("/workspace/write", {
@@ -240,17 +148,6 @@ export async function writeWorkspaceFile(
 			sessionId: resolvedSessionId,
 			encoding: args.encoding,
 		});
-
-		if (!res.ok) {
-			return {
-				success: false,
-				filename,
-				error: res.error,
-				system_note: `Failed to write ${filename}.`,
-			};
-		}
-
-		const data = res.data;
 
 		if (args.sendToUser && data.success && context?.emitArtifact) {
 			const buf =
@@ -289,113 +186,6 @@ export async function writeWorkspaceFile(
 	}
 }
 
-export async function sendWorkspaceFile(
-	args: SendWorkspaceFileArgs,
-	context?: ToolExecutionContext,
-): Promise<SendWorkspaceFileResult> {
-	const readRes = await readWorkspaceFile(
-		{
-			filename: args.filename,
-			sessionId: args.sessionId,
-			encoding: "base64",
-		},
-		context,
-	);
-
-	if (!readRes.success || !readRes.data) {
-		return {
-			success: false,
-			filename: readRes.filename,
-			error: readRes.error,
-			system_note: `Could not retrieve '${args.filename}' to send to user. Ensure file exists in workspace.`,
-		};
-	}
-
-	try {
-		const filename = readRes.filename;
-		const buffer = Buffer.from(readRes.data, "base64");
-		const { mimeType, type: artType } = getWorkspaceFileMime(filename);
-
-		const artifact: GeneratedMediaArtifact = {
-			filename,
-			mimeType,
-			buffer,
-			type: artType,
-			sizeBytes: buffer.length,
-		};
-
-		if (context?.emitArtifact) {
-			context.emitArtifact(artifact);
-		}
-
-		return {
-			success: true,
-			filename,
-			sizeBytes: buffer.length,
-			system_note: `File '${filename}' (${buffer.length} bytes) successfully queued and will be delivered to the user as a Telegram file attachment.`,
-		};
-	} catch (err) {
-		const msg = err instanceof Error ? err.message : String(err);
-		logger.error(
-			`[WorkspaceTools] Error sending file ${readRes.filename}:`,
-			err,
-		);
-		return {
-			success: false,
-			filename: readRes.filename,
-			error: msg,
-			system_note: "Failed to read file from workspace for delivery.",
-		};
-	}
-}
-
-export async function listWorkspaceFiles(
-	args: ListWorkspaceFilesArgs = {},
-	context?: ToolExecutionContext,
-): Promise<ListWorkspaceFilesResult> {
-	const resolvedSessionId = resolveSessionId(context, args.sessionId);
-
-	try {
-		const res = await postToWorkspaceSandbox<{
-			success: boolean;
-			files?: WorkspaceFileInfo[];
-			totalFiles?: number;
-			error?: string;
-		}>("/workspace/list", {
-			sessionId: resolvedSessionId,
-		});
-
-		if (!res.ok) {
-			return {
-				success: false,
-				files: [],
-				totalFiles: 0,
-				error: res.error,
-			};
-		}
-
-		const data = res.data;
-		const files = data.files || [];
-		return {
-			success: data.success,
-			files,
-			totalFiles: data.totalFiles || files.length,
-			error: data.error,
-			system_note: `Found ${files.length} file(s) in the current session workspace: [${files.map((f) => f.filename).join(", ")}].`,
-		};
-	} catch (err) {
-		const msg = err instanceof Error ? err.message : String(err);
-		logger.error("[WorkspaceTools] Error listing workspace files:", err);
-		return {
-			success: false,
-			files: [],
-			totalFiles: 0,
-			error: msg,
-			system_note: "Workspace container unreachable.",
-		};
-	}
-}
-
 export async function resetWorkspace(
 	args: ResetWorkspaceArgs = {},
 	context?: ToolExecutionContext,
@@ -403,7 +193,7 @@ export async function resetWorkspace(
 	const resolvedSessionId = resolveSessionId(context, args.sessionId);
 
 	try {
-		const res = await postToWorkspaceSandbox<{
+		const data = await requestJson<{
 			success: boolean;
 			message?: string;
 			error?: string;
@@ -411,14 +201,6 @@ export async function resetWorkspace(
 			sessionId: resolvedSessionId,
 		});
 
-		if (!res.ok) {
-			return {
-				success: false,
-				error: res.error,
-			};
-		}
-
-		const data = res.data;
 		return {
 			success: data.success,
 			message: data.message,

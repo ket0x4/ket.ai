@@ -1,113 +1,80 @@
+import { CONFIG } from "../config/index";
 import logger from "../utils/logger";
+import { codeExecutionTool } from "./tools/codeExecution";
+import { webSearchTool } from "./tools/webSearch";
 import type {
 	AgentTool,
 	FunctionDeclaration,
 	ToolExecutionContext,
 } from "./types";
 
-/** @internal */
 export class ToolRegistry {
-	private tools: Map<string, AgentTool> = new Map();
+	private tools = new Map<string, AgentTool>();
 
-	/**
-	 * Registers a new agent tool.
-	 * Overwrites any existing tool with the same name.
-	 */
-	public register(tool: AgentTool): void {
-		if (!tool.name || typeof tool.execute !== "function") {
-			throw new Error(
-				`[ToolRegistry] Invalid tool definition for '${tool.name || "unnamed"}'`,
-			);
+	constructor(preloadDefaults = false) {
+		if (preloadDefaults) {
+			this.tools.set("web_search", webSearchTool);
+			this.tools.set("execute_code", codeExecutionTool);
 		}
+	}
+
+	register(tool: AgentTool): void {
 		this.tools.set(tool.name, tool);
-		logger.info(`[ToolRegistry] Registered tool: ${tool.name}`);
 	}
 
-	/**
-	 * Unregisters a tool by name.
-	 */
-	public unregister(name: string): boolean {
-		const removed = this.tools.delete(name);
-		if (removed) {
-			logger.info(`[ToolRegistry] Unregistered tool: ${name}`);
-		}
-		return removed;
+	unregister(name: string): boolean {
+		return this.tools.delete(name);
 	}
 
-	/**
-	 * Checks if a tool is registered.
-	 */
-	public hasTool(name: string): boolean {
-		return this.tools.has(name);
+	hasTool(name: string): boolean {
+		if (!this.tools.has(name)) return false;
+		if (name === "web_search") return Boolean(CONFIG.ENABLE_WEB_SEARCH);
+		if (name === "execute_code") return Boolean(CONFIG.ENABLE_CODE_EXECUTION);
+		return true;
 	}
 
-	/**
-	 * Returns a specific registered tool.
-	 */
-	public getTool(name: string): AgentTool | undefined {
-		return this.tools.get(name);
+	getTool(name: string): AgentTool | undefined {
+		return this.hasTool(name) ? this.tools.get(name) : undefined;
 	}
 
-	/**
-	 * Returns all registered tools.
-	 */
-	public getAllTools(): AgentTool[] {
-		return Array.from(this.tools.values());
+	getAllTools(): AgentTool[] {
+		return Array.from(this.tools.values()).filter((t) => this.hasTool(t.name));
 	}
 
-	/**
-	 * Converts registered tools into function declarations suitable for Gemini SDK.
-	 */
-	public getFunctionDeclarations(): FunctionDeclaration[] {
-		const declarations: FunctionDeclaration[] = [];
-		for (const tool of this.tools.values()) {
-			declarations.push({
-				name: tool.name,
-				description: tool.description,
-				parameters: tool.parameters,
-			});
-		}
-		return declarations;
+	get count(): number {
+		return this.getAllTools().length;
 	}
 
-	/**
-	 * Executes a registered tool by name with provided arguments and optional execution context.
-	 */
-	public async executeTool(
+	getFunctionDeclarations(): FunctionDeclaration[] {
+		return this.getAllTools().map((t) => ({
+			name: t.name,
+			description: t.description,
+			parameters: t.parameters,
+		}));
+	}
+
+	async executeTool(
 		name: string,
 		args: Record<string, unknown>,
 		context?: ToolExecutionContext,
 	): Promise<unknown> {
-		const tool = this.tools.get(name);
+		const tool = this.getTool(name);
 		if (!tool) {
 			logger.error(`[ToolRegistry] Tool '${name}' requested but not found`);
 			return { error: `Tool '${name}' is not registered.` };
 		}
-
 		try {
 			logger.info(
 				`[ToolRegistry] Executing tool '${name}' with args:`,
 				JSON.stringify(args),
 			);
-			const result = await tool.execute(args, context);
-			logger.debug(
-				`[ToolRegistry] Tool '${name}' execution result:`,
-				JSON.stringify(result),
-			);
-			return result;
+			return await tool.execute(args, context);
 		} catch (error) {
 			const err = error instanceof Error ? error : new Error(String(error));
 			logger.error(`[ToolRegistry] Error executing tool '${name}':`, err);
 			return { error: err.message || `Failed to execute tool '${name}'.` };
 		}
 	}
-
-	/**
-	 * Returns total count of registered tools.
-	 */
-	public get count(): number {
-		return this.tools.size;
-	}
 }
 
-export const toolRegistry = new ToolRegistry();
+export const toolRegistry = new ToolRegistry(true);

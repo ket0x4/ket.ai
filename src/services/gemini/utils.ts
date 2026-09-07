@@ -158,116 +158,46 @@ interface RunWithRetryOptions {
 	customIntervalMs?: number;
 }
 
-interface QueuedTask<T = unknown> {
-	fn: () => Promise<T>;
-	customIntervalMs?: number;
-	priority: RequestPriority;
-	resolve: (value: T | PromiseLike<T>) => void;
-	// biome-ignore lint/suspicious/noExplicitAny: rejection reason can be any error
-	reject: (reason?: any) => void;
-}
-
-// ponytail: streamlined rate limiter enforcing pacing delay and priority ordering
 export class GeminiRateLimiter {
 	private lastRequestEndTime = 0;
-	private highQueue: QueuedTask[] = [];
-	private lowQueue: QueuedTask[] = [];
-	private isProcessing = false;
+	private queue: Promise<void> = Promise.resolve();
 
 	constructor(private minIntervalMs = 3500) {}
-
-	public setMinInterval(ms: number): void {
-		this.minIntervalMs = ms;
-	}
-
-	public getQueueLength(): { high: number; low: number; total: number } {
-		return {
-			high: this.highQueue.length,
-			low: this.lowQueue.length,
-			total: this.highQueue.length + this.lowQueue.length,
-		};
-	}
-
-	public clearQueue(rejectReason = "Queue cleared"): void {
-		const reason = new Error(rejectReason);
-		for (const task of [...this.highQueue, ...this.lowQueue]) {
-			task.reject(reason);
-		}
-		this.highQueue = [];
-		this.lowQueue = [];
-	}
 
 	public async schedule<T>(
 		fn: () => Promise<T>,
 		optionsOrInterval?: number | ScheduleOptions,
 	): Promise<T> {
-		const priority: RequestPriority =
-			typeof optionsOrInterval === "object" && optionsOrInterval?.priority
-				? optionsOrInterval.priority
-				: "high";
+		const isTestEnv =
+			process.env.NODE_ENV === "test" || process.env.BUN_ENV === "test";
 		const customIntervalMs =
 			typeof optionsOrInterval === "number"
 				? optionsOrInterval
 				: optionsOrInterval?.customIntervalMs;
-
-		return new Promise<T>((resolve, reject) => {
-			const task: QueuedTask<T> = {
-				fn,
-				customIntervalMs,
-				priority,
-				resolve: resolve as (value: unknown) => void,
-				reject,
-			};
-			(priority === "high" ? this.highQueue : this.lowQueue).push(
-				task as QueuedTask,
-			);
-			this.processQueue();
-		});
-	}
-
-	private async waitPacing(task: QueuedTask): Promise<void> {
-		const isTestEnv =
-			process.env.NODE_ENV === "test" || process.env.BUN_ENV === "test";
 		const interval =
-			task.customIntervalMs ??
+			customIntervalMs ??
 			(isTestEnv
 				? 0
 				: (CONFIG.GEMINI_MIN_REQUEST_INTERVAL_MS ?? this.minIntervalMs));
 
-		const elapsed = Date.now() - this.lastRequestEndTime;
-		if (interval > 0 && this.lastRequestEndTime > 0 && elapsed < interval) {
-			await new Promise((r) => setTimeout(r, interval - elapsed));
-		}
-	}
-
-	private async executeTask(task: QueuedTask): Promise<void> {
-		await this.waitPacing(task);
-		try {
-			task.resolve(await task.fn());
-		} catch (err) {
-			task.reject(err);
-		} finally {
-			this.lastRequestEndTime = Date.now();
-		}
-	}
-
-	private async processQueue(): Promise<void> {
-		if (this.isProcessing) return;
-		this.isProcessing = true;
-
-		try {
-			while (this.highQueue.length > 0 || this.lowQueue.length > 0) {
-				const task = this.highQueue.shift() || this.lowQueue.shift();
-				if (task) {
-					await this.executeTask(task);
-				}
+		const run = async () => {
+			const elapsed = Date.now() - this.lastRequestEndTime;
+			if (interval > 0 && this.lastRequestEndTime > 0 && elapsed < interval) {
+				await new Promise((r) => setTimeout(r, interval - elapsed));
 			}
-		} finally {
-			this.isProcessing = false;
-			if (this.highQueue.length > 0 || this.lowQueue.length > 0) {
-				this.processQueue();
+			try {
+				return await fn();
+			} finally {
+				this.lastRequestEndTime = Date.now();
 			}
-		}
+		};
+
+		const result = this.queue.then(run, run);
+		this.queue = result.then(
+			() => {},
+			() => {},
+		);
+		return result;
 	}
 }
 

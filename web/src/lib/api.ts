@@ -291,13 +291,6 @@ export const api = {
 					body: JSON.stringify(data),
 				},
 			),
-		clearCache: () =>
-			apiFetch<{ success: boolean; message: string }>(
-				"/api/settings/cache-clear",
-				{
-					method: "POST",
-				},
-			),
 	},
 	logs: {
 		get: (params?: {

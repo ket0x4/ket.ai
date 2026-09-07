@@ -32,8 +32,6 @@ export interface GeneratedArtifact {
 	type: ArtifactType;
 }
 
-export type GeneratedImage = GeneratedArtifact;
-
 interface ExecuteResponse {
 	success: boolean;
 	stdout: string;
@@ -62,8 +60,6 @@ const DEFAULT_TIMEOUT_MS = 45_000;
 const MAX_OUTPUT_BYTES = 64 * 1024; // 64 KB
 const MAX_ARTIFACT_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB per artifact
 const MAX_ARTIFACTS_COUNT = 5; // Standardized to max 5 artifacts
-const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB (backward compatibility)
-const MAX_IMAGES_COUNT = 5;
 const MAX_SESSION_DIR_BYTES = 50 * 1024 * 1024; // 50 MB
 const SANDBOX_BASE_DIR = process.env.SANDBOX_BASE_DIR || "/tmp/sandboxes";
 const SAFE_SESSION_ID_REGEX = /^[a-zA-Z0-9_-]{1,64}$/;
@@ -390,23 +386,6 @@ function detectGeneratedArtifacts(
 		console.warn(`[Sandbox] Error scanning workspace for artifacts:`, err);
 	}
 	return artifacts;
-}
-
-/**
- * Backward compatibility alias for image detection.
- */
-function detectGeneratedImages(
-	workspaceDir: string,
-	ignoredFileNames: string[] = [],
-	beforeSnapshot?: Map<string, { size: number; mtimeMs: number }>,
-	targetFiles?: string[],
-): GeneratedImage[] {
-	return detectGeneratedArtifacts(
-		workspaceDir,
-		ignoredFileNames,
-		beforeSnapshot,
-		targetFiles,
-	).filter((a) => a.type === "image");
 }
 
 /**

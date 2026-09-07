@@ -1,8 +1,7 @@
-export type SandboxLanguage = "python" | "javascript" | "typescript" | "bash";
+type SandboxLanguage = "python" | "javascript" | "typescript" | "bash";
+type SandboxArtifactType = "image" | "document" | "video" | "audio";
 
-export type SandboxArtifactType = "image" | "document" | "video" | "audio";
-
-export interface SandboxArtifact {
+interface SandboxArtifact {
 	filename: string;
 	mimeType: string;
 	data: string;
@@ -39,25 +38,4 @@ export interface SandboxStreamEvent {
 	type: "status" | "stdout" | "stderr" | "result" | string;
 	text: string;
 	data?: unknown;
-}
-
-export interface WorkspaceReadRequest {
-	sessionId: string;
-	filename: string;
-	encoding?: "utf-8" | "base64";
-}
-
-export interface WorkspaceWriteRequest {
-	sessionId: string;
-	filename: string;
-	content: string;
-	encoding?: "utf-8" | "base64";
-}
-
-export interface WorkspaceListRequest {
-	sessionId: string;
-}
-
-export interface WorkspaceResetRequest {
-	sessionId: string;
 }

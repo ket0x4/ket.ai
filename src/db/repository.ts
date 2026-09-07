@@ -1,6 +1,5 @@
 import { CONFIG } from "../config/index";
 import logger from "../utils/logger";
-import { normalizeVector } from "../utils/vector";
 import { db } from "./index";
 
 interface ChatRow {
@@ -249,7 +248,6 @@ export interface MemoryItem {
 	expiresAt: number | null;
 }
 
-// ponytail: SQLite in WAL mode executes in microseconds; queried directly without LRU cache
 function rowToMemoryItem(row: {
 	id: number;
 	memory_text: string;
@@ -259,35 +257,27 @@ function rowToMemoryItem(row: {
 	category: string | null;
 	expires_at: number | null;
 }): MemoryItem {
-	let embeddingArray: Float32Array;
-	let normalizedArray: Float32Array;
-	if (row.embedding && row.embedding.byteLength > 0) {
-		if (row.embedding.byteOffset % 4 === 0) {
-			embeddingArray = new Float32Array(
-				row.embedding.buffer,
-				row.embedding.byteOffset,
-				row.embedding.byteLength / 4,
-			);
-		} else {
-			const alignedBuffer = new ArrayBuffer(row.embedding.byteLength);
-			new Uint8Array(alignedBuffer).set(row.embedding);
-			embeddingArray = new Float32Array(
-				alignedBuffer,
-				0,
-				row.embedding.byteLength / 4,
-			);
-		}
-		normalizedArray = normalizeVector(embeddingArray);
-	} else {
-		embeddingArray = new Float32Array(0);
-		normalizedArray = new Float32Array(0);
-	}
+	const emb =
+		row.embedding && row.embedding.byteLength > 0
+			? row.embedding.byteOffset % 4 === 0
+				? new Float32Array(
+						row.embedding.buffer,
+						row.embedding.byteOffset,
+						row.embedding.byteLength / 4,
+					)
+				: new Float32Array(
+						row.embedding.buffer.slice(
+							row.embedding.byteOffset,
+							row.embedding.byteOffset + row.embedding.byteLength,
+						),
+					)
+			: new Float32Array(0);
 
 	return {
 		id: row.id,
 		text: row.memory_text,
-		embedding: embeddingArray,
-		normalizedEmbedding: normalizedArray,
+		embedding: emb,
+		normalizedEmbedding: emb,
 		createdAt: row.created_at,
 		userId: row.user_id,
 		category:
@@ -368,9 +358,6 @@ export const Repository = {
 				optedOutUsernames.delete(details.username.toLowerCase());
 			}
 		}
-
-		// Clear memory cache so opted-out user's memories are immediately excluded/invalidated
-		this.clearMemoryCache();
 	},
 
 	/**
@@ -386,11 +373,6 @@ export const Repository = {
 	getOptedOutUsernames(): string[] {
 		return Array.from(optedOutUsernames);
 	},
-	/**
-	 * Clears the in-memory memory cache for a specific chat or all chats.
-	 * Kept as no-op for API compatibility; SQLite WAL mode queries directly.
-	 */
-	clearMemoryCache(_chatId?: string): void {},
 
 	/**
 	 * Seeds the database with a list of initially allowed chat IDs from config.
@@ -439,8 +421,6 @@ export const Repository = {
 		});
 
 		transaction();
-		this.clearMemoryCache(oldChatId);
-		this.clearMemoryCache(newChatId);
 	},
 
 	/**
@@ -681,7 +661,6 @@ export const Repository = {
 			stmts.resetTopic.run(chatId);
 		});
 		transaction();
-		this.clearMemoryCache(chatId);
 	},
 
 	/**
@@ -828,7 +807,7 @@ export const Repository = {
 	/**
 	 * Deletes specific memories by their IDs.
 	 */
-	deleteMemoriesByIds(ids: number[], _chatId?: string): void {
+	deleteMemoriesByIds(ids: number[]): void {
 		if (ids.length === 0) return;
 		const deleteMany = db.transaction((memoryIds: number[]) => {
 			for (const id of memoryIds) {
@@ -846,7 +825,6 @@ export const Repository = {
 		text: string,
 		category?: string,
 		embedding?: number[] | Float32Array,
-		_chatId?: string,
 	): void {
 		const cat = (category as "PROFILE" | "DYNAMIC" | "TEMPORARY") || "PROFILE";
 		if (embedding && embedding.length > 0) {
