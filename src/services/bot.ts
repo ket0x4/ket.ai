@@ -7,6 +7,7 @@ import { registerCommandHandlers } from "../modules/commands";
 import { registerDocumentHandlers } from "../modules/document";
 import { registerImageHandlers } from "../modules/image";
 import { registerVoiceHandlers } from "../modules/voice";
+import { isPlaceholderChatTitle } from "../utils/chatTitle";
 import logger from "../utils/logger";
 import {
 	downloadTelegramFileById,
@@ -348,16 +349,6 @@ function checkBotWritePermission(
 		return permissions.can_send_messages !== false;
 	}
 	return true;
-}
-
-function isPlaceholderChatTitle(title?: string | null): boolean {
-	return (
-		!title ||
-		title.trim() === "" ||
-		title === "Whitelisted Chat" ||
-		title === "Seeded Group" ||
-		title.startsWith("Group (-")
-	);
 }
 
 async function syncSingleChatTitle(

@@ -8,6 +8,7 @@ import {
 	writeWorkspaceFile,
 } from "../src/agent/tools/workspaceTools";
 import { CONFIG } from "../src/config/index";
+import { startSandboxServer, stopSandboxServer } from "./helpers/sandboxServer";
 
 describe("Stateful Session Workspace & Iterative Debugging", () => {
 	const testPort = 8199;
@@ -16,33 +17,11 @@ describe("Stateful Session Workspace & Iterative Debugging", () => {
 	const sessionId = "test_stateful_session_42";
 
 	beforeAll(async () => {
-		CONFIG.SANDBOX_URL = `http://127.0.0.1:${testPort}`;
-		sandboxProcess = Bun.spawn(["bun", "run", "sandbox/server.ts"], {
-			env: {
-				...process.env,
-				SANDBOX_PORT: testPort.toString(),
-			},
-			stdout: "pipe",
-			stderr: "pipe",
-		});
-
-		// Wait for sandbox server readiness
-		for (let i = 0; i < 25; i++) {
-			try {
-				const res = await fetch(`http://127.0.0.1:${testPort}/health`);
-				if (res.ok) break;
-			} catch {}
-			await new Promise((r) => setTimeout(r, 100));
-		}
+		sandboxProcess = (await startSandboxServer(testPort)).process;
 	});
 
 	afterAll(() => {
-		CONFIG.SANDBOX_URL = originalSandboxUrl;
-		if (sandboxProcess) {
-			try {
-				sandboxProcess.kill(9);
-			} catch {}
-		}
+		stopSandboxServer(sandboxProcess, originalSandboxUrl);
 	});
 
 	test("should register execute_code tool in toolRegistry", () => {
