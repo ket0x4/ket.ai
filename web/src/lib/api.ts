@@ -6,8 +6,6 @@ import type {
 	Memory,
 	MemoryCategory,
 	Persona,
-	SandboxResponse,
-	SandboxRunOptions,
 	StatsResponse,
 	TelegramUser,
 	ToolTrace,
@@ -104,50 +102,6 @@ async function apiFetch<T>(
 	if (!res.ok) await throwResponseError(res);
 
 	return (await res.json()) as T;
-}
-
-type SseEvent = {
-	type: "status" | "stdout" | "stderr" | "result" | string;
-	text: string;
-	data?: unknown;
-};
-
-function parseSseFrame(raw: string): SseEvent | null {
-	const trimmed = raw.trim();
-	if (!trimmed) return null;
-	let eventType = "message";
-	let dataText = "";
-	for (const line of trimmed.split("\n")) {
-		if (line.startsWith("event: ")) eventType = line.slice(7).trim();
-		else if (line.startsWith("data: ")) dataText = line.slice(6);
-	}
-	let parsedData: unknown = dataText;
-	try {
-		parsedData = JSON.parse(dataText);
-	} catch {}
-	return { type: eventType, text: dataText, data: parsedData };
-}
-
-async function readSseStream(
-	body: ReadableStream<Uint8Array>,
-	onChunk: (event: SseEvent) => void,
-) {
-	const reader = body.getReader();
-	const decoder = new TextDecoder();
-	let buffer = "";
-	while (true) {
-		const { done, value } = await reader.read();
-		if (done) break;
-		if (value) {
-			buffer += decoder.decode(value, { stream: true });
-			const parts = buffer.split("\n\n");
-			buffer = parts.pop() || "";
-			for (const part of parts) {
-				const event = parseSseFrame(part);
-				if (event) onChunk(event);
-			}
-		}
-	}
 }
 
 export const api = {
@@ -311,37 +265,5 @@ export const api = {
 	},
 	traces: {
 		get: () => apiFetch<{ traces: ToolTrace[] }>("/api/tool-traces"),
-	},
-	sandbox: {
-		run: (data: SandboxRunOptions) =>
-			apiFetch<SandboxResponse>("/api/sandbox", {
-				method: "POST",
-				body: JSON.stringify(data),
-			}),
-		executeStream: async (
-			data: {
-				language: string;
-				code: string;
-				packages?: string[];
-				sessionId?: string;
-				filename?: string;
-				target_files?: string[];
-			},
-			onChunk: (event: {
-				type: "status" | "stdout" | "stderr" | "result" | string;
-				text: string;
-				data?: unknown;
-			}) => void,
-		) => {
-			const res = await fetch("/api/sandbox/execute", {
-				method: "POST",
-				headers: buildAuthHeaders(undefined, "text/event-stream"),
-				body: JSON.stringify({ ...data, stream: true }),
-			});
-			if (!res.ok) await throwResponseError(res);
-			if (res.body) {
-				await readSseStream(res.body, onChunk);
-			}
-		},
 	},
 };

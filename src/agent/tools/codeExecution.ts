@@ -296,23 +296,9 @@ export const bashExecutionTool: AgentTool<
 		required: ["command"],
 	},
 	execute: async (args: BashExecutionArgs, context?: ToolExecutionContext) => {
-		return executeInSandbox({
-			language: "bash",
-			code: args.command,
-			sessionId: context?.sessionId || args.sessionId,
-			onProgress: context?.onProgress
-				? (event) => {
-						context.onProgress?.({
-							type: event.type,
-							statusText: event.type === "status" ? event.text : undefined,
-							stdoutSnippet:
-								event.type === "stdout" || event.type === "stderr"
-									? event.text
-									: undefined,
-							fullStdout: event.fullStdoutSoFar,
-						});
-					}
-				: undefined,
-		});
+		return codeExecutionTool.execute(
+			{ language: "bash", code: args.command, sessionId: args.sessionId },
+			context,
+		);
 	},
 };

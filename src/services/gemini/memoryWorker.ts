@@ -95,10 +95,34 @@ function getExtractionSchema(): Record<string, unknown> {
 	};
 }
 
-async function saveExtractedMemories(
+function resolveTtl(category: string, ttlDays?: number): number | null {
+	if (typeof ttlDays === "number" && ttlDays > 0) return ttlDays;
+	return category === "TEMPORARY" ? 3 : null;
+}
+
+function isOptedOut(targetUserId?: number, userName?: string): boolean {
+	if (targetUserId && Repository.isUserOptedOut(targetUserId)) {
+		logger.debug(
+			`[MemoryWorker] Skipped saving memory for opted-out user ${targetUserId}`,
+		);
+		return true;
+	}
+	if (userName && Repository.isUsernameOptedOut(userName)) {
+		logger.debug(
+			`[MemoryWorker] Skipped saving memory for opted-out username "${userName}"`,
+		);
+		return true;
+	}
+	return false;
+}
+
+export async function saveExtractedMemories(
 	chatIdStr: string,
 	extractedList: unknown[],
 	recentMessages: MessageRow[] = [],
+	senderUserId?: number,
+	senderFirstName?: string,
+	senderUsername?: string,
 ): Promise<number> {
 	if (!Array.isArray(extractedList) || extractedList.length === 0) return 0;
 
@@ -111,39 +135,25 @@ async function saveExtractedMemories(
 		ttl_days?: number;
 	}>) {
 		if (!item.user_name || !item.fact) continue;
-		const combinedFact = `${item.user_name}: ${item.fact}`;
-		const cat =
-			(item.category as "PROFILE" | "DYNAMIC" | "TEMPORARY") || "PROFILE";
-		const ttl =
-			typeof item.ttl_days === "number" && item.ttl_days > 0
-				? item.ttl_days
-				: null;
 
 		const targetUserId = resolveTargetUserId(
 			item.user_name,
 			item.user_id,
 			recentMessages,
+			senderUserId,
+			senderFirstName,
+			senderUsername,
 		);
 
-		if (targetUserId && Repository.isUserOptedOut(targetUserId)) {
-			logger.debug(
-				`[MemoryWorker] Skipped saving memory for opted-out user ${targetUserId}`,
-			);
-			continue;
-		}
+		if (isOptedOut(targetUserId, item.user_name)) continue;
 
-		if (Repository.isUsernameOptedOut(item.user_name)) {
-			logger.debug(
-				`[MemoryWorker] Skipped saving memory for opted-out username "${item.user_name}"`,
-			);
-			continue;
-		}
+		const cat =
+			(item.category as "PROFILE" | "DYNAMIC" | "TEMPORARY") || "PROFILE";
 
-		await processNewMemory(chatIdStr, combinedFact, {
+		await processNewMemory(chatIdStr, `${item.user_name}: ${item.fact}`, {
 			userId: targetUserId,
 			category: cat,
-			ttlDays: ttl,
-			priority: "low",
+			ttlDays: resolveTtl(cat, item.ttl_days),
 		});
 		savedCount++;
 	}
@@ -163,23 +173,21 @@ async function runBackgroundMemoryExtraction(chatIdStr: string): Promise<void> {
 	);
 
 	try {
-		const response = await runWithRetry(
-			() =>
-				ai.models.generateContent({
-					model: CONFIG.GEMINI_MODEL,
-					contents: prompt,
-					config: {
-						systemInstruction:
-							"You are a quiet background memory analyzer for a Telegram group bot. Extract factual details about users. Output strictly JSON.",
-						temperature: 0.2,
-						maxOutputTokens: 2048,
-						thinkingConfig: getThinkingConfig(CONFIG.GEMINI_MODEL),
-						responseMimeType: "application/json",
-						// biome-ignore lint/suspicious/noExplicitAny: SDK schema typing
-						responseSchema: getExtractionSchema() as any,
-					},
-				}),
-			{ priority: "low" },
+		const response = await runWithRetry(() =>
+			ai.models.generateContent({
+				model: CONFIG.GEMINI_MODEL,
+				contents: prompt,
+				config: {
+					systemInstruction:
+						"You are a quiet background memory analyzer for a Telegram group bot. Extract factual details about users. Output strictly JSON.",
+					temperature: 0.2,
+					maxOutputTokens: 2048,
+					thinkingConfig: getThinkingConfig(CONFIG.GEMINI_MODEL),
+					responseMimeType: "application/json",
+					// biome-ignore lint/suspicious/noExplicitAny: SDK schema typing
+					responseSchema: getExtractionSchema() as any,
+				},
+			}),
 		);
 
 		const responseText = response.text?.trim() || "[]";

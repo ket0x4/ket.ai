@@ -4,7 +4,6 @@ import {
 	LayoutDashboard,
 	Loader2,
 	Settings,
-	Sparkles,
 	Users,
 } from "lucide-react";
 import { lazy, Suspense, useCallback, useEffect, useState } from "react";
@@ -44,11 +43,6 @@ const GroupsTab = lazy(() =>
 const SystemTab = lazy(() =>
 	import("@/components/tabs/SystemTab").then((m) => ({
 		default: m.SystemTab,
-	})),
-);
-const SandboxTab = lazy(() =>
-	import("@/components/tabs/SandboxTab").then((m) => ({
-		default: m.SandboxTab,
 	})),
 );
 const MemoryModal = lazy(() =>
@@ -205,10 +199,7 @@ export default function App() {
 		{ value: "personas", icon: Bot, label: "Personas" },
 		{ value: "groups", icon: Users, label: "Groups" },
 		...(role === "owner"
-			? [
-					{ value: "system", icon: Settings, label: "Settings & Logs" },
-					{ value: "sandbox", icon: Sparkles, label: "AI Sandbox" },
-				]
+			? [{ value: "system", icon: Settings, label: "Settings & Logs" }]
 			: []),
 	];
 
@@ -354,23 +345,6 @@ export default function App() {
 								}
 							>
 								<SystemTab />
-							</Suspense>
-						</TabsContent>
-					)}
-
-					{/* Tab 6: AI Sandbox (Owner) */}
-					{role === "owner" && (
-						<TabsContent value="sandbox">
-							<Suspense
-								fallback={
-									<LoadingState
-										text="Loading AI Sandbox..."
-										icon={Sparkles}
-										className="py-12"
-									/>
-								}
-							>
-								<SandboxTab chats={chats} personas={personas} />
 							</Suspense>
 						</TabsContent>
 					)}

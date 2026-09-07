@@ -1,5 +1,4 @@
 import { describe, expect, it } from "bun:test";
-import { syncToolsWithConfig } from "../src/agent/index";
 import { toolRegistry } from "../src/agent/registry";
 import { updateBotSettings } from "../src/config";
 import { Repository } from "../src/db/repository";
@@ -161,7 +160,6 @@ describe("Dynamic Tool Registry Sync", () => {
 			enable_web_search: true,
 			enable_code_execution: true,
 		});
-		syncToolsWithConfig();
 		expect(toolRegistry.hasTool("web_search")).toBe(true);
 		expect(toolRegistry.hasTool("execute_code")).toBe(true);
 

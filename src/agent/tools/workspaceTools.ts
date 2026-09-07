@@ -256,7 +256,7 @@ export async function resetWorkspace(
 	}
 }
 
-export async function listWorkspaceFiles(
+async function listWorkspaceFiles(
 	args: ListWorkspaceFilesArgs = {},
 	context?: ToolExecutionContext,
 ): Promise<ListWorkspaceFilesResult> {
@@ -293,7 +293,7 @@ export async function listWorkspaceFiles(
 	}
 }
 
-export async function sendWorkspaceFile(
+async function sendWorkspaceFile(
 	args: SendWorkspaceFileArgs,
 	context?: ToolExecutionContext,
 ): Promise<SendWorkspaceFileResult> {

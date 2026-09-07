@@ -45,19 +45,6 @@ function runMigrations() {
     ) STRICT;
   `);
 
-	// Ensure is_opted_out column exists for existing databases
-	try {
-		const userColumns = db.prepare("PRAGMA table_info(users)").all() as Array<{
-			name: string;
-		}>;
-		const hasOptedOut = userColumns.some((col) => col.name === "is_opted_out");
-		if (!hasOptedOut) {
-			db.run("ALTER TABLE users ADD COLUMN is_opted_out INTEGER DEFAULT 0");
-		}
-	} catch (e) {
-		logger.debug("[DB Migration] is_opted_out check/alter skipped:", e);
-	}
-
 	// Table: chats
 	db.run(`
     CREATE TABLE IF NOT EXISTS chats (
@@ -71,23 +58,6 @@ function runMigrations() {
       created_at INTEGER NOT NULL
     ) STRICT;
   `);
-
-	// Ensure active_persona_id column exists for existing databases
-	try {
-		const chatColumns = db.prepare("PRAGMA table_info(chats)").all() as Array<{
-			name: string;
-		}>;
-		const hasActivePersona = chatColumns.some(
-			(col) => col.name === "active_persona_id",
-		);
-		if (!hasActivePersona) {
-			db.run(
-				"ALTER TABLE chats ADD COLUMN active_persona_id TEXT DEFAULT NULL",
-			);
-		}
-	} catch (e) {
-		logger.debug("[DB Migration] active_persona_id check/alter skipped:", e);
-	}
 
 	// Clean legacy placeholder titles so real Telegram titles can be dynamically resolved
 	try {
@@ -156,33 +126,6 @@ function runMigrations() {
       UNIQUE(chat_id, message_id)
     ) STRICT;
   `);
-
-	// Ensure document columns exist for existing databases
-	try {
-		const msgColumns = db
-			.prepare("PRAGMA table_info(messages)")
-			.all() as Array<{ name: string }>;
-		if (!msgColumns.some((col) => col.name === "document_file_id")) {
-			db.run(
-				"ALTER TABLE messages ADD COLUMN document_file_id TEXT DEFAULT NULL",
-			);
-		}
-		if (!msgColumns.some((col) => col.name === "document_file_name")) {
-			db.run(
-				"ALTER TABLE messages ADD COLUMN document_file_name TEXT DEFAULT NULL",
-			);
-		}
-		if (!msgColumns.some((col) => col.name === "document_mime_type")) {
-			db.run(
-				"ALTER TABLE messages ADD COLUMN document_mime_type TEXT DEFAULT NULL",
-			);
-		}
-	} catch (e) {
-		logger.debug(
-			"[DB Migration] messages document columns check/alter skipped:",
-			e,
-		);
-	}
 
 	// Indexes for faster lookups on message history
 	db.run(`

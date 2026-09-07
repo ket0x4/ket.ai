@@ -10,7 +10,6 @@ import { ai } from "./client";
 import {
 	expandContextualQuery,
 	getThinkingConfig,
-	type RequestPriority,
 	runWithRetry,
 } from "./utils";
 
@@ -23,19 +22,16 @@ export async function generateEmbedding(
 		| "RETRIEVAL_DOCUMENT"
 		| "RETRIEVAL_QUERY"
 		| "SEMANTIC_SIMILARITY" = "RETRIEVAL_DOCUMENT",
-	priority: RequestPriority = "high",
 ): Promise<number[]> {
 	try {
-		const response = await runWithRetry(
-			() =>
-				ai.models.embedContent({
-					model: "gemini-embedding-2",
-					contents: text,
-					config: {
-						taskType,
-					},
-				}),
-			{ priority },
+		const response = await runWithRetry(() =>
+			ai.models.embedContent({
+				model: "gemini-embedding-2",
+				contents: text,
+				config: {
+					taskType,
+				},
+			}),
 		);
 		return response.embeddings?.[0]?.values || [];
 	} catch (error) {
@@ -90,7 +86,6 @@ export async function processNewMemory(
 		userId?: number | null;
 		category?: "PROFILE" | "DYNAMIC" | "TEMPORARY";
 		ttlDays?: number | null;
-		priority?: RequestPriority;
 	},
 ) {
 	if (!memoryText?.trim() || !chatIdStr) return;
@@ -132,12 +127,7 @@ export async function processNewMemory(
 		return;
 	}
 
-	const priority = options?.priority ?? "low";
-	const rawEmb = await generateEmbedding(
-		memText,
-		"RETRIEVAL_DOCUMENT",
-		priority,
-	);
+	const rawEmb = await generateEmbedding(memText, "RETRIEVAL_DOCUMENT");
 	if (rawEmb.length === 0) {
 		logger.warn(
 			`[Memory Store] Skipped memory for chat ${chatIdStr} due to embedding failure:`,
@@ -549,28 +539,26 @@ Memories:
 ${memoryListText}`;
 
 		try {
-			const response = await runWithRetry(
-				() =>
-					ai.models.generateContent({
-						model: CONFIG.GEMINI_MODEL,
-						contents: prompt,
-						config: {
-							systemInstruction:
-								"You are an automated data maintenance service. Analyze stored memories and identify redundant or contradictory memory IDs for deletion. Return strictly JSON.",
-							temperature: 0.1,
-							maxOutputTokens: 2048,
-							thinkingConfig: getThinkingConfig(CONFIG.GEMINI_MODEL),
-							responseMimeType: "application/json",
-							responseSchema: {
-								type: "ARRAY",
-								items: {
-									type: "INTEGER",
-								},
-								description: "List of memory IDs to delete",
+			const response = await runWithRetry(() =>
+				ai.models.generateContent({
+					model: CONFIG.GEMINI_MODEL,
+					contents: prompt,
+					config: {
+						systemInstruction:
+							"You are an automated data maintenance service. Analyze stored memories and identify redundant or contradictory memory IDs for deletion. Return strictly JSON.",
+						temperature: 0.1,
+						maxOutputTokens: 2048,
+						thinkingConfig: getThinkingConfig(CONFIG.GEMINI_MODEL),
+						responseMimeType: "application/json",
+						responseSchema: {
+							type: "ARRAY",
+							items: {
+								type: "INTEGER",
 							},
+							description: "List of memory IDs to delete",
 						},
-					}),
-				{ priority: "low" },
+					},
+				}),
 			);
 
 			const responseText = response.text?.trim() || "[]";

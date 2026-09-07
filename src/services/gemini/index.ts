@@ -11,15 +11,16 @@ import { Repository } from "../../db/repository";
 import logger from "../../utils/logger";
 import { ai } from "./client";
 import type { PreparedDocumentContext } from "./documentPerception";
-import { describeImage, transcribeAudio } from "./mediaPerception";
-import { getRelevantMemories, processNewMemory } from "./memory";
-import { MEMORY_UPDATE_ITEM_SCHEMA } from "./memoryWorker";
+import { getRelevantMemories } from "./memory";
+import {
+	MEMORY_UPDATE_ITEM_SCHEMA,
+	saveExtractedMemories,
+} from "./memoryWorker";
 import {
 	buildHistoryList,
 	cleanUserText,
 	getSystemInstruction,
 	getThinkingConfig,
-	resolveTargetUserId,
 	runWithRetry,
 } from "./utils";
 
@@ -223,92 +224,6 @@ function buildInitialContents(
 	return [{ role: "user", parts: initialParts }];
 }
 
-interface ExtractedMemoryItem {
-	user_id?: number;
-	user_name?: string;
-	fact?: string;
-	category?: string;
-	ttl_days?: number;
-}
-
-async function saveSingleExtractedMemory(
-	chatIdStr: string,
-	mem: ExtractedMemoryItem,
-	history: MessageRow[],
-	senderUserId?: number,
-	senderFirstName?: string,
-	senderUsername?: string,
-): Promise<void> {
-	if (!mem.user_name || !mem.fact) return;
-
-	const targetUserId = resolveTargetUserId(
-		mem.user_name,
-		mem.user_id,
-		history,
-		senderUserId,
-		senderFirstName,
-		senderUsername,
-	);
-
-	if (targetUserId && Repository.isUserOptedOut(targetUserId)) {
-		logger.debug(
-			`[Gemini:saveExtractedMemories] Skipped memory for opted-out user ${targetUserId}`,
-		);
-		return;
-	}
-
-	if (Repository.isUsernameOptedOut(mem.user_name)) {
-		logger.debug(
-			`[Gemini:saveExtractedMemories] Skipped memory for opted-out username "${mem.user_name}"`,
-		);
-		return;
-	}
-
-	const cat =
-		(mem.category as "PROFILE" | "DYNAMIC" | "TEMPORARY") || "PROFILE";
-	const ttl =
-		typeof mem.ttl_days === "number" && mem.ttl_days > 0
-			? mem.ttl_days
-			: cat === "TEMPORARY"
-				? 3
-				: null;
-
-	await processNewMemory(chatIdStr, `${mem.user_name}: ${mem.fact}`, {
-		userId: targetUserId,
-		category: cat,
-		ttlDays: ttl,
-		priority: "low",
-	});
-}
-
-async function processExtractedMemories(
-	chatIdStr: string,
-	memoryUpdates: unknown[],
-	history: MessageRow[] = [],
-	senderUserId?: number,
-	senderFirstName?: string,
-	senderUsername?: string,
-): Promise<void> {
-	if (
-		!Array.isArray(memoryUpdates) ||
-		!chatIdStr ||
-		memoryUpdates.length === 0
-	) {
-		return;
-	}
-
-	for (const mem of memoryUpdates as ExtractedMemoryItem[]) {
-		await saveSingleExtractedMemory(
-			chatIdStr,
-			mem,
-			history,
-			senderUserId,
-			senderFirstName,
-			senderUsername,
-		);
-	}
-}
-
 function buildGenConfig(
 	options: GenerateResponseOptions,
 	toolsConfig?: Array<Record<string, unknown>>,
@@ -389,7 +304,7 @@ async function handleJsonReply(
 			Array.isArray(parsed.new_memory_updates) &&
 			parsed.new_memory_updates.length > 0
 		) {
-			processExtractedMemories(
+			saveExtractedMemories(
 				chatIdStr,
 				parsed.new_memory_updates,
 				history,
@@ -480,17 +395,6 @@ async function parseAndProcessReply(
 	// Markdown or plain text response (e.g. from tool execution or unstructured output)
 	return trimmed;
 }
-
-type MediaReplyParams = [
-	buffer: Buffer,
-	mimeType: string,
-	history: MessageRow[],
-	topicSummary: string | null,
-	onToolCall?: ToolCallCallback,
-	chatId?: string,
-	onToolProgress?: ToolProgressCallback,
-	targetMessage?: TargetMessageInfo,
-];
 
 export const GeminiService = {
 	async _generateResponse(
@@ -694,30 +598,6 @@ export const GeminiService = {
 		});
 	},
 
-	async generateDocumentReply(
-		document: PreparedDocumentContext,
-		history: MessageRow[],
-		topicSummary: string | null,
-		onToolCall?: ToolCallCallback,
-		chatId?: string,
-		onMediaGenerated?: MediaGeneratedCallback,
-		onToolProgress?: ToolProgressCallback,
-		targetMessage?: TargetMessageInfo,
-	): Promise<string> {
-		return this.generateReply(
-			history,
-			topicSummary,
-			false,
-			onToolCall,
-			chatId,
-			document.mediaPayload,
-			onMediaGenerated,
-			onToolProgress,
-			document,
-			targetMessage,
-		);
-	},
-
 	async summarizeTopic(history: MessageRow[]): Promise<string> {
 		try {
 			if (history.length === 0) return "";
@@ -732,35 +612,33 @@ export const GeminiService = {
 			const prompt =
 				"Analyze the conversations below. Summarize the main topic of conversation or the situation being discussed by a person in a maximum of 1–2 sentences.";
 
-			const response = await runWithRetry(
-				() =>
-					ai.models.generateContent({
-						model: CONFIG.GEMINI_MODEL,
-						contents: JSON.stringify({
-							messages: historyList,
-							instruction: prompt,
-						}),
-						config: {
-							systemInstruction:
-								"You are an analysis expert. You summarize group chats in just 1-2 sentences.",
-							temperature: 0.3,
-							maxOutputTokens: 1024,
-							thinkingConfig: getThinkingConfig(CONFIG.GEMINI_MODEL),
-							responseMimeType: "application/json",
-							responseSchema: {
-								type: "OBJECT",
-								properties: {
-									summary: {
-										type: "STRING",
-										description:
-											"A 1-2 sentence text summarizing the current topic of the group chat.",
-									},
-								},
-								required: ["summary"],
-							},
-						},
+			const response = await runWithRetry(() =>
+				ai.models.generateContent({
+					model: CONFIG.GEMINI_MODEL,
+					contents: JSON.stringify({
+						messages: historyList,
+						instruction: prompt,
 					}),
-				{ priority: "low" },
+					config: {
+						systemInstruction:
+							"You are an analysis expert. You summarize group chats in just 1-2 sentences.",
+						temperature: 0.3,
+						maxOutputTokens: 1024,
+						thinkingConfig: getThinkingConfig(CONFIG.GEMINI_MODEL),
+						responseMimeType: "application/json",
+						responseSchema: {
+							type: "OBJECT",
+							properties: {
+								summary: {
+									type: "STRING",
+									description:
+										"A 1-2 sentence text summarizing the current topic of the group chat.",
+								},
+							},
+							required: ["summary"],
+						},
+					},
+				}),
 			);
 
 			const responseText = response.text?.trim() || "";
@@ -783,57 +661,4 @@ export const GeminiService = {
 			return "";
 		}
 	},
-
-	async generateImageReply(...args: MediaReplyParams): Promise<string> {
-		const [
-			imageBuffer,
-			mimeType,
-			history,
-			topicSummary,
-			onToolCall,
-			chatId,
-			onToolProgress,
-			targetMessage,
-		] = args;
-		return this.generateReply(
-			history,
-			topicSummary,
-			false,
-			onToolCall,
-			chatId,
-			{ buffer: imageBuffer, mimeType },
-			undefined,
-			onToolProgress,
-			undefined,
-			targetMessage,
-		);
-	},
-
-	async generateVoiceReply(...args: MediaReplyParams): Promise<string> {
-		const [
-			audioBuffer,
-			mimeType,
-			history,
-			topicSummary,
-			onToolCall,
-			chatId,
-			onToolProgress,
-			targetMessage,
-		] = args;
-		return this.generateReply(
-			history,
-			topicSummary,
-			false,
-			onToolCall,
-			chatId,
-			{ buffer: audioBuffer, mimeType },
-			undefined,
-			onToolProgress,
-			undefined,
-			targetMessage,
-		);
-	},
-
-	transcribeAudio,
-	describeImage,
 };

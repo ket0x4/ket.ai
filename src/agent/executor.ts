@@ -225,16 +225,14 @@ export async function runAgentLoop(
 	let executedTools = false;
 
 	for (let step = 1; step <= maxSteps; step++) {
-		const response = await runWithRetry(
-			() =>
-				ai.models.generateContent({
-					model: CONFIG.GEMINI_MODEL,
-					// biome-ignore lint/suspicious/noExplicitAny: SDK expects content structure
-					contents: contents as any,
-					// biome-ignore lint/suspicious/noExplicitAny: SDK expects config structure
-					config: genConfig as any,
-				}),
-			{ priority: "high" },
+		const response = await runWithRetry(() =>
+			ai.models.generateContent({
+				model: CONFIG.GEMINI_MODEL,
+				// biome-ignore lint/suspicious/noExplicitAny: SDK expects content structure
+				contents: contents as any,
+				// biome-ignore lint/suspicious/noExplicitAny: SDK expects config structure
+				config: genConfig as any,
+			}),
 		);
 
 		const functionCalls = extractFunctionCalls(response);
@@ -284,16 +282,14 @@ export async function runAgentLoop(
 				tools: undefined,
 				maxOutputTokens: 2048,
 			};
-			const finalResponse = await runWithRetry(
-				() =>
-					ai.models.generateContent({
-						model: CONFIG.GEMINI_MODEL,
-						// biome-ignore lint/suspicious/noExplicitAny: SDK expects content structure
-						contents: contents as any,
-						// biome-ignore lint/suspicious/noExplicitAny: SDK expects config structure
-						config: finalGenConfig as any,
-					}),
-				{ priority: "high" },
+			const finalResponse = await runWithRetry(() =>
+				ai.models.generateContent({
+					model: CONFIG.GEMINI_MODEL,
+					// biome-ignore lint/suspicious/noExplicitAny: SDK expects content structure
+					contents: contents as any,
+					// biome-ignore lint/suspicious/noExplicitAny: SDK expects config structure
+					config: finalGenConfig as any,
+				}),
 			);
 			responseText = finalResponse.text?.trim() || "";
 		} catch (err) {

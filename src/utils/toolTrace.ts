@@ -17,9 +17,7 @@ const traceBuffer: ToolTraceEntry[] = [];
 
 export const ToolTraceLogger = {
 	add(entry: Omit<ToolTraceEntry, "id" | "timestamp">): void {
-		const d = new Date();
-		const pad = (n: number) => n.toString().padStart(2, "0");
-		const timestamp = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+		const timestamp = new Date().toISOString().replace("T", " ").slice(0, 19);
 
 		const newTrace: ToolTraceEntry = {
 			id: Math.random().toString(36).substring(2, 9),

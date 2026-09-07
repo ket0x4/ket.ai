@@ -1,6 +1,5 @@
 import type { Bot } from "grammy";
 import { CONFIG } from "../config/index";
-import { GeminiService } from "../services/gemini/index";
 import {
 	isDirectMediaInteraction,
 	processMediaInteraction,
@@ -16,17 +15,6 @@ export function registerImageHandlers(bot: Bot) {
 		await processMediaInteraction(ctx, {
 			mediaType: "photo",
 			resolveMimeType: () => "image/jpeg",
-			generateReply: (buffer, mimeType, history, activeTopic, targetMessage) =>
-				GeminiService.generateImageReply(
-					buffer,
-					mimeType,
-					history,
-					activeTopic,
-					undefined,
-					ctx.chat?.id.toString(),
-					undefined,
-					targetMessage,
-				),
 			fallbackErrorMessage: CONFIG.MESSAGES.image_processing_failed,
 		});
 	});

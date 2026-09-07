@@ -13,7 +13,7 @@ import { GeminiService, type TargetMessageInfo } from "./gemini/index";
 interface MediaProcessorOptions {
 	mediaType: "photo" | "voice";
 	resolveMimeType: (downloaded: { filePath: string; buffer: Buffer }) => string;
-	generateReply: (
+	generateReply?: (
 		buffer: Buffer,
 		mimeType: string,
 		history: MessageRow[],
@@ -109,13 +109,26 @@ export async function processMediaInteraction(
 					text: msg.caption || `[${options.mediaType}]`,
 					sentAt: msg.date,
 				};
-				const reply = await options.generateReply(
-					downloadResult.buffer,
-					mimeType,
-					history,
-					activeTopic,
-					targetMessage,
-				);
+				const reply = options.generateReply
+					? await options.generateReply(
+							downloadResult.buffer,
+							mimeType,
+							history,
+							activeTopic,
+							targetMessage,
+						)
+					: await GeminiService.generateReply(
+							history,
+							activeTopic,
+							false,
+							undefined,
+							chatIdStr,
+							{ buffer: downloadResult.buffer, mimeType },
+							undefined,
+							undefined,
+							undefined,
+							targetMessage,
+						);
 
 				await sendLongMessage(ctx, reply, {
 					reply_to_message_id: msg.message_id,

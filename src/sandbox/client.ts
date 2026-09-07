@@ -111,20 +111,9 @@ async function executeStream(
 	}
 }
 
-function cancelExecution(executionId: string) {
-	return requestJson<{
-		success: boolean;
-		executionId: string;
-		status?: string;
-		message?: string;
-		error?: string;
-	}>("/execute/cancel", { executionId });
-}
-
 export const sandboxClient = {
 	execute: executeCode,
 	executeStream,
-	cancelExecution,
 };
 
 export function isSandboxConnectionError(error: unknown): boolean {

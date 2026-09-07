@@ -1,5 +1,4 @@
 import type { Bot } from "grammy";
-import { GeminiService } from "../services/gemini/index";
 import {
 	isDirectMediaInteraction,
 	processMediaInteraction,
@@ -19,17 +18,6 @@ export function registerVoiceHandlers(bot: Bot) {
 			mediaType: "voice",
 			resolveMimeType: (downloadResult) =>
 				getAudioMimeType(downloadResult.filePath),
-			generateReply: (buffer, mimeType, history, activeTopic, targetMessage) =>
-				GeminiService.generateVoiceReply(
-					buffer,
-					mimeType,
-					history,
-					activeTopic,
-					undefined,
-					ctx.chat?.id.toString(),
-					undefined,
-					targetMessage,
-				),
 			fallbackErrorMessage:
 				"Failed to process your voice message. Please try again later.",
 		});

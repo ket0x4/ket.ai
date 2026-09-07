@@ -159,17 +159,13 @@ export function extractRetryDelayMs(error: unknown): number | null {
 	return parseTextDelay(str);
 }
 
-export type RequestPriority = "high" | "low";
-
 interface ScheduleOptions {
-	priority?: RequestPriority;
 	customIntervalMs?: number;
 }
 
 interface RunWithRetryOptions {
 	retries?: number;
 	baseDelayMs?: number;
-	priority?: RequestPriority;
 	customIntervalMs?: number;
 }
 
@@ -227,12 +223,10 @@ function parseRetryOptions(
 ): {
 	retries: number;
 	currentDelayMs: number;
-	priority: RequestPriority;
 	customIntervalMs?: number;
 } {
 	let retries = 4;
 	let currentDelayMs = baseDelayMs;
-	let priority: RequestPriority = "high";
 	let customIntervalMs: number | undefined;
 
 	if (typeof retriesOrOptions === "number") {
@@ -247,15 +241,12 @@ function parseRetryOptions(
 		if (retriesOrOptions.baseDelayMs !== undefined) {
 			currentDelayMs = retriesOrOptions.baseDelayMs;
 		}
-		if (retriesOrOptions.priority !== undefined) {
-			priority = retriesOrOptions.priority;
-		}
 		if (retriesOrOptions.customIntervalMs !== undefined) {
 			customIntervalMs = retriesOrOptions.customIntervalMs;
 		}
 	}
 
-	return { retries, currentDelayMs, priority, customIntervalMs };
+	return { retries, currentDelayMs, customIntervalMs };
 }
 
 function isTransientError(error: unknown): boolean {
@@ -287,7 +278,6 @@ export async function runWithRetry<T>(
 	for (let i = 0; i < options.retries; i++) {
 		try {
 			return await geminiRateLimiter.schedule(fn, {
-				priority: options.priority,
 				customIntervalMs: options.customIntervalMs,
 			});
 		} catch (error) {
