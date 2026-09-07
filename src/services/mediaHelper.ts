@@ -1,6 +1,6 @@
 import type { Context } from "grammy";
 import { CONFIG } from "../config/index";
-import type { MessageRow } from "../db/repository";
+import { type MessageRow, Repository } from "../db/repository";
 import logger from "../utils/logger";
 import {
 	downloadTelegramFile,

@@ -4,8 +4,8 @@ import { ai } from "./client";
 import { getThinkingConfig, runWithRetry } from "./utils";
 
 /**
- * Transcribes an audio buffer (voice note or audio file) using Gemini multimodal capabilities.
- * Uses the model configured in CONFIG.GEMINI_MODEL.
+ * Transcribes an audio buffer (voice note or audio file) using the dedicated
+ * SOTA Gemini 3.5 Transcribe speech-to-text model.
  */
 export async function transcribeAudio(
 	audioBuffer: Buffer,
@@ -14,7 +14,7 @@ export async function transcribeAudio(
 	try {
 		const response = await runWithRetry(() =>
 			ai.models.generateContent({
-				model: CONFIG.GEMINI_MODEL,
+				model: "gemini-3.5-transcribe",
 				contents: [
 					{
 						role: "user",
@@ -26,15 +26,13 @@ export async function transcribeAudio(
 								},
 							},
 							{
-								text: "Listen to this audio recording and accurately transcribe all spoken words verbatim in the original spoken language (primarily Turkish or English). Do not summarize, explain, or add commentary. Return ONLY the transcribed text. If there is no speech, or only inaudible background noise/music, return an empty string.",
+								text: "Accurately transcribe all spoken words verbatim in the original spoken language. Return ONLY the transcribed text.",
 							},
 						],
 					},
 				],
 				config: {
-					temperature: 0.1,
 					maxOutputTokens: 2048,
-					thinkingConfig: getThinkingConfig(CONFIG.GEMINI_MODEL),
 				},
 			}),
 		);
@@ -82,7 +80,6 @@ Do not comment, interpret, or make assumptions; provide only factual content. Re
 					},
 				],
 				config: {
-					temperature: 0.2,
 					maxOutputTokens: 1024,
 					thinkingConfig: getThinkingConfig(CONFIG.GEMINI_MODEL),
 				},

@@ -16,18 +16,37 @@ import {
 const newMemoriesCount = new Map<string, number>();
 const MAX_TRACKED_CHATS = 200;
 
+function formatEmbeddingContent(
+	text: string,
+	taskType: "RETRIEVAL_DOCUMENT" | "RETRIEVAL_QUERY" | "SEMANTIC_SIMILARITY",
+): string {
+	const clean = text.trim();
+	if (taskType === "RETRIEVAL_QUERY") {
+		return `task: search result | query: ${clean}`;
+	}
+	if (taskType === "RETRIEVAL_DOCUMENT") {
+		return `title: none | text: ${clean}`;
+	}
+	if (taskType === "SEMANTIC_SIMILARITY") {
+		return `task: sentence similarity | query: ${clean}`;
+	}
+	return clean;
+}
+
 export async function generateEmbedding(
 	text: string,
 	taskType:
 		| "RETRIEVAL_DOCUMENT"
 		| "RETRIEVAL_QUERY"
 		| "SEMANTIC_SIMILARITY" = "RETRIEVAL_DOCUMENT",
+	_priority?: string,
 ): Promise<number[]> {
 	try {
+		const formattedContents = formatEmbeddingContent(text, taskType);
 		const response = await runWithRetry(() =>
 			ai.models.embedContent({
 				model: "gemini-embedding-2",
-				contents: text,
+				contents: formattedContents,
 				config: {
 					taskType,
 				},
@@ -546,7 +565,6 @@ ${memoryListText}`;
 					config: {
 						systemInstruction:
 							"You are an automated data maintenance service. Analyze stored memories and identify redundant or contradictory memory IDs for deletion. Return strictly JSON.",
-						temperature: 0.1,
 						maxOutputTokens: 2048,
 						thinkingConfig: getThinkingConfig(CONFIG.GEMINI_MODEL),
 						responseMimeType: "application/json",
@@ -565,7 +583,7 @@ ${memoryListText}`;
 			const idsToDelete: number[] = JSON.parse(responseText);
 
 			if (Array.isArray(idsToDelete) && idsToDelete.length > 0) {
-				Repository.deleteMemoriesByIds(idsToDelete, chatIdStr);
+				Repository.deleteMemoriesByIds(idsToDelete);
 				logger.info(
 					`[Memory Consolidation] Successfully deleted ${idsToDelete.length} redundant/spam memories for chat ${chatIdStr} in chunk [${offset}-${offset + chunk.length}].`,
 				);

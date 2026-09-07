@@ -6,8 +6,8 @@ It doesn't just reply to direct messages; it understands the flow of the convers
 
 ## Features
 
-- **Advanced LLM Responses:** Utilizing Google Gemini (`gemini-3.1-pro` / `gemini-3.5-flash`), Ket delivers highly intelligent and entertaining chats while maintaining the context of previous messages.
-- **Advanced Hybrid Vector Memory (RAG):** Features a group-specific memory capacity of up to **10,000 facts** using `gemini-embedding-001` vector embeddings.
+- **Advanced LLM Responses:** Utilizing Google Gemini (`gemini-3.8-flash` / `gemini-3.5-flash-lite`), Ket delivers highly intelligent and entertaining chats while maintaining the context of previous messages.
+- **Advanced Hybrid Vector Memory (RAG):** Features a group-specific memory capacity of up to **10,000 facts** using `gemini-embedding-2` multimodal vector embeddings.
   - **In-Memory Vector Cache:** High-performance caching mechanism eliminates SQLite JSON deserialization overhead during RAG lookups.
   - **User Indexing (`user_id`):** Facts are indexed per user while remaining shared within the group memory pool.
   - **Recency Decay Scoring:** Hybrid RAG ranking combines Cosine Similarity with exponential time-decay ($85\% \text{Cosine} + 15\% \text{Recency Boost}$) so fresh facts take priority.
@@ -41,7 +41,7 @@ Create a `config.json` file in the root directory of the project:
   "BOT_TOKEN": "YOUR_TELEGRAM_BOT_TOKEN",
   "GEMINI_API_KEY": "YOUR_GEMINI_API_KEY",
   "ADMIN_IDS": [123456789],
-  "GEMINI_MODEL": "gemini-3.5-flash-lite",
+  "GEMINI_MODEL": "gemini-3.8-flash",
   "POLLING_INTERVAL": 1000
 }
 ```

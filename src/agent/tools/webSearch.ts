@@ -113,7 +113,6 @@ async function performWebSearch(query: string): Promise<WebSearchOutput> {
 				contents: `Search the web and provide accurate, up-to-date information for the following search query or URL. Include key facts, numbers, dates, or relevant details concisely:\n\nQuery: ${trimmedQuery}`,
 				config: {
 					tools: [{ googleSearch: {} }],
-					temperature: 0.2,
 					maxOutputTokens: 2048,
 					thinkingConfig: getThinkingConfig(CONFIG.GEMINI_MODEL),
 				},

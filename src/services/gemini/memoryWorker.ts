@@ -145,13 +145,13 @@ export async function saveExtractedMemories(
 			senderUsername,
 		);
 
-		if (isOptedOut(targetUserId, item.user_name)) continue;
+		if (isOptedOut(targetUserId ?? undefined, item.user_name)) continue;
 
 		const cat =
 			(item.category as "PROFILE" | "DYNAMIC" | "TEMPORARY") || "PROFILE";
 
 		await processNewMemory(chatIdStr, `${item.user_name}: ${item.fact}`, {
-			userId: targetUserId,
+			userId: targetUserId ?? undefined,
 			category: cat,
 			ttlDays: resolveTtl(cat, item.ttl_days),
 		});
@@ -180,7 +180,6 @@ async function runBackgroundMemoryExtraction(chatIdStr: string): Promise<void> {
 				config: {
 					systemInstruction:
 						"You are a quiet background memory analyzer for a Telegram group bot. Extract factual details about users. Output strictly JSON.",
-					temperature: 0.2,
 					maxOutputTokens: 2048,
 					thinkingConfig: getThinkingConfig(CONFIG.GEMINI_MODEL),
 					responseMimeType: "application/json",

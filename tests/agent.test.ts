@@ -263,11 +263,20 @@ describe("ThinkingConfig and Reply Parsing", () => {
 		expect(getThinkingConfig("gemini-2.5-flash")).toEqual({
 			thinkingBudget: 0,
 		});
-		expect(getThinkingConfig("gemini-3.5-pro")).toEqual({
+		expect(getThinkingConfig("gemini-3.1-pro-preview")).toEqual({
 			thinkingLevel: "LOW",
+		});
+		expect(getThinkingConfig("gemini-3.8-flash")).toEqual({
+			thinkingLevel: "MINIMAL",
+		});
+		expect(getThinkingConfig("gemini-3.7-flash")).toEqual({
+			thinkingLevel: "MINIMAL",
 		});
 		expect(getThinkingConfig("gemini-3.5-flash-lite")).toEqual({
 			thinkingLevel: "MINIMAL",
+		});
+		expect(getThinkingConfig("gemini-3.8-flash", { isAgentic: true })).toEqual({
+			thinkingLevel: "MEDIUM",
 		});
 	});
 

@@ -44,9 +44,7 @@ export const CONFIG = {
 		configJson.telegram_bot_token || process.env.TELEGRAM_BOT_TOKEN || "",
 	GEMINI_API_KEY: configJson.gemini_api_key || process.env.GEMINI_API_KEY || "",
 	GEMINI_MODEL:
-		configJson.gemini_model ||
-		process.env.GEMINI_MODEL ||
-		"gemini-3.5-flash-lite",
+		configJson.gemini_model || process.env.GEMINI_MODEL || "gemini-3.8-flash",
 	CHAT_HISTORY_LIMIT:
 		typeof configJson.chat_history_limit === "number"
 			? configJson.chat_history_limit

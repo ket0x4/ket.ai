@@ -48,7 +48,7 @@ const SettingGroupHeader: FC<{ icon: ElementType; title: string }> = ({
 
 export const BotSettingsCard: FC = () => {
 	const [settings, setSettings] = useState<BotSettings>({
-		gemini_model: "gemini-3.5-flash-lite",
+		gemini_model: "gemini-3.8-flash",
 		default_reply_probability: 0.05,
 		chat_history_limit: 10,
 		max_agent_steps: 3,
@@ -112,7 +112,7 @@ export const BotSettingsCard: FC = () => {
 								Active Gemini Model
 							</label>
 							<Select
-								value={settings.gemini_model || "gemini-3.5-flash-lite"}
+								value={settings.gemini_model || "gemini-3.8-flash"}
 								onValueChange={(val) =>
 									setSettings({ ...settings, gemini_model: val })
 								}
@@ -124,17 +124,17 @@ export const BotSettingsCard: FC = () => {
 									<SelectValue />
 								</SelectTrigger>
 								<SelectContent>
+									<SelectItem value="gemini-3.8-flash">
+										gemini-3.8-flash (Flagship & Agentic)
+									</SelectItem>
+									<SelectItem value="gemini-3.7-flash">
+										gemini-3.7-flash (Balanced Multimodal)
+									</SelectItem>
 									<SelectItem value="gemini-3.5-flash-lite">
-										gemini-3.5-flash-lite (Fast & Standard)
+										gemini-3.5-flash-lite (Fast & High-Throughput)
 									</SelectItem>
-									<SelectItem value="gemini-3.5-flash">
-										gemini-3.5-flash (Balanced)
-									</SelectItem>
-									<SelectItem value="gemini-3.5-pro">
-										gemini-3.5-pro (Advanced Reasoning)
-									</SelectItem>
-									<SelectItem value="gemini-3.1-flash-lite">
-										gemini-3.1-flash-lite (Alternative)
+									<SelectItem value="gemini-3.1-pro-preview">
+										gemini-3.1-pro-preview (Advanced Reasoning)
 									</SelectItem>
 								</SelectContent>
 							</Select>

@@ -1,7 +1,7 @@
 {
 	"telegram_bot_token": "YOUR_TELEGRAM_BOT_TOKEN",
 	"gemini_api_key": "YOUR_GEMINI_API_KEY",
-	"gemini_model": "gemini-3.1-flash-lite",
+	"gemini_model": "gemini-3.8-flash",
 	"chat_history_limit": 8,
 	"image_history_limit": 5,
 	"default_reply_probability": 0.05,

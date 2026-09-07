@@ -231,7 +231,6 @@ function buildGenConfig(
 	const isAgentic = Boolean(toolsConfig && toolsConfig.length > 0);
 	const genConfig: Record<string, unknown> = {
 		systemInstruction: getSystemInstruction(options.personaPrompt),
-		temperature: isAgentic ? 0.45 : options.media ? 0.7 : 0.75,
 		maxOutputTokens: isAgentic
 			? CONFIG.MAX_TOOL_OUTPUT_TOKENS && CONFIG.MAX_TOOL_OUTPUT_TOKENS > 0
 				? CONFIG.MAX_TOOL_OUTPUT_TOKENS
@@ -396,6 +395,62 @@ async function parseAndProcessReply(
 	return trimmed;
 }
 
+function resolveMediaFallbacks(
+	document?: PreparedDocumentContext,
+	effectiveMedia?: { buffer: Buffer; mimeType: string },
+): {
+	instruction?: string;
+	replyDescription: string;
+	fallbackEmpty: string;
+	fallbackError: string;
+	mediaFallbackText: string;
+} {
+	if (document) {
+		return {
+			instruction: `The user is referring to or asking about the document '${document.fileName}'. It is saved in your sandbox workspace. Inspect, run (via execute_code), edit/modify (via write_workspace_file/send_workspace_file), or summarize it according to the user's message.`,
+			replyDescription:
+				"The helpful and natural response regarding the document and the user's request in the conversation.",
+			fallbackEmpty: "I looked at the document, but didn't know what to say.",
+			fallbackError:
+				"I ran into an issue while processing the document, please try again.",
+			mediaFallbackText: `[Document: ${document.fileName}]`,
+		};
+	}
+
+	if (effectiveMedia) {
+		const isAudio = effectiveMedia.mimeType.toLowerCase().startsWith("audio/");
+		if (isAudio) {
+			return {
+				instruction:
+					"The user is referring to or asking about the attached audio recording. Listen to the audio and answer their message/question, or make a natural, fitting comment about the audio in the context of the conversation.",
+				replyDescription:
+					"The reply you will write to the audio recording and the user's message/question in the flow of the conversation.",
+				fallbackEmpty: "I listened to the audio, but didn't know what to say.",
+				fallbackError: "Couldn't process the audio, please try again.",
+				mediaFallbackText: "[Audio]",
+			};
+		}
+		return {
+			instruction:
+				"The user is referring to or asking about the attached photo. Analyze the photo and answer their message/question, or make a natural, fitting comment about the photo in the context of the conversation.",
+			replyDescription:
+				"The reply you will write to the photo and the user's message/question in the flow of the conversation.",
+			fallbackEmpty: CONFIG.MESSAGES.gemini_empty_image_fallback,
+			fallbackError: CONFIG.MESSAGES.gemini_error_image_fallback,
+			mediaFallbackText: "[Photo]",
+		};
+	}
+
+	return {
+		instruction: undefined,
+		replyDescription:
+			"The reply you will write to the chat. A short (1-2 sentences).",
+		fallbackEmpty: CONFIG.MESSAGES.gemini_empty_reply_fallback,
+		fallbackError: CONFIG.MESSAGES.gemini_error_reply_fallback,
+		mediaFallbackText: "[Media]",
+	};
+}
+
 export const GeminiService = {
 	async _generateResponse(
 		history: MessageRow[],
@@ -542,55 +597,18 @@ export const GeminiService = {
 		targetMessage?: TargetMessageInfo,
 	): Promise<string> {
 		const effectiveMedia = media || document?.mediaPayload;
-
-		let instruction: string | undefined;
-		if (document) {
-			instruction = `The user is referring to or asking about the document '${document.fileName}'. It is saved in your sandbox workspace. Inspect, run (via execute_code), edit/modify (via write_workspace_file/send_workspace_file), or summarize it according to the user's message.`;
-		} else if (media) {
-			instruction =
-				"The user is referring to or asking about the attached photo. Analyze the photo and answer their message/question, or make a natural, fitting comment about the photo in the context of the conversation.";
-		}
-
-		let replyDescription: string;
-		if (document) {
-			replyDescription =
-				"The helpful and natural response regarding the document and the user's request in the conversation.";
-		} else if (media) {
-			replyDescription =
-				"The reply you will write to the photo and the user's message/question in the flow of the conversation.";
-		} else {
-			replyDescription =
-				"The reply you will write to the chat. A short (1-2 sentences).";
-		}
-
-		const fallbackEmpty = document
-			? "I looked at the document, but didn't know what to say."
-			: media
-				? CONFIG.MESSAGES.gemini_empty_image_fallback
-				: CONFIG.MESSAGES.gemini_empty_reply_fallback;
-
-		const fallbackError = document
-			? "I ran into an issue while processing the document, please try again."
-			: media
-				? CONFIG.MESSAGES.gemini_error_image_fallback
-				: CONFIG.MESSAGES.gemini_error_reply_fallback;
-
-		const mediaFallbackText = document
-			? `[Document: ${document.fileName}]`
-			: media
-				? "[Photo]"
-				: "[Media]";
+		const fallbacks = resolveMediaFallbacks(document, effectiveMedia);
 
 		return this._generateResponse(history, topicSummary, {
 			chatId,
 			isSpontaneous,
 			media: effectiveMedia,
 			document,
-			instruction,
-			replyDescription,
-			fallbackEmpty,
-			fallbackError,
-			mediaFallbackText,
+			instruction: fallbacks.instruction,
+			replyDescription: fallbacks.replyDescription,
+			fallbackEmpty: fallbacks.fallbackEmpty,
+			fallbackError: fallbacks.fallbackError,
+			mediaFallbackText: fallbacks.mediaFallbackText,
 			onToolCall,
 			onToolProgress,
 			onMediaGenerated,
@@ -622,7 +640,6 @@ export const GeminiService = {
 					config: {
 						systemInstruction:
 							"You are an analysis expert. You summarize group chats in just 1-2 sentences.",
-						temperature: 0.3,
 						maxOutputTokens: 1024,
 						thinkingConfig: getThinkingConfig(CONFIG.GEMINI_MODEL),
 						responseMimeType: "application/json",
