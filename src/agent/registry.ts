@@ -1,7 +1,14 @@
 import { CONFIG } from "../config/index";
 import logger from "../utils/logger";
-import { codeExecutionTool } from "./tools/codeExecution";
+import { bashExecutionTool, codeExecutionTool } from "./tools/codeExecution";
 import { webSearchTool } from "./tools/webSearch";
+import {
+	listWorkspaceFilesTool,
+	readWorkspaceFileTool,
+	resetWorkspaceTool,
+	sendWorkspaceFileTool,
+	writeWorkspaceFileTool,
+} from "./tools/workspaceTools";
 import type {
 	AgentTool,
 	FunctionDeclaration,
@@ -9,12 +16,18 @@ import type {
 } from "./types";
 
 export class ToolRegistry {
-private readonly tools: Map<string, AgentTool> = new Map();
+	private readonly tools: Map<string, AgentTool> = new Map();
 
 	constructor(preloadDefaults = false) {
 		if (preloadDefaults) {
 			this.tools.set("web_search", webSearchTool);
 			this.tools.set("execute_code", codeExecutionTool);
+			this.tools.set("execute_bash", bashExecutionTool);
+			this.tools.set("list_workspace_files", listWorkspaceFilesTool);
+			this.tools.set("read_workspace_file", readWorkspaceFileTool);
+			this.tools.set("write_workspace_file", writeWorkspaceFileTool);
+			this.tools.set("send_workspace_file", sendWorkspaceFileTool);
+			this.tools.set("reset_workspace", resetWorkspaceTool);
 		}
 	}
 
@@ -24,14 +37,9 @@ private readonly tools: Map<string, AgentTool> = new Map();
 				`[ToolRegistry] Invalid tool definition for '${tool.name || "unnamed"}'`,
 			);
 		}
-
-		}
-	}
-
-	register(tool: AgentTool): void {
 		this.tools.set(tool.name, tool);
+		logger.info(`[ToolRegistry] Registered tool: ${tool.name}`);
 	}
-
 
 	public unregister(name: string): boolean {
 		const removed = this.tools.delete(name);
@@ -44,7 +52,17 @@ private readonly tools: Map<string, AgentTool> = new Map();
 	public hasTool(name: string): boolean {
 		if (!this.tools.has(name)) return false;
 		if (name === "web_search") return Boolean(CONFIG.ENABLE_WEB_SEARCH);
-		if (name === "execute_code") return Boolean(CONFIG.ENABLE_CODE_EXECUTION);
+		if (
+			name === "execute_code" ||
+			name === "execute_bash" ||
+			name === "read_workspace_file" ||
+			name === "write_workspace_file" ||
+			name === "list_workspace_files" ||
+			name === "send_workspace_file" ||
+			name === "reset_workspace"
+		) {
+			return Boolean(CONFIG.ENABLE_CODE_EXECUTION);
+		}
 		return true;
 	}
 

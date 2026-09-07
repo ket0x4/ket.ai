@@ -282,6 +282,7 @@ export async function runAgentLoop(
 			const finalGenConfig = {
 				...genConfig,
 				tools: undefined,
+				maxOutputTokens: 2048,
 			};
 			const finalResponse = await runWithRetry(
 				() =>

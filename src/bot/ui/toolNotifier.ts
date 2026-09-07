@@ -54,6 +54,12 @@ function resolveToolStatusMessage(
 		return resolveExecuteCodeMessage(args);
 	}
 
+	if (toolName === "execute_bash") {
+		const cmd = typeof args.command === "string" ? args.command.trim() : "";
+		const shortCmd = cmd.length > 35 ? `${cmd.slice(0, 32)}...` : cmd;
+		return `💻 Executing Bash command (${shortCmd || "terminal"})...`;
+	}
+
 	const filename = typeof args.filename === "string" ? args.filename : "file";
 	switch (toolName) {
 		case "read_workspace_file":
@@ -134,10 +140,13 @@ export function createToolNotifier(
 		onToolCall: async (
 			toolName: string,
 			args: Record<string, unknown> = {},
-			_step?: number,
+			step?: number,
 		) => {
 			if (isCleanedUp) return;
-			currentBaseStatus = resolveToolStatusMessage(toolName, args);
+			const baseMsg = resolveToolStatusMessage(toolName, args);
+			const stepPrefix =
+				typeof step === "number" && step > 0 ? `[Step ${step}] ` : "";
+			currentBaseStatus = `${stepPrefix}${baseMsg}`;
 			currentStdout = "";
 
 			if (statusMessageId && ctx.chat) {

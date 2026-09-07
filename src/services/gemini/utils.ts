@@ -32,7 +32,14 @@ const FORMATTING_RULE =
 	"\n\n### FORMATTING RULE ###\nNever use emojis or emoticons in your responses. When presenting code, tool execution outputs, terminal logs, calculations, or structured data, always format them with clean Markdown code blocks (e.g. ```python, ```bash, ```text) or inline `code`. Use bold (*text*) for emphasis.";
 
 const WORKSPACE_FILE_RULE =
-	"\n\n### WORKSPACE & FILE OPERATIONS ###\nWhen users provide, attach, or refer to files:\n- All attached files are automatically stored in the session workspace.\n- To inspect or read code/text files, use `read_workspace_file`.\n- To execute scripts, code, or terminal commands (Python, TypeScript, JavaScript, Bash), use `execute_code`. For example: `execute_code({ language: 'bash', code: 'python3 script.py' })` or `execute_code({ language: 'python', code: '...' })`.\n- To edit or modify a file, write the updated version to the workspace using `write_workspace_file`. When the user wants the edited file, downloadable attachment, or output, use `send_workspace_file` (or `write_workspace_file` with `sendToUser: true`) to deliver it to the user.\n- For data analysis or plotting, run Python scripts with pandas/matplotlib; generated charts are automatically delivered to the user.\n- When asked to summarize ('özetle'), give a clear, informative summary of the file's structure, contents, and key logic.";
+	"\n\n### WORKSPACE, CODE EXECUTION & AGENTIC BEHAVIOR ###\n" +
+	"You have full access to an isolated Linux sandbox environment with persistent session files across turns:\n" +
+	"- Discovery & Inspection: Use `list_workspace_files` to see what files exist in the session workspace, and `read_workspace_file` to inspect code, text, CSV headers, schemas, or script outputs.\n" +
+	"- Execution: Use `execute_code` (Python, TypeScript, JavaScript) or `execute_bash` (direct Bash commands: curl, jq, grep, ffmpeg, git, etc.) for computation, data analysis, or web automation.\n" +
+	"- Self-Correction & Reflection: If code execution produces an error (exit code != 0, SyntaxError, KeyError, ModuleNotFoundError, Timeout), DO NOT immediately give up or report failure to the user. Inspect stderr and error hints, fix the issue, and execute again within your loop.\n" +
+	"- Output Delivery: When asked to generate spreadsheets, charts, reports, or media, write them to the workspace and use `send_workspace_file` (or `write_workspace_file` with `sendToUser: true`) to deliver them directly to the Telegram user.\n" +
+	"- Code as Action: When fetching external data or web scraping, write small Python or Bash scripts to filter and extract only the relevant information to stdout.\n" +
+	"- Output Limits & Telegram Format: When generating code or invoking tools, write comprehensive, complete scripts without worrying about length. When delivering your final text response to the user, keep it concise, direct, and under 4000 characters to fit Telegram's message limit.";
 
 const GROUP_CHAT_RULE =
 	"\n\n### TELEGRAM GROUP CHAT RULES ###\n- You participate in a Telegram group with multiple users. Always observe who sent which message.\n- Messages labeled 'You (ket.ai)' in recent_messages are your own previous statements. Never contradict what you wrote earlier or claim you do not remember saying it.\n- When 'current_message_to_reply' has a 'replying_to' object, the user is answering, asking about, or commenting directly on that specific message. Formulate your reply with this parent message firmly in mind.\n- Never confuse the current sender with other users in the chat or with yourself. Always direct your response to the sender of the current message.";
@@ -46,30 +53,38 @@ export function getSystemInstruction(personaPrompt?: string): string {
 }
 
 /**
- * Returns thinkingConfig to minimize or turn off reasoning tokens for models,
- * preventing thinking tokens from consuming latency and maxOutputTokens budget.
+ * Returns thinkingConfig. When tools are active (isAgentic: true), allocates
+ * a reasoning budget to enable planning, code verification, and self-correction.
  */
 export function getThinkingConfig(
 	modelName: string = CONFIG.GEMINI_MODEL,
+	options?: { isAgentic?: boolean },
 ): Record<string, unknown> | undefined {
 	const lower = (modelName || "").toLowerCase();
+	const isAgentic = Boolean(options?.isAgentic && CONFIG.ENABLE_AGENT_THINKING);
 
-	// Gemini 2.5 Pro requires a minimum thinking budget of 128 (0 throws an error)
+	if (isAgentic) {
+		// Allocate thinking for code planning & error reflection
+		if (lower.includes("3") || lower.includes("gemini-3")) {
+			return { thinkingLevel: "MEDIUM" };
+		}
+		if (lower.includes("2.5") && lower.includes("pro")) {
+			return { thinkingBudget: 2048 };
+		}
+		return { thinkingBudget: 1024 };
+	}
+
+	// Non-agentic (regular chat responses): minimize thinking to preserve latency
 	if (lower.includes("2.5") && lower.includes("pro")) {
 		return { thinkingBudget: 128 };
 	}
-
-	// Gemini 3 Pro
 	if (lower.includes("3") && lower.includes("pro")) {
 		return { thinkingLevel: "LOW" };
 	}
-
-	// Gemini 3 Flash / Lite
 	if (lower.includes("3") || lower.includes("gemini-3")) {
 		return { thinkingLevel: "MINIMAL" };
 	}
 
-	// For Gemini 2.5 Flash, 2.0 Flash, etc., turn thinking OFF (budget: 0)
 	return { thinkingBudget: 0 };
 }
 
@@ -158,14 +173,6 @@ interface RunWithRetryOptions {
 	customIntervalMs?: number;
 }
 
-interface QueuedTask<T = unknown> {
-	fn: () => Promise<T>;
-	customIntervalMs?: number;
-	resolve: (value: T | PromiseLike<T>) => void;
-	// biome-ignore lint/suspicious/noExplicitAny: rejection reason can be any error
-	reject: (reason?: any) => void;
-}
-
 export class GeminiRateLimiter {
 	private lastRequestEndTime = 0;
 	private queue: Promise<void> = Promise.resolve();
@@ -182,22 +189,6 @@ export class GeminiRateLimiter {
 			typeof optionsOrInterval === "number"
 				? optionsOrInterval
 				: optionsOrInterval?.customIntervalMs;
-
-	return new Promise<T>((resolve, reject) => {
-		const task: QueuedTask<T> = {
-			fn,
-			customIntervalMs,
-			resolve: resolve as (value: unknown) => void,
-			reject,
-		};
-		(priority === "high" ? this.highQueue : this.lowQueue).push(task);
-		this.processQueue();
-	});
-}
-
-private async waitPacing(task: QueuedTask): Promise<void> {
-	const isTestEnv =
-		process.env.NODE_ENV === "test" || process.env.BUN_ENV === "test";
 
 		const interval =
 			customIntervalMs ??

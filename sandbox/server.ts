@@ -60,7 +60,7 @@ interface WorkspaceFileEntry {
 const PORT = Number(process.env.SANDBOX_PORT || 8080);
 const MAX_TIMEOUT_MS = 120_000;
 const DEFAULT_TIMEOUT_MS = 45_000;
-const MAX_OUTPUT_BYTES = 64 * 1024; // 64 KB
+const MAX_OUTPUT_BYTES = 256 * 1024; // 256 KB
 const MAX_ARTIFACT_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB per artifact
 const MAX_ARTIFACTS_COUNT = 5; // Standardized to max 5 artifacts
 const MAX_SESSION_DIR_BYTES = 50 * 1024 * 1024; // 50 MB
@@ -235,7 +235,7 @@ function truncateOutput(output: string): { text: string; truncated: boolean } {
 	if (Buffer.byteLength(output, "utf-8") > MAX_OUTPUT_BYTES) {
 		const truncated = output.slice(0, MAX_OUTPUT_BYTES);
 		return {
-			text: `${truncated}\n\n[... output truncated due to 64KB limit ...]`,
+			text: `${truncated}\n\n[... output truncated due to 256KB limit ...]`,
 			truncated: true,
 		};
 	}
@@ -670,6 +670,26 @@ function resolveScriptCommand(
 	return { scriptFileName, execCommand: ["python3", scriptFileName] };
 }
 
+function resolvePythonInstallCommand(packages: string[]): string[] {
+	const hasUv =
+		existsSync("/usr/local/bin/uv") ||
+		existsSync("/usr/bin/uv") ||
+		existsSync("/home/sandboxuser/.cargo/bin/uv") ||
+		Boolean(process.env.UV_BIN);
+	if (hasUv) {
+		const uvPath = process.env.UV_BIN || "uv";
+		return [uvPath, "pip", "install", "--system", ...packages];
+	}
+	return [
+		"pip",
+		"install",
+		"--cache-dir",
+		"/home/sandboxuser/.cache/pip",
+		...packages,
+	];
+}
+
+
 async function handleExecute(req: Request): Promise<Response> {
 	let body: ExecuteRequest;
 	try {
@@ -791,13 +811,7 @@ async function handleExecute(req: Request): Promise<Response> {
 						let installCmd: string[] = [];
 
 						if (normalizedLang === "python") {
-							installCmd = [
-								"pip",
-								"install",
-								"--cache-dir",
-								"/home/sandboxuser/.cache/pip",
-								...packages,
-							];
+							installCmd = resolvePythonInstallCommand(packages);
 						} else if (
 							normalizedLang === "javascript" ||
 							normalizedLang === "typescript"
@@ -998,13 +1012,7 @@ async function handleExecute(req: Request): Promise<Response> {
 			let installCmd: string[] = [];
 
 			if (normalizedLang === "python") {
-				installCmd = [
-					"pip",
-					"install",
-					"--cache-dir",
-					"/home/sandboxuser/.cache/pip",
-					...packages,
-				];
+				installCmd = resolvePythonInstallCommand(packages);
 			} else if (
 				normalizedLang === "javascript" ||
 				normalizedLang === "typescript"

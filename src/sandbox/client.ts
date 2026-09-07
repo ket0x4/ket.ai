@@ -20,51 +20,15 @@ function getUrl(endpoint: string): string {
 	return `${CONFIG.SANDBOX_URL.replace(/\/+$/, "")}${endpoint}`;
 }
 
-async function requestJson<T>(endpoint: string, body: object): Promise<T> {
-	const { response, cleanup } = await fetchSandbox(endpoint, body, "application/json");
-	try {
-		const json = await response.json();
-		if (!response.ok) {
-			// Attempt to provide a helpful error message from the sandbox
-			throw new SandboxClientError((json && (json as any).error) || `Sandbox request failed with status ${response.status}`);
-		}
-		return json as T;
-	} finally {
-		cleanup();
-	}
-}
-
 async function fetchSandbox(
 	endpoint: string,
 	body: unknown,
 	accept?: string,
 ): Promise<{ response: Response; cleanup: () => void }> {
-	const url = `${CONFIG.SANDBOX_URL.replace(/\/+$/, "")}${endpoint}`;
 	const controller = new AbortController();
 	const timeoutId = setTimeout(
 		() => controller.abort(),
-		CONFIG.SANDBOX_REQUEST_TIMEOUT_MS || 30000,
-	);
-
-	const response = await fetch(url, {
-		method: "POST",
-		headers: {
-			"Content-Type": "application/json",
-			...(accept ? { Accept: accept } : {}),
-		},
-		body: JSON.stringify(body),
-		signal: controller.signal,
-	});
-
-	clearTimeout(timeoutId);
-	const cleanup = () => controller.abort();
-	return { response, cleanup };
-}
-
-	const controller = new AbortController();
-	const timeoutId = setTimeout(
-		() => controller.abort(),
-		CONFIG.SANDBOX_TIMEOUT_MS + 5000,
+		(CONFIG.SANDBOX_TIMEOUT_MS || 45000) + 5000,
 	);
 	const headers: Record<string, string> = {
 		"Content-Type": "application/json",
@@ -108,16 +72,24 @@ interface SandboxExecuteCallbacks {
 	onEvent?: (event: SandboxStreamEvent) => void;
 }
 
-class SandboxClient {
-	async execute(
-		request: SandboxExecuteRequest,
-	): Promise<SandboxExecuteResponse> {
-		return requestJson<SandboxExecuteResponse>("/execute", {
-			...request,
-			stream: false,
-		});
-	}
+async function executeCode(
+	request: SandboxExecuteRequest,
+): Promise<SandboxExecuteResponse> {
+	return requestJson<SandboxExecuteResponse>("/execute", {
+		...request,
+		stream: false,
+	});
+}
 
+async function executeStream(
+	request: SandboxExecuteRequest,
+	callbacks: SandboxExecuteCallbacks = {},
+): Promise<SandboxExecuteResponse> {
+	const { response, cleanup } = await fetchSandbox(
+		"/execute",
+		{ ...request, stream: true },
+		"text/event-stream",
+	);
 
 	try {
 		if (!response.body) {
@@ -137,66 +109,22 @@ class SandboxClient {
 	} finally {
 		cleanup();
 	}
-
-	cancelExecution(executionId: string) {
-		return requestJson<{
-			success: boolean;
-			executionId: string;
-			status?: string;
-			message?: string;
-			error?: string;
-		}>("/execute/cancel", { executionId });
-	}
-
-	readFile(request: WorkspaceReadRequest) {
-		return requestJson<{
-			success: boolean;
-			filename: string;
-			content?: string;
-			data?: string;
-			sizeBytes?: number;
-			error?: string;
-		}>("/workspace/read", request);
-	}
-
-	writeFile(request: WorkspaceWriteRequest) {
-		return requestJson<{
-			success: boolean;
-			filename: string;
-			sizeBytes?: number;
-			error?: string;
-		}>("/workspace/write", request);
-	}
-
-	listFiles(request: WorkspaceListRequest) {
-		return requestJson<{
-			success: boolean;
-			files?: Array<{
-				filename: string;
-				sizeBytes: number;
-				modifiedAt: string;
-				isImage: boolean;
-			}>;
-			totalFiles?: number;
-			error?: string;
-		}>("/workspace/list", request);
-	}
-
-	resetWorkspace(request: WorkspaceResetRequest) {
-		return requestJson<{
-			success: boolean;
-			message?: string;
-			error?: string;
-		}>("/workspace/reset", request);
-	}
 }
 
-	}
+function cancelExecution(executionId: string) {
+	return requestJson<{
+		success: boolean;
+		executionId: string;
+		status?: string;
+		message?: string;
+		error?: string;
+	}>("/execute/cancel", { executionId });
 }
 
 export const sandboxClient = {
 	execute: executeCode,
 	executeStream,
+	cancelExecution,
 };
 
 export function isSandboxConnectionError(error: unknown): boolean {

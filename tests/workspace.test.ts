@@ -23,9 +23,14 @@ describe("Stateful Session Workspace & Iterative Debugging", () => {
 		stopSandboxServer(sandboxProcess, originalSandboxUrl);
 	});
 
-	test("should register execute_code tool in toolRegistry", () => {
+	test("should register execute_code, bash, and workspace tools in toolRegistry", () => {
 		expect(toolRegistry.hasTool("execute_code")).toBeTrue();
-		expect(toolRegistry.hasTool("read_workspace_file")).toBeFalse();
+		expect(toolRegistry.hasTool("execute_bash")).toBeTrue();
+		expect(toolRegistry.hasTool("read_workspace_file")).toBeTrue();
+		expect(toolRegistry.hasTool("write_workspace_file")).toBeTrue();
+		expect(toolRegistry.hasTool("list_workspace_files")).toBeTrue();
+		expect(toolRegistry.hasTool("send_workspace_file")).toBeTrue();
+		expect(toolRegistry.hasTool("reset_workspace")).toBeTrue();
 	});
 
 	test("should write and read files in persistent session workspace", async () => {
