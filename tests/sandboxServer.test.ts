@@ -448,6 +448,46 @@ print("Multi files created")
 		expect(bodyText).toContain("event: result");
 	});
 
+	test("should cancel a running execution by execution ID", async () => {
+		const executionId = `cancel_test_${Date.now()}`;
+		const execution = fetch(`http://127.0.0.1:${testPort}/execute`, {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+				Accept: "text/event-stream",
+			},
+			body: JSON.stringify({
+				executionId,
+				language: "python",
+				stream: true,
+				code: "import time; time.sleep(10)",
+				timeoutMs: 30_000,
+			}),
+		});
+
+		await new Promise((resolve) => setTimeout(resolve, 50));
+		const cancelResponse = await fetch(
+			`http://127.0.0.1:${testPort}/execute/cancel`,
+			{
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ executionId }),
+			},
+		);
+		expect(cancelResponse.ok).toBeTrue();
+		const cancelData = (await cancelResponse.json()) as {
+			success: boolean;
+			status: string;
+		};
+		expect(cancelData.success).toBeTrue();
+		expect(cancelData.status).toBe("cancelled");
+
+		const response = await execution;
+		const bodyText = await response.text();
+		expect(bodyText).toContain('"status":"cancelled"');
+		expect(bodyText).toContain("Execution");
+	});
+
 	test("should clean up and terminate sandbox daemon", () => {
 		if (sandboxProcess) {
 			try {

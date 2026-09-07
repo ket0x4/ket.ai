@@ -20,6 +20,7 @@ interface ExecuteRequest {
 	filename?: string;
 	targetFiles?: string[];
 	stream?: boolean;
+	executionId?: string;
 }
 
 export type ArtifactType = "image" | "document" | "video" | "audio";
@@ -35,6 +36,8 @@ export interface GeneratedArtifact {
 export type GeneratedImage = GeneratedArtifact;
 
 interface ExecuteResponse {
+	executionId: string;
+	status: "completed" | "failed" | "cancelled";
 	success: boolean;
 	stdout: string;
 	stderr: string;
@@ -67,6 +70,53 @@ const MAX_IMAGES_COUNT = 5;
 const MAX_SESSION_DIR_BYTES = 50 * 1024 * 1024; // 50 MB
 const SANDBOX_BASE_DIR = process.env.SANDBOX_BASE_DIR || "/tmp/sandboxes";
 const SAFE_SESSION_ID_REGEX = /^[a-zA-Z0-9_-]{1,64}$/;
+
+interface ExecutionRecord {
+	executionId: string;
+	sessionId?: string;
+	status:
+		| "queued"
+		| "installing"
+		| "running"
+		| "collecting"
+		| "completed"
+		| "failed"
+		| "cancelled";
+	cancel?: () => void;
+	cancelRequested?: boolean;
+}
+
+const executions = new Map<string, ExecutionRecord>();
+const sessionLocks = new Map<string, Promise<void>>();
+
+function createExecution(sessionId?: string, requestedId?: string): ExecutionRecord {
+	const executionId =
+		requestedId?.match(/^[a-zA-Z0-9_-]{1,96}$/)?.[0] ||
+		`exec_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+	const record: ExecutionRecord = {
+		executionId,
+		sessionId,
+		status: "queued",
+	};
+	executions.set(executionId, record);
+	return record;
+}
+
+async function acquireSessionLock(sessionId?: string): Promise<() => void> {
+	if (!sessionId) return () => {};
+	const previous = sessionLocks.get(sessionId) || Promise.resolve();
+	let releaseCurrent!: () => void;
+	const current = new Promise<void>((resolve) => {
+		releaseCurrent = resolve;
+	});
+	const lock = previous.then(() => current);
+	sessionLocks.set(sessionId, lock);
+	await previous;
+	return () => {
+		releaseCurrent();
+		if (sessionLocks.get(sessionId) === lock) sessionLocks.delete(sessionId);
+	};
+}
 
 // Ensure base sandbox directory exists
 if (!existsSync(SANDBOX_BASE_DIR)) {
@@ -547,13 +597,33 @@ async function runCommand(
 	timeoutMs: number,
 	onStdoutChunk?: (chunk: string) => void,
 	onStderrChunk?: (chunk: string) => void,
+	onProcess?: (cancel: () => void) => void,
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
-	const proc = Bun.spawn(cmd, {
+	// Start a new process group where `setsid` is available so cancellation
+	// also terminates descendants such as shell pipelines and browser processes.
+	const canCreateProcessGroup =
+		existsSync("/usr/bin/setsid") || existsSync("/bin/setsid");
+	const proc = Bun.spawn(canCreateProcessGroup ? ["setsid", ...cmd] : cmd, {
 		cwd,
 		stdout: "pipe",
 		stderr: "pipe",
 		env: getSafeEnv(),
 	});
+	let settled = false;
+	let cancelled = false;
+	const cancel = () => {
+		if (settled) return;
+		cancelled = true;
+		if (canCreateProcessGroup) {
+			try {
+				process.kill(-proc.pid, 9);
+			} catch {}
+		}
+		try {
+			proc.kill(9);
+		} catch {}
+	};
+	onProcess?.(cancel);
 
 	let timer: Timer | undefined;
 
@@ -563,9 +633,8 @@ async function runCommand(
 		exitCode: number;
 	}>((resolve) => {
 		timer = setTimeout(() => {
-			try {
-				proc.kill(9);
-			} catch {}
+			cancel();
+			settled = true;
 			resolve({
 				stdout: "",
 				stderr: `Execution timed out after ${timeoutMs}ms.`,
@@ -581,12 +650,13 @@ async function runCommand(
 				streamReader(proc.stderr, onStderrChunk),
 			]);
 			const exitCode = await proc.exited;
+			settled = true;
 			if (timer) clearTimeout(timer);
 
 			return {
 				stdout: stdoutText,
 				stderr: stderrText,
-				exitCode,
+				exitCode: cancelled ? 130 : exitCode,
 			};
 		} catch (err) {
 			if (timer) clearTimeout(timer);
@@ -661,9 +731,13 @@ async function handleExecute(req: Request): Promise<Response> {
 	);
 	const packages = sanitizePackages(body.packages);
 	const { workspaceDir, isPersistent } = resolveWorkspace(sessionId);
+	const execution = createExecution(sessionId, body.executionId);
+	const releaseSession = await acquireSessionLock(sessionId);
 
 	// Quota check
 	if (getDirectorySizeBytes(workspaceDir) > MAX_SESSION_DIR_BYTES) {
+		releaseSession();
+		executions.delete(execution.executionId);
 		return Response.json(
 			{
 				success: false,
@@ -672,6 +746,19 @@ async function handleExecute(req: Request): Promise<Response> {
 			},
 			{ status: 413 },
 		);
+	}
+	if (execution.cancelRequested) {
+		releaseSession();
+		executions.delete(execution.executionId);
+		return Response.json({
+			executionId: execution.executionId,
+			status: "cancelled",
+			success: false,
+			stdout: "",
+			stderr: "Execution cancelled before it started.",
+			exitCode: 130,
+			executionTimeMs: 0,
+		});
 	}
 
 	const isStreaming =
@@ -697,8 +784,27 @@ async function handleExecute(req: Request): Promise<Response> {
 				};
 
 				try {
+					sendEvent("status", {
+						stage: "queued",
+						executionId: execution.executionId,
+						message: "Execution queued.",
+					});
+					if (execution.cancelRequested) {
+						sendEvent("result", {
+							executionId: execution.executionId,
+							status: "cancelled",
+							success: false,
+							stdout: "",
+							stderr: "Execution cancelled before it started.",
+							exitCode: 130,
+							executionTimeMs: 0,
+						});
+						return;
+					}
+					execution.status = "running";
 					// Step 1: Install packages if requested
 					if (packages.length > 0) {
+						execution.status = "installing";
 						sendEvent("status", {
 							stage: "installing",
 							message: `Installing packages: ${packages.join(", ")}...`,
@@ -727,6 +833,9 @@ async function handleExecute(req: Request): Promise<Response> {
 								60_000,
 								(chunk) => sendEvent("stdout", chunk),
 								(chunk) => sendEvent("stderr", chunk),
+								(cancel) => {
+									execution.cancel = cancel;
+								},
 							);
 							if (pkgResult.exitCode !== 0) {
 								console.warn(
@@ -745,6 +854,9 @@ async function handleExecute(req: Request): Promise<Response> {
 									message: `Packages installed successfully: ${packages.join(", ")}`,
 								});
 							}
+						}
+						if (execution.cancelRequested) {
+							throw new Error("Execution cancelled.");
 						}
 					}
 
@@ -771,8 +883,12 @@ async function handleExecute(req: Request): Promise<Response> {
 						timeout,
 						(chunk) => sendEvent("stdout", chunk),
 						(chunk) => sendEvent("stderr", chunk),
+						(cancel) => {
+							execution.cancel = cancel;
+						},
 					);
 					const durationMs = Date.now() - startTime;
+					execution.status = result.exitCode === 130 ? "cancelled" : "collecting";
 
 					const totalStderr = packageInstallStderr
 						? `${packageInstallStderr}\n${result.stderr}`
@@ -824,6 +940,13 @@ async function handleExecute(req: Request): Promise<Response> {
 					}
 
 					const responsePayload: ExecuteResponse = {
+						executionId: execution.executionId,
+						status:
+							result.exitCode === 130
+								? "cancelled"
+								: result.exitCode === 0
+									? "completed"
+									: "failed",
 						success: result.exitCode === 0,
 						stdout: stdoutTruncated.text,
 						stderr: stderrTruncated.text,
@@ -839,16 +962,21 @@ async function handleExecute(req: Request): Promise<Response> {
 					};
 
 					sendEvent("result", responsePayload);
+					execution.status = responsePayload.status;
 				} catch (error) {
 					const durationMs = Date.now() - startTime;
 					const errMessage =
 						error instanceof Error ? error.message : String(error);
 					console.error(`[Sandbox:${workspaceDir}] Streaming execution exception:`, error);
+					const wasCancelled = execution.cancelRequested;
+					execution.status = wasCancelled ? "cancelled" : "failed";
 					sendEvent("result", {
+						executionId: execution.executionId,
+						status: wasCancelled ? "cancelled" : "failed",
 						success: false,
 						stdout: "",
 						stderr: errMessage,
-						exitCode: 1,
+						exitCode: wasCancelled ? 130 : 1,
 						executionTimeMs: durationMs,
 						error: errMessage,
 					});
@@ -864,6 +992,8 @@ async function handleExecute(req: Request): Promise<Response> {
 							);
 						}
 					}
+					releaseSession();
+					executions.delete(execution.executionId);
 					controller.close();
 				}
 			},
@@ -880,6 +1010,7 @@ async function handleExecute(req: Request): Promise<Response> {
 	}
 
 	try {
+		execution.status = "running";
 		// Step 1: Install packages if requested
 		if (packages.length > 0) {
 			console.log(
@@ -903,7 +1034,17 @@ async function handleExecute(req: Request): Promise<Response> {
 			}
 
 			if (installCmd.length > 0) {
-				const pkgResult = await runCommand(installCmd, workspaceDir, 60_000);
+				execution.status = "installing";
+				const pkgResult = await runCommand(
+					installCmd,
+					workspaceDir,
+					60_000,
+					undefined,
+					undefined,
+					(cancel) => {
+						execution.cancel = cancel;
+					},
+				);
 				if (pkgResult.exitCode !== 0) {
 					console.warn(
 						`[Sandbox:${workspaceDir}] Package install warning / error:`,
@@ -914,6 +1055,17 @@ async function handleExecute(req: Request): Promise<Response> {
 					installedPackages.push(...packages);
 				}
 			}
+		}
+		if (execution.cancelRequested) {
+			return Response.json({
+				executionId: execution.executionId,
+				status: "cancelled",
+				success: false,
+				stdout: "",
+				stderr: "Execution cancelled.",
+				exitCode: 130,
+				executionTimeMs: Date.now() - startTime,
+			});
 		}
 
 		// Step 2: Take snapshot of existing files in workspace before execution
@@ -931,8 +1083,18 @@ async function handleExecute(req: Request): Promise<Response> {
 		console.log(
 			`[Sandbox:${workspaceDir}] Executing ${normalizedLang} script (${scriptFileName}, timeout: ${timeout}ms)...`,
 		);
-		const result = await runCommand(execCommand, workspaceDir, timeout);
+		const result = await runCommand(
+			execCommand,
+			workspaceDir,
+			timeout,
+			undefined,
+			undefined,
+			(cancel) => {
+				execution.cancel = cancel;
+			},
+		);
 		const durationMs = Date.now() - startTime;
+		execution.status = result.exitCode === 130 ? "cancelled" : "collecting";
 
 		const totalStderr = packageInstallStderr
 			? `${packageInstallStderr}\n${result.stderr}`
@@ -977,6 +1139,13 @@ async function handleExecute(req: Request): Promise<Response> {
 		}
 
 		const responsePayload: ExecuteResponse = {
+			executionId: execution.executionId,
+			status:
+				result.exitCode === 130
+					? "cancelled"
+					: result.exitCode === 0
+						? "completed"
+						: "failed",
 			success: result.exitCode === 0,
 			stdout: stdoutTruncated.text,
 			stderr: stderrTruncated.text,
@@ -1006,6 +1175,8 @@ async function handleExecute(req: Request): Promise<Response> {
 			{ status: 500 },
 		);
 	} finally {
+		releaseSession();
+		executions.delete(execution.executionId);
 		// Clean up isolated temporary workspace (keep persistent session directories)
 		if (!isPersistent) {
 			try {
@@ -1017,6 +1188,55 @@ async function handleExecute(req: Request): Promise<Response> {
 				);
 			}
 		}
+	}
+}
+
+async function handleCancel(req: Request): Promise<Response> {
+	try {
+		const body = (await req.json()) as { executionId?: string };
+		const executionId = body.executionId?.trim();
+		if (!executionId) {
+			return Response.json(
+				{ success: false, error: "Missing 'executionId'" },
+				{ status: 400 },
+			);
+		}
+
+		const execution = executions.get(executionId);
+		if (!execution) {
+			return Response.json(
+				{ success: false, error: "Execution not found or already completed." },
+				{ status: 404 },
+			);
+		}
+		if (execution.status === "completed" || execution.status === "failed") {
+			return Response.json({
+				success: false,
+				executionId,
+				status: execution.status,
+				error: "Execution is already finished.",
+			});
+		}
+
+		execution.status = "cancelled";
+		execution.cancelRequested = true;
+		execution.cancel?.();
+		return Response.json({
+			success: true,
+			executionId,
+			status: "cancelled",
+			message: execution.cancel
+				? "Cancellation requested."
+				: "Cancellation queued; execution has not started yet.",
+		});
+	} catch (error) {
+		return Response.json(
+			{
+				success: false,
+				error: error instanceof Error ? error.message : String(error),
+			},
+			{ status: 400 },
+		);
 	}
 }
 
@@ -1221,6 +1441,10 @@ Bun.serve({
 
 		if (req.method === "POST" && url.pathname === "/execute") {
 			return handleExecute(req);
+		}
+
+		if (req.method === "POST" && url.pathname === "/execute/cancel") {
+			return handleCancel(req);
 		}
 
 		if (req.method === "POST" && url.pathname === "/workspace/read") {

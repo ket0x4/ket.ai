@@ -24,10 +24,7 @@ function getUrl(endpoint: string): string {
 	return `${CONFIG.SANDBOX_URL.replace(/\/+$/, "")}${endpoint}`;
 }
 
-async function requestJson<T>(
-	endpoint: string,
-	body: Record<string, unknown>,
-): Promise<T> {
+async function requestJson<T>(endpoint: string, body: object): Promise<T> {
 	const controller = new AbortController();
 	const timeoutId = setTimeout(
 		() => controller.abort(),
@@ -112,6 +109,16 @@ class SandboxClient {
 		} finally {
 			clearTimeout(timeoutId);
 		}
+	}
+
+	cancelExecution(executionId: string) {
+		return requestJson<{
+			success: boolean;
+			executionId: string;
+			status?: string;
+			message?: string;
+			error?: string;
+		}>("/execute/cancel", { executionId });
 	}
 
 	readFile(request: WorkspaceReadRequest) {

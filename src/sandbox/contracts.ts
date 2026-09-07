@@ -11,6 +11,7 @@ interface SandboxArtifact {
 }
 
 export interface SandboxExecuteRequest {
+	executionId?: string;
 	language: SandboxLanguage;
 	code: string;
 	packages?: string[];
@@ -22,6 +23,8 @@ export interface SandboxExecuteRequest {
 }
 
 export interface SandboxExecuteResponse {
+	executionId?: string;
+	status?: "completed" | "failed" | "cancelled";
 	success: boolean;
 	stdout: string;
 	stderr?: string;
