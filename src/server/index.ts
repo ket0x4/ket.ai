@@ -23,6 +23,7 @@ import {
 	getThinkingConfig,
 	runWithRetry,
 } from "../services/gemini/utils";
+import { formatChatTitle, isPlaceholderChatTitle } from "../utils/chatTitle";
 import logger from "../utils/logger";
 import { extractTelegramChatTitle } from "../utils/message";
 import { ToolTraceLogger } from "../utils/toolTrace";
@@ -281,12 +282,7 @@ function formatTopChats(
 ) {
 	return chats.map((c) => ({
 		...c,
-		title:
-			!c.title || c.title === "Whitelisted Chat" || c.title === "Seeded Group"
-				? c.chat_id.startsWith("-")
-					? `Group (${c.chat_id})`
-					: `Chat (${c.chat_id})`
-				: c.title,
+		title: formatChatTitle(c.chat_id, c.title),
 	}));
 }
 
@@ -630,11 +626,7 @@ function handleMemoriesGet(url: URL, auth: AuthContext): Response {
 
 	const mapped = rows.map((r) => {
 		let chatTitle = r.chat_title;
-		if (
-			!chatTitle ||
-			chatTitle === "Whitelisted Chat" ||
-			chatTitle === "Seeded Group"
-		) {
+		if (isPlaceholderChatTitle(chatTitle)) {
 			if (auth.user && r.chat_id === auth.user.id.toString()) {
 				chatTitle = `Personal Profile (${auth.user.first_name || "Me"})`;
 			} else if (r.user_first_name) {
@@ -1238,16 +1230,6 @@ async function handleSandboxExecute(
 	}
 }
 
-function isPlaceholderTitle(title?: string | null): boolean {
-	return (
-		!title ||
-		title.trim() === "" ||
-		title === "Whitelisted Chat" ||
-		title === "Seeded Group" ||
-		title.startsWith("Group (-")
-	);
-}
-
 async function fetchTelegramTitle(chatId: string): Promise<string | null> {
 	try {
 		const tgChat = await bot.api.getChat(chatId);
@@ -1282,7 +1264,7 @@ async function resolveChatDisplayTitle(
 	currentTitle: string | null | undefined,
 	currentUser?: TelegramUser,
 ): Promise<string> {
-	if (currentTitle && !isPlaceholderTitle(currentTitle)) {
+	if (currentTitle && !isPlaceholderChatTitle(currentTitle)) {
 		return currentTitle;
 	}
 

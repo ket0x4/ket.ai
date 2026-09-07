@@ -18,6 +18,7 @@ import {
 	sanitizeDocumentFilename,
 	stageDocumentInWorkspace,
 } from "../src/services/gemini/documentPerception";
+import { startSandboxServer, stopSandboxServer } from "./helpers/sandboxServer";
 
 describe("Document Handling, Staging & Operations", () => {
 	const testPort = 8198;
@@ -26,33 +27,11 @@ describe("Document Handling, Staging & Operations", () => {
 	const sessionId = "doc_test_session_101";
 
 	beforeAll(async () => {
-		CONFIG.SANDBOX_URL = `http://127.0.0.1:${testPort}`;
-		sandboxProcess = Bun.spawn(["bun", "run", "sandbox/server.ts"], {
-			env: {
-				...process.env,
-				SANDBOX_PORT: testPort.toString(),
-			},
-			stdout: "pipe",
-			stderr: "pipe",
-		});
-
-		// Wait for sandbox server readiness
-		for (let i = 0; i < 25; i++) {
-			try {
-				const res = await fetch(`http://127.0.0.1:${testPort}/health`);
-				if (res.ok) break;
-			} catch {}
-			await new Promise((r) => setTimeout(r, 100));
-		}
+		sandboxProcess = (await startSandboxServer(testPort)).process;
 	});
 
 	afterAll(() => {
-		CONFIG.SANDBOX_URL = originalSandboxUrl;
-		if (sandboxProcess) {
-			try {
-				sandboxProcess.kill(9);
-			} catch {}
-		}
+		stopSandboxServer(sandboxProcess, originalSandboxUrl);
 	});
 
 	test("sanitizeDocumentFilename prevents path traversal and special characters", () => {

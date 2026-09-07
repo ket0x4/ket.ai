@@ -13,6 +13,7 @@ import { ai } from "./client";
 import type { PreparedDocumentContext } from "./documentPerception";
 import { describeImage, transcribeAudio } from "./mediaPerception";
 import { getRelevantMemories, processNewMemory } from "./memory";
+import { getMemoryUpdateItemSchema } from "./schemas";
 import {
 	buildHistoryList,
 	cleanUserText,
@@ -201,33 +202,7 @@ function buildResponseSchemaProperties(
 				"List of new facts to remember. DO NOT save facts based on your own generated replies, assumptions, or jokes. Leave empty [] if no meaningful user facts exist.",
 			items: {
 				type: "OBJECT",
-				properties: {
-					user_id: {
-						type: "INTEGER",
-						description:
-							"The integer user_id extracted from User_ID field if available.",
-					},
-					user_name: {
-						type: "STRING",
-						description: "The first name of the user who stated the fact.",
-					},
-					fact: {
-						type: "STRING",
-						description:
-							"The factual detail stated by the user (e.g., likes pizza, is a software engineer). Do not use the word 'User'.",
-					},
-					category: {
-						type: "STRING",
-						description:
-							"Category of fact: 'PROFILE' for permanent personal facts, 'DYNAMIC' for medium-term status, 'TEMPORARY' for short-lived events.",
-					},
-					ttl_days: {
-						type: "INTEGER",
-						description:
-							"Days after which temporary memory expires (e.g. 1-7 days). Leave null/0 for permanent facts.",
-					},
-				},
-				required: ["user_name", "fact"],
+				...getMemoryUpdateItemSchema(),
 			},
 		},
 	};

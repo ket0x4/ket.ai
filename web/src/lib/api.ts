@@ -73,32 +73,35 @@ const getInitData = (): string => {
 	return "";
 };
 
+function buildAuthHeaders(headersInit?: HeadersInit, accept?: string): Headers {
+	const headers = new Headers(headersInit);
+	if (!headers.has("Content-Type")) {
+		headers.set("Content-Type", "application/json");
+	}
+	if (accept) headers.set("Accept", accept);
+
+	const initData = getInitData();
+	if (initData) headers.set("x-telegram-init-data", initData);
+	return headers;
+}
+
+async function throwResponseError(res: Response): Promise<never> {
+	const errorBody = (await res.json().catch(() => ({
+		error: `HTTP ${res.status}: ${res.statusText}`,
+	}))) as { error?: string };
+	throw new Error(errorBody.error || `HTTP ${res.status}`);
+}
+
 async function apiFetch<T>(
 	endpoint: string,
 	options: RequestInit = {},
 ): Promise<T> {
-	const initData = getInitData();
-	const headers = new Headers(options.headers || {});
-
-	if (!headers.has("Content-Type")) {
-		headers.set("Content-Type", "application/json");
-	}
-
-	if (initData) {
-		headers.set("x-telegram-init-data", initData);
-	}
-
 	const res = await fetch(endpoint, {
 		...options,
-		headers,
+		headers: buildAuthHeaders(options.headers),
 	});
 
-	if (!res.ok) {
-		const errorBody = await res
-			.json()
-			.catch(() => ({ error: `HTTP ${res.status}: ${res.statusText}` }));
-		throw new Error(errorBody.error || `HTTP ${res.status}`);
-	}
+	if (!res.ok) await throwResponseError(res);
 
 	return (await res.json()) as T;
 }
@@ -337,25 +340,12 @@ export const api = {
 				data?: unknown;
 			}) => void,
 		) => {
-			const initData = getInitData();
-			const headers: Record<string, string> = {
-				"Content-Type": "application/json",
-				Accept: "text/event-stream",
-			};
-			if (initData) {
-				headers["x-telegram-init-data"] = initData;
-			}
 			const res = await fetch("/api/sandbox/execute", {
 				method: "POST",
-				headers,
+				headers: buildAuthHeaders(undefined, "text/event-stream"),
 				body: JSON.stringify({ ...data, stream: true }),
 			});
-			if (!res.ok) {
-				const err = (await res.json().catch(() => ({
-					error: `HTTP ${res.status}: ${res.statusText}`,
-				}))) as { error?: string };
-				throw new Error(err.error || `HTTP ${res.status}`);
-			}
+			if (!res.ok) await throwResponseError(res);
 			if (res.body) {
 				await readSseStream(res.body, onChunk);
 			}
