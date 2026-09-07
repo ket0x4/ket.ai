@@ -161,13 +161,11 @@ interface RunWithRetryOptions {
 interface QueuedTask<T = unknown> {
 	fn: () => Promise<T>;
 	customIntervalMs?: number;
-	priority: RequestPriority;
 	resolve: (value: T | PromiseLike<T>) => void;
 	// biome-ignore lint/suspicious/noExplicitAny: rejection reason can be any error
 	reject: (reason?: any) => void;
 }
 
-// ponytail: streamlined rate limiter enforcing pacing delay and priority ordering
 export class GeminiRateLimiter {
 	private lastRequestEndTime = 0;
 	private highQueue: QueuedTask[] = [];
@@ -214,13 +212,10 @@ export class GeminiRateLimiter {
 			const task: QueuedTask<T> = {
 				fn,
 				customIntervalMs,
-				priority,
 				resolve: resolve as (value: unknown) => void,
 				reject,
 			};
-			(priority === "high" ? this.highQueue : this.lowQueue).push(
-				task as QueuedTask,
-			);
+			(priority === "high" ? this.highQueue : this.lowQueue).push(task);
 			this.processQueue();
 		});
 	}
@@ -334,32 +329,29 @@ export async function runWithRetry<T>(
 	retriesOrOptions: number | RunWithRetryOptions = 4,
 	baseDelayMs = 5000,
 ): Promise<T> {
-	const { retries, priority, customIntervalMs } = parseRetryOptions(
-		retriesOrOptions,
-		baseDelayMs,
-	);
-	let { currentDelayMs } = parseRetryOptions(retriesOrOptions, baseDelayMs);
+	const options = parseRetryOptions(retriesOrOptions, baseDelayMs);
+	let currentDelayMs = options.currentDelayMs;
 	let lastError: unknown;
 
-	for (let i = 0; i < retries; i++) {
+	for (let i = 0; i < options.retries; i++) {
 		try {
 			return await geminiRateLimiter.schedule(fn, {
-				priority,
-				customIntervalMs,
+				priority: options.priority,
+				customIntervalMs: options.customIntervalMs,
 			});
 		} catch (error) {
 			lastError = error;
 
-			if (isTransientError(error) && i < retries - 1) {
+			if (isTransientError(error) && i < options.retries - 1) {
 				const serverDelayMs = extractRetryDelayMs(error);
 				const waitMs =
 					serverDelayMs ?? currentDelayMs + Math.floor(Math.random() * 500);
 
 				logger.warn(
-					`[Gemini] Rate limit / transient error (Attempt ${i + 1}/${retries}). Waiting ${waitMs}ms before retry...`,
+					`[Gemini] Rate limit / transient error (Attempt ${i + 1}/${options.retries}). Waiting ${waitMs}ms before retry...`,
 				);
 				await new Promise((resolve) => setTimeout(resolve, waitMs));
-				currentDelayMs += 5000; // Linear backoff: 5s, 10s, 15s, 20s
+				currentDelayMs += 5000;
 			} else {
 				throw error;
 			}

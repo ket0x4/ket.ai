@@ -7,12 +7,8 @@ import type {
 
 /** @internal */
 export class ToolRegistry {
-	private tools: Map<string, AgentTool> = new Map();
+	private readonly tools: Map<string, AgentTool> = new Map();
 
-	/**
-	 * Registers a new agent tool.
-	 * Overwrites any existing tool with the same name.
-	 */
 	public register(tool: AgentTool): void {
 		if (!tool.name || typeof tool.execute !== "function") {
 			throw new Error(
@@ -23,9 +19,6 @@ export class ToolRegistry {
 		logger.info(`[ToolRegistry] Registered tool: ${tool.name}`);
 	}
 
-	/**
-	 * Unregisters a tool by name.
-	 */
 	public unregister(name: string): boolean {
 		const removed = this.tools.delete(name);
 		if (removed) {
@@ -34,45 +27,26 @@ export class ToolRegistry {
 		return removed;
 	}
 
-	/**
-	 * Checks if a tool is registered.
-	 */
 	public hasTool(name: string): boolean {
 		return this.tools.has(name);
 	}
 
-	/**
-	 * Returns a specific registered tool.
-	 */
 	public getTool(name: string): AgentTool | undefined {
 		return this.tools.get(name);
 	}
 
-	/**
-	 * Returns all registered tools.
-	 */
 	public getAllTools(): AgentTool[] {
 		return Array.from(this.tools.values());
 	}
 
-	/**
-	 * Converts registered tools into function declarations suitable for Gemini SDK.
-	 */
 	public getFunctionDeclarations(): FunctionDeclaration[] {
-		const declarations: FunctionDeclaration[] = [];
-		for (const tool of this.tools.values()) {
-			declarations.push({
-				name: tool.name,
-				description: tool.description,
-				parameters: tool.parameters,
-			});
-		}
-		return declarations;
+		return Array.from(this.tools.values()).map((tool) => ({
+			name: tool.name,
+			description: tool.description,
+			parameters: tool.parameters,
+		}));
 	}
 
-	/**
-	 * Executes a registered tool by name with provided arguments and optional execution context.
-	 */
 	public async executeTool(
 		name: string,
 		args: Record<string, unknown>,
@@ -102,9 +76,6 @@ export class ToolRegistry {
 		}
 	}
 
-	/**
-	 * Returns total count of registered tools.
-	 */
 	public get count(): number {
 		return this.tools.size;
 	}
