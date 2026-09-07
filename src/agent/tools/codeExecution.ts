@@ -267,3 +267,48 @@ export const codeExecutionTool: AgentTool<
 		return executeInSandbox(mergedArgs);
 	},
 };
+
+interface BashExecutionArgs {
+	command: string;
+	sessionId?: string;
+}
+
+export const bashExecutionTool: AgentTool<
+	BashExecutionArgs,
+	CodeExecutionResult
+> = {
+	name: "execute_bash",
+	description:
+		"Executes a Bash terminal command or pipeline (curl, jq, grep, awk, sed, ffmpeg, git, tar, unzip, ls, etc.) in the sandbox container. Ideal for quick terminal tasks, CLI inspection, and media processing.",
+	parameters: {
+		type: "OBJECT",
+		properties: {
+			command: {
+				type: "STRING",
+				description:
+					"The exact Bash command line string to execute in the container workspace.",
+			},
+		},
+		required: ["command"],
+	},
+	execute: async (args: BashExecutionArgs, context?: ToolExecutionContext) => {
+		return executeInSandbox({
+			language: "bash",
+			code: args.command,
+			sessionId: context?.sessionId || args.sessionId,
+			onProgress: context?.onProgress
+				? (event) => {
+						context.onProgress?.({
+							type: event.type,
+							statusText: event.type === "status" ? event.text : undefined,
+							stdoutSnippet:
+								event.type === "stdout" || event.type === "stderr"
+									? event.text
+									: undefined,
+							fullStdout: event.fullStdoutSoFar,
+						});
+					}
+				: undefined,
+		});
+	},
+};

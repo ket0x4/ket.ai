@@ -15,6 +15,8 @@ interface ConfigJson {
 	sandbox_url?: string;
 	sandbox_timeout_ms?: number;
 	max_agent_steps?: number;
+	max_tool_output_tokens?: number;
+	enable_agent_thinking?: boolean;
 	gemini_min_request_interval_ms?: number;
 	log_level?: string;
 
@@ -92,7 +94,17 @@ export const CONFIG = {
 			? configJson.max_agent_steps
 			: process.env.MAX_AGENT_STEPS
 				? parseInt(process.env.MAX_AGENT_STEPS, 10)
-				: 3,
+				: 50,
+	MAX_TOOL_OUTPUT_TOKENS:
+		typeof configJson.max_tool_output_tokens === "number"
+			? configJson.max_tool_output_tokens
+			: process.env.MAX_TOOL_OUTPUT_TOKENS
+				? parseInt(process.env.MAX_TOOL_OUTPUT_TOKENS, 10)
+				: 65536,
+	ENABLE_AGENT_THINKING:
+		typeof configJson.enable_agent_thinking === "boolean"
+			? configJson.enable_agent_thinking
+			: process.env.ENABLE_AGENT_THINKING !== "false",
 	GEMINI_MIN_REQUEST_INTERVAL_MS:
 		typeof configJson.gemini_min_request_interval_ms === "number"
 			? configJson.gemini_min_request_interval_ms

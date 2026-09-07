@@ -316,11 +316,16 @@ function buildGenConfig(
 	options: GenerateResponseOptions,
 	toolsConfig?: Array<Record<string, unknown>>,
 ): Record<string, unknown> {
+	const isAgentic = Boolean(toolsConfig && toolsConfig.length > 0);
 	const genConfig: Record<string, unknown> = {
 		systemInstruction: getSystemInstruction(options.personaPrompt),
-		temperature: toolsConfig ? 0.45 : options.media ? 0.7 : 0.75,
-		maxOutputTokens: 2048,
-		thinkingConfig: getThinkingConfig(CONFIG.GEMINI_MODEL),
+		temperature: isAgentic ? 0.45 : options.media ? 0.7 : 0.75,
+		maxOutputTokens: isAgentic
+			? CONFIG.MAX_TOOL_OUTPUT_TOKENS && CONFIG.MAX_TOOL_OUTPUT_TOKENS > 0
+				? CONFIG.MAX_TOOL_OUTPUT_TOKENS
+				: undefined
+			: 2048,
+		thinkingConfig: getThinkingConfig(CONFIG.GEMINI_MODEL, { isAgentic }),
 		tools: toolsConfig,
 	};
 
