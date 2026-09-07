@@ -12,29 +12,25 @@ export function smartTruncateText(text: string): {
 	text: string;
 	truncated: boolean;
 } {
-	if (
-		!text ||
-		(text.length <= MAX_OUTPUT_CHARS &&
-			text.split("\n").length <= MAX_OUTPUT_LINES)
-	) {
-		return { text, truncated: false };
-	}
+	if (!text) return { text, truncated: false };
 
 	const lines = text.split("\n");
 	if (lines.length > MAX_OUTPUT_LINES) {
 		const head = lines.slice(0, HEAD_LINES).join("\n");
 		const tail = lines.slice(-TAIL_LINES).join("\n");
-		const omittedCount = lines.length - HEAD_LINES - TAIL_LINES;
-		const truncated = `${head}\n\n[... Truncated ${omittedCount} lines of output (${text.length} chars total) ...]\n\n${tail}`;
-		return { text: truncated, truncated: true };
+		return {
+			text: `${head}\n\n[... Truncated ${lines.length - HEAD_LINES - TAIL_LINES} lines of output (${text.length} chars total) ...]\n\n${tail}`,
+			truncated: true,
+		};
 	}
 
 	if (text.length > MAX_OUTPUT_CHARS) {
-		const head = text.slice(0, Math.floor(MAX_OUTPUT_CHARS * 0.7));
-		const tail = text.slice(-Math.floor(MAX_OUTPUT_CHARS * 0.2));
-		const omittedChars = text.length - head.length - tail.length;
-		const truncated = `${head}\n\n[... Truncated ${omittedChars} characters ...]\n\n${tail}`;
-		return { text: truncated, truncated: true };
+		const headChars = Math.floor(MAX_OUTPUT_CHARS * 0.7);
+		const tailChars = Math.floor(MAX_OUTPUT_CHARS * 0.2);
+		return {
+			text: `${text.slice(0, headChars)}\n\n[... Truncated ${text.length - headChars - tailChars} characters ...]\n\n${text.slice(-tailChars)}`,
+			truncated: true,
+		};
 	}
 
 	return { text, truncated: false };

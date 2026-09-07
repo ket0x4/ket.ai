@@ -3,7 +3,6 @@ import { toolRegistry } from "../src/agent/index";
 import { executeInSandbox } from "../src/agent/tools/codeExecution";
 import {
 	readWorkspaceFile,
-	sendWorkspaceFile,
 	writeWorkspaceFile,
 } from "../src/agent/tools/workspaceTools";
 import type {
@@ -164,15 +163,6 @@ print(greet("World"))
 		expect(emittedArtifacts.length).toBe(1);
 		expect(emittedArtifacts[0].filename).toBe("greeting.py");
 		expect(emittedArtifacts[0].buffer.toString("utf-8")).toBe(fixedCode);
-
-		// Step 3: Explicit sendWorkspaceFile tool also works
-		const sendRes = await sendWorkspaceFile(
-			{ filename: "greeting.py" },
-			mockContext,
-		);
-		expect(sendRes.success).toBeTrue();
-		expect(emittedArtifacts.length).toBe(2);
-		expect(emittedArtifacts[1].filename).toBe("greeting.py");
 
 		// Step 4: Run the fixed code to verify it works
 		const runFixed = await executeInSandbox({

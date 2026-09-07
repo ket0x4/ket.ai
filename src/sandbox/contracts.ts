@@ -1,5 +1,4 @@
 type SandboxLanguage = "python" | "javascript" | "typescript" | "bash";
-
 type SandboxArtifactType = "image" | "document" | "video" | "audio";
 
 interface SandboxArtifact {
@@ -11,6 +10,7 @@ interface SandboxArtifact {
 }
 
 export interface SandboxExecuteRequest {
+	executionId?: string;
 	language: SandboxLanguage;
 	code: string;
 	packages?: string[];
@@ -22,6 +22,8 @@ export interface SandboxExecuteRequest {
 }
 
 export interface SandboxExecuteResponse {
+	executionId?: string;
+	status?: "completed" | "failed" | "cancelled";
 	success: boolean;
 	stdout: string;
 	stderr?: string;
@@ -39,25 +41,4 @@ export interface SandboxStreamEvent {
 	type: "status" | "stdout" | "stderr" | "result" | string;
 	text: string;
 	data?: unknown;
-}
-
-export interface WorkspaceReadRequest {
-	sessionId: string;
-	filename: string;
-	encoding?: "utf-8" | "base64";
-}
-
-export interface WorkspaceWriteRequest {
-	sessionId: string;
-	filename: string;
-	content: string;
-	encoding?: "utf-8" | "base64";
-}
-
-export interface WorkspaceListRequest {
-	sessionId: string;
-}
-
-export interface WorkspaceResetRequest {
-	sessionId: string;
 }

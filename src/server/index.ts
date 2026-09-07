@@ -1708,61 +1708,40 @@ function handleLogsGet(url: URL, auth: AuthContext): Response {
 const PUBLIC_DIR = path.resolve(process.cwd(), "public");
 
 function serveStaticFile(pathname: string): Response {
-	try {
-		const cleanPath = pathname === "/" ? "/index.html" : pathname;
-		const ext = path.extname(cleanPath).toLowerCase();
-		const filePath = path.join(PUBLIC_DIR, cleanPath);
+	const relPath =
+		pathname === "/" ? "index.html" : pathname.replace(/^\/+/, "");
+	const filePath = path.resolve(PUBLIC_DIR, relPath);
+	if (!filePath.startsWith(PUBLIC_DIR)) {
+		return new Response("Forbidden", { status: 403 });
+	}
 
-		// Directory traversal security
-		if (!filePath.startsWith(PUBLIC_DIR)) {
-			return new Response("Forbidden", { status: 403 });
-		}
+	const hasExt = Boolean(path.extname(filePath));
+	const file = Bun.file(filePath);
 
-		// When a static asset with file extension is requested
-		if (ext) {
-			if (!fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) {
-				return new Response("Not Found", {
-					status: 404,
-					headers: { "Content-Type": "text/plain; charset=utf-8" },
-				});
-			}
-
-			const file = Bun.file(filePath);
-			const mime = file.type || "application/octet-stream";
-			const isHashedAsset = cleanPath.startsWith("/assets/");
-
-			return new Response(file, {
-				headers: {
-					"Content-Type": mime,
-					"Cache-Control": isHashedAsset
-						? "public, max-age=31536000, immutable"
-						: "no-cache, no-store, must-revalidate",
-				},
-			});
-		}
-
-		// Single Page App fallback for HTML navigation
-		const indexHtmlPath = path.join(PUBLIC_DIR, "index.html");
-		if (!fs.existsSync(indexHtmlPath)) {
-			return new Response(
-				"Application not built. Please run bun run build:web.",
-				{
-					status: 404,
-					headers: { "Content-Type": "text/plain; charset=utf-8" },
-				},
-			);
-		}
-
-		const indexFile = Bun.file(indexHtmlPath);
-		return new Response(indexFile, {
+	if (hasExt) {
+		if (file.size === 0) return new Response("Not Found", { status: 404 });
+		return new Response(file, {
 			headers: {
-				"Content-Type": "text/html; charset=utf-8",
-				"Cache-Control": "no-cache, no-store, must-revalidate",
+				"Cache-Control": relPath.startsWith("assets/")
+					? "public, max-age=31536000, immutable"
+					: "no-cache, no-store, must-revalidate",
 			},
 		});
-	} catch {
-		return new Response("Internal Server Error", { status: 500 });
 	}
+
+	const indexFile = Bun.file(path.join(PUBLIC_DIR, "index.html"));
+	if (indexFile.size === 0) {
+		return new Response(
+			"Application not built. Please run bun run build:web.",
+			{
+				status: 404,
+			},
+		);
+	}
+
+	return new Response(indexFile, {
+		headers: { "Cache-Control": "no-cache, no-store, must-revalidate" },
+	});
 }
 
 function handleAuthAndStatsRoutes(
@@ -1947,16 +1926,6 @@ async function handleApiRequest(
 
 	if (pathname === "/api/settings") {
 		return handleSettings(req, auth);
-	}
-	if (pathname === "/api/settings/cache-clear" && req.method === "POST") {
-		if (!auth.isOwner) {
-			return errorResponse("Forbidden: Only bot owner can clear cache", 403);
-		}
-		Repository.clearMemoryCache();
-		return jsonResponse({
-			success: true,
-			message: "Memory cache cleared successfully",
-		});
 	}
 
 	const memoryRes = handleMemoryRoutes(pathname, req, url, auth);

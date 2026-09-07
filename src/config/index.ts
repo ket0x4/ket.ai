@@ -20,7 +20,6 @@ interface ConfigJson {
 
 	log_dir?: string;
 	log_max_size_mb?: number;
-	log_retention_days?: number;
 	web_port?: number;
 	web_app_url?: string;
 	messages?: Partial<Record<string, string>>;
@@ -111,12 +110,6 @@ export const CONFIG = {
 			: process.env.LOG_MAX_SIZE_MB
 				? parseFloat(process.env.LOG_MAX_SIZE_MB)
 				: 5,
-	LOG_RETENTION_DAYS:
-		typeof configJson.log_retention_days === "number"
-			? configJson.log_retention_days
-			: process.env.LOG_RETENTION_DAYS
-				? parseInt(process.env.LOG_RETENTION_DAYS, 10)
-				: 14,
 	WEB_PORT:
 		typeof configJson.web_port === "number"
 			? configJson.web_port
@@ -188,18 +181,6 @@ if (
 	console.warn("WARNING: DEFAULT_REPLY_PROBABILITY should be between 0 and 1.");
 }
 
-type SettingsListener = () => void;
-const settingsListeners: Set<SettingsListener> = new Set();
-
-/**
- * Registers a listener that triggers whenever bot settings are updated.
- * Returns an unsubscribe function.
- */
-export function onBotSettingsUpdated(listener: SettingsListener): () => void {
-	settingsListeners.add(listener);
-	return () => settingsListeners.delete(listener);
-}
-
 /**
  * Updates bot configuration settings and persists changes to config.json.
  */
@@ -266,13 +247,5 @@ export function updateBotSettings(settings: {
 		);
 	} catch (e) {
 		console.error("[Config] Error writing config.json:", e);
-	}
-
-	for (const listener of settingsListeners) {
-		try {
-			listener();
-		} catch (e) {
-			console.error("[Config] Error in settings listener:", e);
-		}
 	}
 }

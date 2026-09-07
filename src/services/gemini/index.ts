@@ -13,7 +13,7 @@ import { ai } from "./client";
 import type { PreparedDocumentContext } from "./documentPerception";
 import { describeImage, transcribeAudio } from "./mediaPerception";
 import { getRelevantMemories, processNewMemory } from "./memory";
-import { getMemoryUpdateItemSchema } from "./schemas";
+import { MEMORY_UPDATE_ITEM_SCHEMA } from "./memoryWorker";
 import {
 	buildHistoryList,
 	cleanUserText,
@@ -200,10 +200,7 @@ function buildResponseSchemaProperties(
 			type: "ARRAY",
 			description:
 				"List of new facts to remember. DO NOT save facts based on your own generated replies, assumptions, or jokes. Leave empty [] if no meaningful user facts exist.",
-			items: {
-				type: "OBJECT",
-				...getMemoryUpdateItemSchema(),
-			},
+			items: MEMORY_UPDATE_ITEM_SCHEMA,
 		},
 	};
 }

@@ -37,6 +37,8 @@ interface CodeExecutionArtifact {
 type CodeExecutionImage = CodeExecutionArtifact;
 
 interface CodeExecutionResult {
+	execution_id?: string;
+	status?: "completed" | "failed" | "cancelled";
 	success: boolean;
 	stdout: string;
 	stderr?: string;
@@ -114,6 +116,8 @@ function formatSandboxResult(
 	);
 
 	return {
+		execution_id: data.executionId,
+		status: data.status,
 		success: data.success,
 		stdout: data.stdout || "",
 		stderr: data.stderr || undefined,

@@ -33,8 +33,6 @@ const shutdown = () => {
 	} catch (error) {
 		logger.error("[Main] Error closing database:", error);
 	}
-	// Flush any buffered log lines before exiting
-	logger.shutdown();
 	process.exit(0);
 };
 

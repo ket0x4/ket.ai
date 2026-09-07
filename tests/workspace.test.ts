@@ -2,7 +2,6 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { toolRegistry } from "../src/agent/index";
 import { executeInSandbox } from "../src/agent/tools/codeExecution";
 import {
-	listWorkspaceFiles,
 	readWorkspaceFile,
 	resetWorkspace,
 	writeWorkspaceFile,
@@ -44,14 +43,6 @@ describe("Stateful Session Workspace & Iterative Debugging", () => {
 		});
 		expect(readRes.success).toBeTrue();
 		expect(readRes.content).toBe("name,age\nAlice,30\nBob,25");
-	});
-
-	test("should list files existing in the session workspace", async () => {
-		const listRes = await listWorkspaceFiles({ sessionId });
-		expect(listRes.success).toBeTrue();
-		expect(listRes.totalFiles).toBeGreaterThanOrEqual(1);
-		const fileNames = listRes.files.map((f) => f.filename);
-		expect(fileNames).toContain("dataset.csv");
 	});
 
 	test("should execute code reading previously written workspace files", async () => {
@@ -163,8 +154,10 @@ print("FIXED_VAL:", items[idx])
 		const resetRes = await resetWorkspace({ sessionId });
 		expect(resetRes.success).toBeTrue();
 
-		const listAfterReset = await listWorkspaceFiles({ sessionId });
-		expect(listAfterReset.success).toBeTrue();
-		expect(listAfterReset.totalFiles).toBe(0);
+		const fileAfterReset = await readWorkspaceFile({
+			filename: "dataset.csv",
+			sessionId,
+		});
+		expect(fileAfterReset.success).toBeFalse();
 	});
 });
