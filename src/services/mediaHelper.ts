@@ -1,8 +1,6 @@
 import type { Context } from "grammy";
 import { CONFIG } from "../config/index";
 import type { MessageRow } from "../db/repository";
-import { Repository } from "../db/repository";
-import { isConversationFollowUp } from "../utils/conversation";
 import logger from "../utils/logger";
 import {
 	downloadTelegramFile,
@@ -10,7 +8,7 @@ import {
 } from "../utils/mediaDownloader";
 import { sendLongMessage } from "../utils/message";
 import { botUsername, withChatLock, withTyping } from "./bot";
-import { GeminiService } from "./gemini/index";
+import { GeminiService, type TargetMessageInfo } from "./gemini/index";
 
 interface MediaProcessorOptions {
 	mediaType: "photo" | "voice";
@@ -20,33 +18,45 @@ interface MediaProcessorOptions {
 		mimeType: string,
 		history: MessageRow[],
 		activeTopic: string,
+		targetMessage?: TargetMessageInfo,
 	) => Promise<string>;
 	fallbackErrorMessage: string;
 }
 
 export function isDirectMediaInteraction(
 	ctx: Context,
-	mediaTypeTag: string,
+	_mediaTypeTag: string,
 	extraCondition?: boolean,
 ): boolean {
 	const msg = ctx.message;
 	const chat = ctx.chat;
 	if (!msg || !chat) return false;
 
-	const chatIdStr = chat.id.toString();
-	const isReplyToBot = msg.reply_to_message?.from?.username === botUsername;
+	const isReplyToBot = Boolean(
+		botUsername && msg.reply_to_message?.from?.username === botUsername,
+	);
 	const isPrivateChat = chat.type === "private";
 
-	const isFollowUp = ctx.from
-		? isConversationFollowUp(chatIdStr, ctx.from.id, msg.date)
-		: false;
-	if (isFollowUp) {
-		logger.debug(
-			`[${mediaTypeTag}] Follow-up detected for user ${ctx.from?.first_name} in chat ${chatIdStr}`,
-		);
+	if (isReplyToBot || isPrivateChat || extraCondition) {
+		return true;
 	}
 
-	return isReplyToBot || isPrivateChat || isFollowUp || Boolean(extraCondition);
+	const caption = msg.caption || "";
+	if (caption) {
+		const botName = botUsername || "ket";
+		const nicknameRegex = new RegExp(
+			`\\b${botName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`,
+			"i",
+		);
+		const containsNickname =
+			nicknameRegex.test(caption) || /\bket\b/i.test(caption);
+		const isMentioned = Boolean(
+			botUsername && caption.includes(`@${botUsername}`),
+		);
+		return containsNickname || isMentioned;
+	}
+
+	return false;
 }
 
 export async function processMediaInteraction(
@@ -91,11 +101,20 @@ export async function processMediaInteraction(
 				logger.info(
 					`[${options.mediaType}] Sending ${options.mediaType} to Gemini for analysis...`,
 				);
+				const targetMessage: TargetMessageInfo = {
+					messageId: msg.message_id,
+					userId: ctx.from?.id || 0,
+					userName: ctx.from?.first_name || "User",
+					userUsername: ctx.from?.username || undefined,
+					text: msg.caption || `[${options.mediaType}]`,
+					sentAt: msg.date,
+				};
 				const reply = await options.generateReply(
 					downloadResult.buffer,
 					mimeType,
 					history,
 					activeTopic,
+					targetMessage,
 				);
 
 				await sendLongMessage(ctx, reply, {

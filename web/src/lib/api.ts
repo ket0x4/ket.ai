@@ -73,39 +73,96 @@ const getInitData = (): string => {
 	return "";
 };
 
+function buildAuthHeaders(headersInit?: HeadersInit, accept?: string): Headers {
+	const headers = new Headers(headersInit);
+	if (!headers.has("Content-Type")) {
+		headers.set("Content-Type", "application/json");
+	}
+	if (accept) headers.set("Accept", accept);
+
+	const initData = getInitData();
+	if (initData) headers.set("x-telegram-init-data", initData);
+	return headers;
+}
+
+async function throwResponseError(res: Response): Promise<never> {
+	const errorBody = (await res.json().catch(() => ({
+		error: `HTTP ${res.status}: ${res.statusText}`,
+	}))) as { error?: string };
+	throw new Error(errorBody.error || `HTTP ${res.status}`);
+}
+
 async function apiFetch<T>(
 	endpoint: string,
 	options: RequestInit = {},
 ): Promise<T> {
-	const initData = getInitData();
-	const headers = new Headers(options.headers || {});
-
-	if (!headers.has("Content-Type")) {
-		headers.set("Content-Type", "application/json");
-	}
-
-	if (initData) {
-		headers.set("x-telegram-init-data", initData);
-	}
-
 	const res = await fetch(endpoint, {
 		...options,
-		headers,
+		headers: buildAuthHeaders(options.headers),
 	});
 
-	if (!res.ok) {
-		const errorBody = await res
-			.json()
-			.catch(() => ({ error: `HTTP ${res.status}: ${res.statusText}` }));
-		throw new Error(errorBody.error || `HTTP ${res.status}`);
-	}
+	if (!res.ok) await throwResponseError(res);
 
 	return (await res.json()) as T;
+}
+
+type SseEvent = {
+	type: "status" | "stdout" | "stderr" | "result" | string;
+	text: string;
+	data?: unknown;
+};
+
+function parseSseFrame(raw: string): SseEvent | null {
+	const trimmed = raw.trim();
+	if (!trimmed) return null;
+	let eventType = "message";
+	let dataText = "";
+	for (const line of trimmed.split("\n")) {
+		if (line.startsWith("event: ")) eventType = line.slice(7).trim();
+		else if (line.startsWith("data: ")) dataText = line.slice(6);
+	}
+	let parsedData: unknown = dataText;
+	try {
+		parsedData = JSON.parse(dataText);
+	} catch {}
+	return { type: eventType, text: dataText, data: parsedData };
+}
+
+async function readSseStream(
+	body: ReadableStream<Uint8Array>,
+	onChunk: (event: SseEvent) => void,
+) {
+	const reader = body.getReader();
+	const decoder = new TextDecoder();
+	let buffer = "";
+	while (true) {
+		const { done, value } = await reader.read();
+		if (done) break;
+		if (value) {
+			buffer += decoder.decode(value, { stream: true });
+			const parts = buffer.split("\n\n");
+			buffer = parts.pop() || "";
+			for (const part of parts) {
+				const event = parseSseFrame(part);
+				if (event) onChunk(event);
+			}
+		}
+	}
 }
 
 export const api = {
 	auth: {
 		me: () => apiFetch<AuthContext>("/api/me"),
+	},
+	user: {
+		setOptOut: (optedOut: boolean) =>
+			apiFetch<{ success: boolean; isOptedOut: boolean; message: string }>(
+				"/api/user/opt-out",
+				{
+					method: "POST",
+					body: JSON.stringify({ optedOut }),
+				},
+			),
 	},
 	stats: {
 		get: () => apiFetch<StatsResponse>("/api/stats"),
@@ -159,7 +216,7 @@ export const api = {
 			chatId: string,
 			data: { is_allowed?: boolean; reply_probability?: number },
 		) =>
-			apiFetch<{ success: boolean; message?: string }>(`/api/chats/${chatId}`, {
+			apiFetch<{ success: boolean; chat: Chat }>(`/api/chats/${chatId}`, {
 				method: "PATCH",
 				body: JSON.stringify(data),
 			}),
@@ -167,14 +224,14 @@ export const api = {
 	memories: {
 		list: (params?: {
 			chatId?: string;
-			search?: string;
 			category?: string;
+			search?: string;
 			scope?: string;
 		}) => {
 			const searchParams = new URLSearchParams();
 			if (params?.chatId) searchParams.append("chat_id", params.chatId);
-			if (params?.search) searchParams.append("search", params.search);
 			if (params?.category) searchParams.append("category", params.category);
+			if (params?.search) searchParams.append("search", params.search);
 			if (params?.scope) searchParams.append("scope", params.scope);
 			const qs = searchParams.toString();
 			return apiFetch<Memory[]>(`/api/memories${qs ? `?${qs}` : ""}`);
@@ -268,5 +325,30 @@ export const api = {
 				method: "POST",
 				body: JSON.stringify(data),
 			}),
+		executeStream: async (
+			data: {
+				language: string;
+				code: string;
+				packages?: string[];
+				sessionId?: string;
+				filename?: string;
+				target_files?: string[];
+			},
+			onChunk: (event: {
+				type: "status" | "stdout" | "stderr" | "result" | string;
+				text: string;
+				data?: unknown;
+			}) => void,
+		) => {
+			const res = await fetch("/api/sandbox/execute", {
+				method: "POST",
+				headers: buildAuthHeaders(undefined, "text/event-stream"),
+				body: JSON.stringify({ ...data, stream: true }),
+			});
+			if (!res.ok) await throwResponseError(res);
+			if (res.body) {
+				await readSseStream(res.body, onChunk);
+			}
+		},
 	},
 };

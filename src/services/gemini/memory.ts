@@ -95,6 +95,27 @@ export async function processNewMemory(
 ) {
 	if (!memoryText?.trim() || !chatIdStr) return;
 
+	if (options?.userId && Repository.isUserOptedOut(options.userId)) {
+		logger.debug(
+			`[Memory Store] Skipped memory for opted-out user ${options.userId} in chat ${chatIdStr}:`,
+			memoryText,
+		);
+		return;
+	}
+
+	// Check if memory fact begins with an opted-out user prefix (e.g. "alice: likes tea")
+	const colonIndex = memoryText.indexOf(":");
+	if (colonIndex > 0) {
+		const prefix = memoryText.slice(0, colonIndex).trim();
+		if (Repository.isUsernameOptedOut(prefix)) {
+			logger.debug(
+				`[Memory Store] Skipped memory for opted-out username "${prefix}" in chat ${chatIdStr}:`,
+				memoryText,
+			);
+			return;
+		}
+	}
+
 	const memText = memoryText.trim();
 	const existing = Repository.getMemories(chatIdStr);
 
@@ -258,6 +279,9 @@ function resolveChatMemories(
 			}
 		}
 	}
+	allMemories = allMemories.filter(
+		(m) => !m.userId || !Repository.isUserOptedOut(m.userId),
+	);
 	return allMemories;
 }
 
@@ -302,47 +326,25 @@ function computeDenseAndSparseCandidates(
 	});
 }
 
+// ponytail: streamlined hybrid ranking combining cosine/recency score and FTS match without complex RRF
 function fuseRRFAndCheckThresholds(
 	candidateDetails: MemoryDiagnosticItem[],
 	threshold: number,
 ): MemoryDiagnosticItem[] {
-	const sortedByDense = [...candidateDetails].sort(
-		(a, b) => b.finalScore - a.finalScore,
-	);
-	const denseRankMap = new Map<number, number>();
-	sortedByDense.forEach((item, idx) => {
-		if (item.finalScore >= 0) {
-			denseRankMap.set(item.id, idx + 1);
-		}
-	});
-
-	const RRF_K = 60;
-	const details = candidateDetails.map((item) => {
-		const rankDense = denseRankMap.get(item.id);
-		const rankSparse = item.ftsRank;
-
-		let rrfScore = 0;
-		if (rankDense) {
-			rrfScore += 0.7 / (RRF_K + rankDense);
-		}
-		if (rankSparse) {
-			rrfScore += 0.3 / (RRF_K + rankSparse);
-		}
-
-		const passedDense = item.finalScore >= threshold;
-		const passedSparse =
-			Boolean(rankSparse) &&
-			(item.finalScore >= threshold - 0.15 || item.cosSim >= 0.4);
-
-		return {
-			...item,
-			rrfScore: Math.round(rrfScore * 100000) / 100000,
-			passedThreshold: passedDense || passedSparse,
-		};
-	});
-
-	details.sort((a, b) => (b.rrfScore || 0) - (a.rrfScore || 0));
-	return details;
+	return candidateDetails
+		.map((item) => {
+			const passedDense = item.finalScore >= threshold;
+			const passedSparse =
+				Boolean(item.ftsRank) &&
+				(item.finalScore >= threshold - 0.15 || item.cosSim >= 0.4);
+			const rrfScore = item.finalScore + (item.ftsRank ? 0.2 : 0);
+			return {
+				...item,
+				rrfScore: Math.round(rrfScore * 10000) / 10000,
+				passedThreshold: passedDense || passedSparse,
+			};
+		})
+		.sort((a, b) => (b.rrfScore || 0) - (a.rrfScore || 0));
 }
 
 function selectPersonalMemories(

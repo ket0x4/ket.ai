@@ -19,7 +19,7 @@ export function registerVoiceHandlers(bot: Bot) {
 			mediaType: "voice",
 			resolveMimeType: (downloadResult) =>
 				getAudioMimeType(downloadResult.filePath),
-			generateReply: (buffer, mimeType, history, activeTopic) =>
+			generateReply: (buffer, mimeType, history, activeTopic, targetMessage) =>
 				GeminiService.generateVoiceReply(
 					buffer,
 					mimeType,
@@ -27,6 +27,8 @@ export function registerVoiceHandlers(bot: Bot) {
 					activeTopic,
 					undefined,
 					ctx.chat?.id.toString(),
+					undefined,
+					targetMessage,
 				),
 			fallbackErrorMessage:
 				"Failed to process your voice message. Please try again later.",

@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { CONFIG } from "../../config";
-import type { MessageRow } from "../../db/repository";
+import { type MessageRow, Repository } from "../../db/repository";
 import logger from "../../utils/logger";
 
 const SYSTEM_PROMPT_FILE = "system.txt";
@@ -28,11 +28,17 @@ function loadSystemPrompt(): string {
 // Load once at module initialization
 cachedSystemPrompt = loadSystemPrompt();
 
-const NO_EMOJI_RULE =
-	"\n\n### FORMATTING RULE ###\nNever use emojis or emoticons in your responses. Always respond in clean, modern, natural, plain text format.";
+const FORMATTING_RULE =
+	"\n\n### FORMATTING RULE ###\nNever use emojis or emoticons in your responses. When presenting code, tool execution outputs, terminal logs, calculations, or structured data, always format them with clean Markdown code blocks (e.g. ```python, ```bash, ```text) or inline `code`. Use bold (*text*) for emphasis.";
+
+const WORKSPACE_FILE_RULE =
+	"\n\n### WORKSPACE & FILE OPERATIONS ###\nWhen users provide, attach, or refer to files:\n- All attached files are automatically stored in the session workspace.\n- To inspect or read code/text files, use `read_workspace_file`.\n- To execute scripts, code, or terminal commands (Python, TypeScript, JavaScript, Bash), use `execute_code`. For example: `execute_code({ language: 'bash', code: 'python3 script.py' })` or `execute_code({ language: 'python', code: '...' })`.\n- To edit or modify a file, write the updated version to the workspace using `write_workspace_file`. When the user wants the edited file, downloadable attachment, or output, use `send_workspace_file` (or `write_workspace_file` with `sendToUser: true`) to deliver it to the user.\n- For data analysis or plotting, run Python scripts with pandas/matplotlib; generated charts are automatically delivered to the user.\n- When asked to summarize ('özetle'), give a clear, informative summary of the file's structure, contents, and key logic.";
+
+const GROUP_CHAT_RULE =
+	"\n\n### TELEGRAM GROUP CHAT RULES ###\n- You participate in a Telegram group with multiple users. Always observe who sent which message.\n- Messages labeled 'You (ket.ai)' in recent_messages are your own previous statements. Never contradict what you wrote earlier or claim you do not remember saying it.\n- When 'current_message_to_reply' has a 'replying_to' object, the user is answering, asking about, or commenting directly on that specific message. Formulate your reply with this parent message firmly in mind.\n- Never confuse the current sender with other users in the chat or with yourself. Always direct your response to the sender of the current message.";
 
 export function getSystemInstruction(personaPrompt?: string): string {
-	const base = `${cachedSystemPrompt}${NO_EMOJI_RULE}`;
+	const base = `${cachedSystemPrompt}${FORMATTING_RULE}${WORKSPACE_FILE_RULE}${GROUP_CHAT_RULE}`;
 	if (!personaPrompt?.trim()) {
 		return base;
 	}
@@ -161,42 +167,14 @@ interface QueuedTask<T = unknown> {
 	reject: (reason?: any) => void;
 }
 
-function parseScheduleOptions(optionsOrInterval?: number | ScheduleOptions): {
-	priority: RequestPriority;
-	customIntervalMs?: number;
-} {
-	let priority: RequestPriority = "high";
-	let customIntervalMs: number | undefined;
-
-	if (typeof optionsOrInterval === "number") {
-		customIntervalMs = optionsOrInterval;
-	} else if (
-		typeof optionsOrInterval === "object" &&
-		optionsOrInterval !== null
-	) {
-		if (optionsOrInterval.priority) priority = optionsOrInterval.priority;
-		if (optionsOrInterval.customIntervalMs !== undefined) {
-			customIntervalMs = optionsOrInterval.customIntervalMs;
-		}
-	}
-	return { priority, customIntervalMs };
-}
-
-/**
- * Pacing rate limiter to enforce minimum time interval between consecutive Gemini API requests,
- * utilizing a two-tier priority queue (high for user-facing interactions, low for background tasks).
- * @internal
- */
+// ponytail: streamlined rate limiter enforcing pacing delay and priority ordering
 export class GeminiRateLimiter {
 	private lastRequestEndTime = 0;
-	private minIntervalMs: number;
-	private highPriorityQueue: QueuedTask[] = [];
-	private lowPriorityQueue: QueuedTask[] = [];
+	private highQueue: QueuedTask[] = [];
+	private lowQueue: QueuedTask[] = [];
 	private isProcessing = false;
 
-	constructor(minIntervalMs = 3500) {
-		this.minIntervalMs = minIntervalMs;
-	}
+	constructor(private minIntervalMs = 3500) {}
 
 	public setMinInterval(ms: number): void {
 		this.minIntervalMs = ms;
@@ -204,30 +182,33 @@ export class GeminiRateLimiter {
 
 	public getQueueLength(): { high: number; low: number; total: number } {
 		return {
-			high: this.highPriorityQueue.length,
-			low: this.lowPriorityQueue.length,
-			total: this.highPriorityQueue.length + this.lowPriorityQueue.length,
+			high: this.highQueue.length,
+			low: this.lowQueue.length,
+			total: this.highQueue.length + this.lowQueue.length,
 		};
 	}
 
-	public clearQueue(rejectReason?: string): void {
-		const reason = new Error(rejectReason || "Queue cleared");
-		for (const task of this.highPriorityQueue) {
+	public clearQueue(rejectReason = "Queue cleared"): void {
+		const reason = new Error(rejectReason);
+		for (const task of [...this.highQueue, ...this.lowQueue]) {
 			task.reject(reason);
 		}
-		for (const task of this.lowPriorityQueue) {
-			task.reject(reason);
-		}
-		this.highPriorityQueue = [];
-		this.lowPriorityQueue = [];
+		this.highQueue = [];
+		this.lowQueue = [];
 	}
 
 	public async schedule<T>(
 		fn: () => Promise<T>,
 		optionsOrInterval?: number | ScheduleOptions,
 	): Promise<T> {
-		const { priority, customIntervalMs } =
-			parseScheduleOptions(optionsOrInterval);
+		const priority: RequestPriority =
+			typeof optionsOrInterval === "object" && optionsOrInterval?.priority
+				? optionsOrInterval.priority
+				: "high";
+		const customIntervalMs =
+			typeof optionsOrInterval === "number"
+				? optionsOrInterval
+				: optionsOrInterval?.customIntervalMs;
 
 		return new Promise<T>((resolve, reject) => {
 			const task: QueuedTask<T> = {
@@ -237,47 +218,36 @@ export class GeminiRateLimiter {
 				resolve: resolve as (value: unknown) => void,
 				reject,
 			};
-
-			if (priority === "high") {
-				this.highPriorityQueue.push(task as QueuedTask);
-			} else {
-				this.lowPriorityQueue.push(task as QueuedTask);
-			}
-
+			(priority === "high" ? this.highQueue : this.lowQueue).push(
+				task as QueuedTask,
+			);
 			this.processQueue();
 		});
 	}
 
-	private enforcePacingDelay(candidate: QueuedTask): Promise<void> | null {
+	private async waitPacing(task: QueuedTask): Promise<void> {
 		const isTestEnv =
 			process.env.NODE_ENV === "test" || process.env.BUN_ENV === "test";
 		const interval =
-			candidate.customIntervalMs ??
+			task.customIntervalMs ??
 			(isTestEnv
 				? 0
 				: (CONFIG.GEMINI_MIN_REQUEST_INTERVAL_MS ?? this.minIntervalMs));
 
-		const now = Date.now();
-		const elapsed = now - this.lastRequestEndTime;
-
+		const elapsed = Date.now() - this.lastRequestEndTime;
 		if (interval > 0 && this.lastRequestEndTime > 0 && elapsed < interval) {
-			const waitMs = interval - elapsed;
-			logger.debug(
-				`[RateLimiter] Enforcing ${waitMs}ms artificial pacing delay before Gemini request (${candidate.priority} priority)...`,
-			);
-			return new Promise((r) => setTimeout(r, waitMs));
+			await new Promise((r) => setTimeout(r, interval - elapsed));
 		}
-		return null;
 	}
 
 	private async executeTask(task: QueuedTask): Promise<void> {
+		await this.waitPacing(task);
 		try {
-			const result = await task.fn();
-			this.lastRequestEndTime = Date.now();
-			task.resolve(result);
+			task.resolve(await task.fn());
 		} catch (err) {
-			this.lastRequestEndTime = Date.now();
 			task.reject(err);
+		} finally {
+			this.lastRequestEndTime = Date.now();
 		}
 	}
 
@@ -286,31 +256,15 @@ export class GeminiRateLimiter {
 		this.isProcessing = true;
 
 		try {
-			while (
-				this.highPriorityQueue.length > 0 ||
-				this.lowPriorityQueue.length > 0
-			) {
-				const nextCandidate =
-					this.highPriorityQueue[0] || this.lowPriorityQueue[0];
-				if (!nextCandidate) break;
-
-				const pacingPromise = this.enforcePacingDelay(nextCandidate);
-				if (pacingPromise) {
-					await pacingPromise;
+			while (this.highQueue.length > 0 || this.lowQueue.length > 0) {
+				const task = this.highQueue.shift() || this.lowQueue.shift();
+				if (task) {
+					await this.executeTask(task);
 				}
-
-				const task =
-					this.highPriorityQueue.shift() || this.lowPriorityQueue.shift();
-				if (!task) continue;
-
-				await this.executeTask(task);
 			}
 		} finally {
 			this.isProcessing = false;
-			if (
-				this.highPriorityQueue.length > 0 ||
-				this.lowPriorityQueue.length > 0
-			) {
+			if (this.highQueue.length > 0 || this.lowQueue.length > 0) {
 				this.processQueue();
 			}
 		}
@@ -414,59 +368,167 @@ export async function runWithRetry<T>(
 	throw lastError;
 }
 
-export function cleanUserText(text: string | null): string {
+export function cleanUserText(
+	text: string | null,
+	botUsernameOverride?: string,
+): string {
 	if (!text) return "";
-	return text.replace(/\bket\b/gi, "").trim();
+	const names = new Set<string>(["ket"]);
+	if (botUsernameOverride?.trim()) {
+		names.add(botUsernameOverride.trim());
+	}
+	const escapedNames = Array.from(names)
+		.map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+		.join("|");
+
+	const regex = new RegExp(`(^|\\s)@?(?:${escapedNames})\\b`, "gi");
+	return text.replace(regex, " ").replace(/\s+/g, " ").trim();
 }
 
-export function buildHistoryList(history: MessageRow[]) {
-	return history.map((msg) => {
-		const usernameSuffix = msg.username ? ` (@${msg.username})` : "";
-		const senderName = msg.is_bot_reply
+function resolveMessageFallback(msg: MessageRow): string {
+	if (msg.photo_file_id) return "[Photo]";
+	if (msg.document_file_id) {
+		return `[Document: ${msg.document_file_name || "file"}]`;
+	}
+	return "[Media]";
+}
+
+function resolveMessageSender(msg: MessageRow): string {
+	if (msg.is_bot_reply) return "You (ket.ai)";
+	const usernameSuffix = msg.username ? ` (@${msg.username})` : "";
+	return `User_${msg.user_id} (${msg.first_name || "Unnamed"}${usernameSuffix})`;
+}
+
+function formatParentPreview(sender: string, rawText?: string | null): string {
+	const text = rawText
+		? rawText.length > 50
+			? `${rawText.slice(0, 47)}...`
+			: rawText
+		: "[Media]";
+	return `${sender}: "${text}"`;
+}
+
+function resolveReplyPreview(
+	replyToId: number,
+	msgMap: Map<number, MessageRow>,
+	chatId?: string,
+): string | undefined {
+	const parent = msgMap.get(replyToId);
+	if (parent) {
+		const sender = parent.is_bot_reply
 			? "You (ket.ai)"
-			: `User_${msg.user_id} (${msg.first_name || "Unnamed"}${usernameSuffix})`;
-		const fallback = msg.photo_file_id ? "[Photo]" : "[Media]";
+			: parent.first_name || "User";
+		return formatParentPreview(sender, parent.text);
+	}
+
+	if (chatId) {
+		const dbParent = Repository.getMessageWithUser(chatId, replyToId);
+		if (dbParent) {
+			const sender = dbParent.is_bot_reply
+				? "You (ket.ai)"
+				: dbParent.first_name || "User";
+			return formatParentPreview(sender, dbParent.text);
+		}
+	}
+
+	return undefined;
+}
+
+export function buildHistoryList(
+	history: MessageRow[],
+	botUsernameOverride?: string,
+	chatId?: string,
+) {
+	const msgMap = new Map<number, MessageRow>();
+	for (const m of history) {
+		msgMap.set(m.message_id, m);
+	}
+
+	return history.map((msg) => {
+		const fallback = resolveMessageFallback(msg);
+		const sender = resolveMessageSender(msg);
+		const replyPreview = msg.reply_to_message_id
+			? resolveReplyPreview(msg.reply_to_message_id, msgMap, chatId)
+			: undefined;
+
+		const cleanText = msg.is_bot_reply
+			? msg.text || fallback
+			: cleanUserText(msg.text, botUsernameOverride) || fallback;
+
 		return {
+			message_id: msg.message_id,
 			user_id: msg.is_bot_reply ? undefined : msg.user_id,
-			sender: senderName,
+			sender,
 			reply_to_message_id: msg.reply_to_message_id || undefined,
-			text: msg.is_bot_reply
-				? msg.text || fallback
-				: cleanUserText(msg.text) || fallback,
+			reply_to_preview: replyPreview,
+			text: cleanText,
 		};
 	});
 }
 
 /**
- * Resolves target Telegram user_id by matching name against recent chat message history.
+ * Resolves target Telegram user_id by matching name against recent chat message history or SQLite database.
+ * If userName is about someone else and that person is not found, returns null (rather than wrongly attributing
+ * the fact to the speaker).
  */
 export function resolveTargetUserId(
 	userName: string,
 	explicitUserId?: number,
 	history: MessageRow[] = [],
 	fallbackUserId?: number,
+	senderFirstName?: string,
+	senderUsername?: string,
 ): number | null {
 	if (typeof explicitUserId === "number" && explicitUserId > 0) {
 		return explicitUserId;
 	}
 
-	if (history.length > 0 && userName) {
-		const cleanName = userName.toLowerCase().trim();
+	if (!userName?.trim()) {
+		return fallbackUserId ?? null;
+	}
+
+	const cleanName = userName.toLowerCase().trim();
+
+	// Check if the stated user_name refers to the sender themself
+	const isSelf =
+		cleanName === "me" ||
+		cleanName === "myself" ||
+		cleanName === "ben" ||
+		cleanName === "kendim" ||
+		cleanName === "kendisi" ||
+		(senderFirstName && senderFirstName.toLowerCase().trim() === cleanName) ||
+		(senderUsername && senderUsername.toLowerCase().trim() === cleanName);
+
+	if (isSelf && typeof fallbackUserId === "number" && fallbackUserId > 0) {
+		return fallbackUserId;
+	}
+
+	// Try matching in recent message history
+	if (history.length > 0) {
 		const matchedMsg = history
 			.slice()
 			.reverse()
 			.find(
 				(m) =>
 					!m.is_bot_reply &&
-					((m.first_name && m.first_name.toLowerCase() === cleanName) ||
-						(m.username && m.username.toLowerCase() === cleanName)),
+					(m.first_name?.toLowerCase().trim() === cleanName ||
+						m.first_name?.toLowerCase().trim().startsWith(cleanName) ||
+						m.username?.toLowerCase().trim() === cleanName),
 			);
 		if (matchedMsg) {
 			return matchedMsg.user_id;
 		}
 	}
 
-	return fallbackUserId ?? null;
+	// Try matching in SQLite users table
+	const dbUser = Repository.getUserByName(cleanName);
+	if (dbUser) {
+		return dbUser.user_id;
+	}
+
+	// If userName was explicitly provided and clearly not the sender, DO NOT pollute sender's profile.
+	// Return null so the memory is stored as a general group memory.
+	return null;
 }
 
 const ANAPHORIC_TRIGGERS =

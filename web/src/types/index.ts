@@ -6,6 +6,7 @@ export interface TelegramUser {
 	language_code?: string;
 	is_premium?: boolean;
 	photo_url?: string;
+	is_opted_out?: boolean;
 }
 
 export type UserRole = "owner" | "admin" | "user";
@@ -17,6 +18,7 @@ export interface AuthContext {
 	isOwner: boolean;
 	adminChatIds: string[];
 	memberChatIds: string[];
+	isOptedOut?: boolean;
 }
 
 interface CategoryStats {
@@ -162,10 +164,18 @@ export interface SandboxVerboseData {
 	};
 }
 
+export interface SandboxGeneratedImage {
+	filename: string;
+	mimeType: string;
+	data: string; // base64
+	sizeBytes?: number;
+}
+
 export interface SandboxResponse {
 	reply: string;
 	executionTimeMs: number;
 	model: string;
+	images?: SandboxGeneratedImage[];
 	verbose?: SandboxVerboseData;
 }
 

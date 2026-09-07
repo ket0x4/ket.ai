@@ -1,12 +1,19 @@
-import { AgentStateMachine, toolRegistry } from "../../agent/index";
+import {
+	type MediaGeneratedCallback,
+	runAgentLoop,
+	type ToolCallCallback,
+	type ToolProgressCallback,
+	toolRegistry,
+} from "../../agent/index";
 import { CONFIG } from "../../config";
 import type { MessageRow } from "../../db/repository";
 import { Repository } from "../../db/repository";
 import logger from "../../utils/logger";
-import { ToolTraceLogger } from "../../utils/toolTrace";
 import { ai } from "./client";
+import type { PreparedDocumentContext } from "./documentPerception";
 import { describeImage, transcribeAudio } from "./mediaPerception";
 import { getRelevantMemories, processNewMemory } from "./memory";
+import { getMemoryUpdateItemSchema } from "./schemas";
 import {
 	buildHistoryList,
 	cleanUserText,
@@ -16,14 +23,29 @@ import {
 	runWithRetry,
 } from "./utils";
 
-type ToolCallCallback = (
-	toolName: string,
-	args: Record<string, unknown>,
-	step: number,
-) => Promise<void> | void;
+export type { GeneratedMediaArtifact } from "../../agent/index";
 
 const lastSummarizedCount = new Map<string, number>();
 const MAX_TRACKED_CHATS = 200;
+
+export interface ReplyContextInfo {
+	messageId: number;
+	senderId?: number;
+	senderName: string;
+	senderUsername?: string;
+	isBot: boolean;
+	text: string;
+}
+
+export interface TargetMessageInfo {
+	messageId: number;
+	userId: number;
+	userName: string;
+	userUsername?: string;
+	text: string;
+	sentAt: number;
+	replyTo?: ReplyContextInfo;
+}
 
 interface GenerateResponseOptions {
 	chatId?: string;
@@ -31,12 +53,16 @@ interface GenerateResponseOptions {
 	instruction?: string;
 	personaPrompt?: string;
 	media?: { buffer: Buffer; mimeType: string };
+	document?: PreparedDocumentContext;
 	replyDescription: string;
 	fallbackEmpty: string;
 	fallbackError: string;
 	mediaFallbackText: string;
 	traceId?: string;
 	onToolCall?: ToolCallCallback;
+	onToolProgress?: ToolProgressCallback;
+	onMediaGenerated?: MediaGeneratedCallback;
+	targetMessage?: TargetMessageInfo;
 }
 
 function resolveLastMessageText(
@@ -55,6 +81,56 @@ function resolveSenderDescription(lastMsg?: MessageRow): string {
 	return `User_${lastMsg.user_id} (${lastMsg.first_name || "Unnamed"}${suffix})`;
 }
 
+function buildCurrentMessageToReply(
+	options: GenerateResponseOptions,
+	lastMsg?: MessageRow,
+	lastMessageText = "",
+): Record<string, unknown> {
+	if (options.targetMessage) {
+		const usernameSuffix = options.targetMessage.userUsername
+			? ` (@${options.targetMessage.userUsername})`
+			: "";
+		const senderDesc = `User_${options.targetMessage.userId} (${options.targetMessage.userName || "Unnamed"}${usernameSuffix})`;
+		const cleanText =
+			cleanUserText(options.targetMessage.text) || options.mediaFallbackText;
+
+		const currentMsgObj: Record<string, unknown> = {
+			message_id: options.targetMessage.messageId,
+			sender_id: options.targetMessage.userId,
+			sender: senderDesc,
+			text: cleanText,
+		};
+
+		if (options.targetMessage.replyTo) {
+			currentMsgObj.replying_to = {
+				message_id: options.targetMessage.replyTo.messageId,
+				sender: options.targetMessage.replyTo.senderName,
+				text: options.targetMessage.replyTo.text,
+			};
+		}
+		return currentMsgObj;
+	}
+
+	return {
+		sender: resolveSenderDescription(lastMsg),
+		text: lastMessageText,
+	};
+}
+
+function buildDocumentAttachment(doc: PreparedDocumentContext) {
+	return {
+		filename: doc.fileName,
+		mime_type: doc.mimeType,
+		size_bytes: doc.sizeBytes,
+		is_text: doc.isText,
+		is_truncated: doc.isTruncated,
+		content: doc.textContent,
+		summary_hint: doc.summaryHint,
+		workspace_saved: true,
+		workspace_filename: doc.fileName,
+	};
+}
+
 function buildInputPayload(
 	history: MessageRow[],
 	topicSummary: string | null,
@@ -66,7 +142,7 @@ function buildInputPayload(
 		lastMsg,
 		options.mediaFallbackText,
 	);
-	const historyList = buildHistoryList(history);
+	const historyList = buildHistoryList(history, undefined, options.chatId);
 
 	const inputPayload: Record<string, unknown> = {
 		active_topic:
@@ -79,19 +155,29 @@ function buildInputPayload(
 		inputPayload.instruction = options.instruction;
 	}
 
+	if (options.document) {
+		inputPayload.attached_document = buildDocumentAttachment(options.document);
+		const docGuidance = `Document '${options.document.fileName}' is available in your persistent workspace. You can inspect it, summarize it, execute it with execute_code (Python/Bash/Bun), or edit it and send it to the user with send_workspace_file or write_workspace_file (with sendToUser: true).`;
+		inputPayload.instruction = inputPayload.instruction
+			? `${inputPayload.instruction} ${docGuidance}`
+			: docGuidance;
+	}
+
 	if (options.isSpontaneous) {
 		inputPayload.interaction_type = "spontaneous_comment";
 	} else {
 		inputPayload.interaction_type = "direct_reply";
-		inputPayload.current_message_to_reply = {
-			sender: resolveSenderDescription(lastMsg),
-			text: lastMessageText,
-		};
+		inputPayload.current_message_to_reply = buildCurrentMessageToReply(
+			options,
+			lastMsg,
+			lastMessageText,
+		);
 	}
 
+	const activeText = options.targetMessage?.text || lastMessageText;
 	const hasExplicitMemoryIntent =
 		/\b(?:remember this|keep in mind|note this|save this|don'?t forget|bunu unutma|aklında tut|not et|hafızana yaz|kaydet|bunu hatırla)\b/i.test(
-			lastMessageText,
+			activeText,
 		);
 	if (hasExplicitMemoryIntent) {
 		inputPayload.instruction =
@@ -116,33 +202,7 @@ function buildResponseSchemaProperties(
 				"List of new facts to remember. DO NOT save facts based on your own generated replies, assumptions, or jokes. Leave empty [] if no meaningful user facts exist.",
 			items: {
 				type: "OBJECT",
-				properties: {
-					user_id: {
-						type: "INTEGER",
-						description:
-							"The integer user_id extracted from User_ID field if available.",
-					},
-					user_name: {
-						type: "STRING",
-						description: "The first name of the user who stated the fact.",
-					},
-					fact: {
-						type: "STRING",
-						description:
-							"The factual detail stated by the user (e.g., likes pizza, is a software engineer). Do not use the word 'User'.",
-					},
-					category: {
-						type: "STRING",
-						description:
-							"Category of fact: 'PROFILE' for permanent personal facts, 'DYNAMIC' for medium-term status, 'TEMPORARY' for short-lived events.",
-					},
-					ttl_days: {
-						type: "INTEGER",
-						description:
-							"Days after which temporary memory expires (e.g. 1-7 days). Leave null/0 for permanent facts.",
-					},
-				},
-				required: ["user_name", "fact"],
+				...getMemoryUpdateItemSchema(),
 			},
 		},
 	};
@@ -166,73 +226,62 @@ function buildInitialContents(
 	return [{ role: "user", parts: initialParts }];
 }
 
-async function notifyToolCallbacks(
-	functionCalls: Array<{ name?: string; args?: Record<string, unknown> }>,
-	step: number,
-	onToolCall?: ToolCallCallback,
+interface ExtractedMemoryItem {
+	user_id?: number;
+	user_name?: string;
+	fact?: string;
+	category?: string;
+	ttl_days?: number;
+}
+
+async function saveSingleExtractedMemory(
+	chatIdStr: string,
+	mem: ExtractedMemoryItem,
+	history: MessageRow[],
+	senderUserId?: number,
+	senderFirstName?: string,
+	senderUsername?: string,
 ): Promise<void> {
-	if (!onToolCall) return;
-	for (const fc of functionCalls) {
-		if (!fc?.name) continue;
-		try {
-			await onToolCall(fc.name, fc.args || {}, step);
-		} catch (err) {
-			logger.warn("[Agent] Error executing onToolCall callback:", err);
-		}
+	if (!mem.user_name || !mem.fact) return;
+
+	const targetUserId = resolveTargetUserId(
+		mem.user_name,
+		mem.user_id,
+		history,
+		senderUserId,
+		senderFirstName,
+		senderUsername,
+	);
+
+	if (targetUserId && Repository.isUserOptedOut(targetUserId)) {
+		logger.debug(
+			`[Gemini:saveExtractedMemories] Skipped memory for opted-out user ${targetUserId}`,
+		);
+		return;
 	}
-}
 
-async function executeSingleTool(
-	fc: { name?: string; args?: Record<string, unknown> },
-	chatIdStr: string,
-	step: number,
-	traceId: string,
-): Promise<Record<string, unknown> | null> {
-	if (!fc?.name) return null;
-	const name = fc.name;
-	const args = fc.args || {};
-	logger.info(`[Agent:${traceId}] Executing tool '${name}'...`);
-	const startTime = Date.now();
-	const result = await toolRegistry.executeTool(name, args);
-	const durationMs = Date.now() - startTime;
+	if (Repository.isUsernameOptedOut(mem.user_name)) {
+		logger.debug(
+			`[Gemini:saveExtractedMemories] Skipped memory for opted-out username "${mem.user_name}"`,
+		);
+		return;
+	}
 
-	const snippet =
-		typeof result === "string"
-			? result.substring(0, 300)
-			: JSON.stringify(result).substring(0, 300);
-	ToolTraceLogger.add({
-		chatId: chatIdStr,
-		traceId,
-		toolName: name,
-		args,
-		resultSnippet: snippet,
-		executionTimeMs: durationMs,
-		step,
+	const cat =
+		(mem.category as "PROFILE" | "DYNAMIC" | "TEMPORARY") || "PROFILE";
+	const ttl =
+		typeof mem.ttl_days === "number" && mem.ttl_days > 0
+			? mem.ttl_days
+			: cat === "TEMPORARY"
+				? 3
+				: null;
+
+	await processNewMemory(chatIdStr, `${mem.user_name}: ${mem.fact}`, {
+		userId: targetUserId,
+		category: cat,
+		ttlDays: ttl,
+		priority: "low",
 	});
-
-	return {
-		functionResponse: {
-			name,
-			response: { result },
-		},
-	};
-}
-
-async function handleToolExecution(
-	functionCalls: Array<{ name?: string; args?: Record<string, unknown> }>,
-	chatIdStr: string,
-	step: number,
-	traceId: string,
-	onToolCall?: ToolCallCallback,
-): Promise<Array<Record<string, unknown>>> {
-	await notifyToolCallbacks(functionCalls, step, onToolCall);
-
-	const toolResponseParts: Array<Record<string, unknown>> = [];
-	for (const fc of functionCalls) {
-		const part = await executeSingleTool(fc, chatIdStr, step, traceId);
-		if (part) toolResponseParts.push(part);
-	}
-	return toolResponseParts;
 }
 
 async function processExtractedMemories(
@@ -240,6 +289,8 @@ async function processExtractedMemories(
 	memoryUpdates: unknown[],
 	history: MessageRow[] = [],
 	senderUserId?: number,
+	senderFirstName?: string,
+	senderUsername?: string,
 ): Promise<void> {
 	if (
 		!Array.isArray(memoryUpdates) ||
@@ -249,120 +300,16 @@ async function processExtractedMemories(
 		return;
 	}
 
-	for (const mem of memoryUpdates as Array<{
-		user_id?: number;
-		user_name?: string;
-		fact?: string;
-		category?: string;
-		ttl_days?: number;
-	}>) {
-		if (!mem.user_name || !mem.fact) continue;
-		const combinedFact = `${mem.user_name}: ${mem.fact}`;
-		const cat =
-			(mem.category as "PROFILE" | "DYNAMIC" | "TEMPORARY") || "PROFILE";
-		const ttl =
-			typeof mem.ttl_days === "number" && mem.ttl_days > 0
-				? mem.ttl_days
-				: cat === "TEMPORARY"
-					? 3
-					: null;
-
-		const targetUserId = resolveTargetUserId(
-			mem.user_name,
-			mem.user_id,
+	for (const mem of memoryUpdates as ExtractedMemoryItem[]) {
+		await saveSingleExtractedMemory(
+			chatIdStr,
+			mem,
 			history,
 			senderUserId,
+			senderFirstName,
+			senderUsername,
 		);
-
-		await processNewMemory(chatIdStr, combinedFact, {
-			userId: targetUserId,
-			category: cat,
-			ttlDays: ttl,
-			priority: "low",
-		});
 	}
-}
-
-async function runAgentStepLoop(
-	contents: Array<Record<string, unknown>>,
-	genConfig: Record<string, unknown>,
-	chatIdStr: string,
-	fsm: AgentStateMachine,
-	onToolCall?: ToolCallCallback,
-): Promise<string> {
-	let responseText = "";
-
-	while (fsm.getStep() < CONFIG.MAX_AGENT_STEPS) {
-		const step = fsm.incrementStep();
-		fsm.transition("CALLING_MODEL", { step });
-
-		const response = await runWithRetry(
-			() =>
-				ai.models.generateContent({
-					model: CONFIG.GEMINI_MODEL,
-					// biome-ignore lint/suspicious/noExplicitAny: SDK expects content structure
-					contents: contents as any,
-					// biome-ignore lint/suspicious/noExplicitAny: SDK expects config structure
-					config: genConfig as any,
-				}),
-			{ priority: "high" },
-		);
-
-		const rawParts = response.candidates?.[0]?.content?.parts as
-			| Array<{
-					functionCall?: {
-						name?: string;
-						args?: Record<string, unknown>;
-					};
-			  }>
-			| undefined;
-		const candidateCalls =
-			response.functionCalls ||
-			rawParts?.filter((p) => p.functionCall?.name).map((p) => p.functionCall);
-		const functionCalls = (candidateCalls || []).filter(
-			(
-				fc,
-			): fc is {
-				name?: string;
-				args?: Record<string, unknown>;
-			} => Boolean(fc),
-		);
-
-		if (functionCalls.length > 0) {
-			fsm.transition("EXECUTING_TOOLS", {
-				step,
-				toolCount: functionCalls.length,
-			});
-			logger.info(
-				`[Agent:${fsm.getTraceId()}] Gemini requested ${functionCalls.length} tool call(s) at step ${step}`,
-			);
-
-			const modelContent = response.candidates?.[0]?.content;
-			if (modelContent) {
-				contents.push(modelContent as Record<string, unknown>);
-			} else {
-				contents.push({
-					role: "model",
-					parts: functionCalls.map((fc) => ({ functionCall: fc })),
-				});
-			}
-
-			const toolParts = await handleToolExecution(
-				functionCalls,
-				chatIdStr,
-				step,
-				fsm.getTraceId(),
-				onToolCall,
-			);
-			contents.push({ role: "user", parts: toolParts });
-			continue;
-		}
-
-		fsm.transition("PARSING_RESPONSE", { step });
-		responseText = response.text?.trim() || "";
-		break;
-	}
-	return responseText;
 }
 
 function buildGenConfig(
@@ -371,7 +318,7 @@ function buildGenConfig(
 ): Record<string, unknown> {
 	const genConfig: Record<string, unknown> = {
 		systemInstruction: getSystemInstruction(options.personaPrompt),
-		temperature: options.media ? 0.8 : 0.85,
+		temperature: toolsConfig ? 0.45 : options.media ? 0.7 : 0.75,
 		maxOutputTokens: 2048,
 		thinkingConfig: getThinkingConfig(CONFIG.GEMINI_MODEL),
 		tools: toolsConfig,
@@ -389,78 +336,159 @@ function buildGenConfig(
 	return genConfig;
 }
 
+function isStrayBracket(text: string): boolean {
+	return text === "}" || text === "{" || text === "[]" || text === "{}";
+}
+
+function extractReplyFieldFromObject(
+	parsed: Record<string, unknown>,
+): string | undefined {
+	const candidateFields = [
+		"reply",
+		"summary",
+		"text",
+		"message",
+		"answer",
+		"result",
+		"output",
+		"response",
+		"content",
+	];
+	for (const field of candidateFields) {
+		const val = parsed[field];
+		if (typeof val === "string" && val.trim()) {
+			return val.trim();
+		}
+	}
+	return undefined;
+}
+
+async function handleJsonReply(
+	cleanedText: string,
+	rawText: string,
+	chatIdStr: string,
+	traceId: string,
+	history: MessageRow[] = [],
+	lastMsg?: MessageRow,
+	senderUserId?: number,
+	senderFirstName?: string,
+	senderUsername?: string,
+): Promise<string> {
+	try {
+		const parsed = JSON.parse(cleanedText);
+
+		const effectiveSenderId =
+			senderUserId ??
+			(lastMsg && !lastMsg.is_bot_reply ? lastMsg.user_id : undefined);
+
+		if (
+			parsed &&
+			typeof parsed === "object" &&
+			Array.isArray(parsed.new_memory_updates) &&
+			parsed.new_memory_updates.length > 0
+		) {
+			processExtractedMemories(
+				chatIdStr,
+				parsed.new_memory_updates,
+				history,
+				effectiveSenderId,
+				senderFirstName,
+				senderUsername,
+			).catch((err) => {
+				logger.error(
+					`[Gemini:${traceId}] Error persisting extracted memories:`,
+					err,
+				);
+			});
+		}
+
+		if (parsed && typeof parsed === "object") {
+			const extracted = extractReplyFieldFromObject(
+				parsed as Record<string, unknown>,
+			);
+			if (extracted) return extracted;
+
+			if (Object.keys(parsed).length > 0) {
+				return cleanedText;
+			}
+		}
+
+		return "";
+	} catch {
+		logger.warn(
+			`[Gemini:${traceId}] Parse error on model JSON response. Using cleaned plain text. Raw text: "${rawText}"`,
+		);
+		return cleanedText;
+	}
+}
+
+function tryExtractJsonString(text: string): string | null {
+	const trimmed = text.trim();
+	if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+		return trimmed;
+	}
+	const jsonFenceMatch = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+	if (jsonFenceMatch) {
+		const inner = jsonFenceMatch[1].trim();
+		if (inner.startsWith("{") || inner.startsWith("[")) {
+			return inner;
+		}
+	}
+	return null;
+}
+
 async function parseAndProcessReply(
 	responseText: string,
 	chatIdStr: string,
-	fsm: AgentStateMachine,
+	traceId: string,
 	history: MessageRow[] = [],
 	lastMsg?: MessageRow,
+	senderUserId?: number,
+	senderFirstName?: string,
+	senderUsername?: string,
 ): Promise<string> {
-	if (!responseText?.trim()) {
-		fsm.transition("COMPLETED");
+	const trimmed = responseText?.trim() || "";
+	if (!trimmed) {
 		return "";
 	}
 
-	const cleanedText = responseText
-		.replace(/^```(?:json)?\n?|\n?```$/g, "")
-		.trim();
-
-	// If response is an isolated brace/bracket, suppress it
-	if (
-		cleanedText === "}" ||
-		cleanedText === "{" ||
-		cleanedText === "[]" ||
-		cleanedText === "{}"
-	) {
+	if (isStrayBracket(trimmed)) {
 		logger.warn(
-			`[Gemini:${fsm.getTraceId()}] Model returned stray bracket/empty payload: "${cleanedText}". Suppressing reply.`,
+			`[Gemini:${traceId}] Model returned stray bracket/empty payload: "${trimmed}". Suppressing reply.`,
 		);
-		fsm.transition("COMPLETED");
 		return "";
 	}
 
-	// If response starts like a JSON structure
-	if (cleanedText.startsWith("{") || cleanedText.startsWith("[")) {
-		try {
-			const parsed = JSON.parse(cleanedText);
-
-			fsm.transition("PERSISTING_DATA");
-			const senderUserId =
-				lastMsg && !lastMsg.is_bot_reply ? lastMsg.user_id : undefined;
-
-			// Asynchronously persist memories in the background so Telegram reply latency is zero
-			if (
-				Array.isArray(parsed.new_memory_updates) &&
-				parsed.new_memory_updates.length > 0
-			) {
-				processExtractedMemories(
-					chatIdStr,
-					parsed.new_memory_updates,
-					history,
-					senderUserId,
-				).catch((err) => {
-					logger.error(
-						`[Gemini:${fsm.getTraceId()}] Error persisting extracted memories:`,
-						err,
-					);
-				});
-			}
-
-			fsm.transition("COMPLETED");
-			return typeof parsed.reply === "string" ? parsed.reply.trim() : "";
-		} catch {
-			logger.warn(
-				`[Gemini:${fsm.getTraceId()}] Parse error on model JSON response. Suppressing reply. Raw text: "${responseText}"`,
-			);
-			fsm.transition("COMPLETED");
-			return "";
-		}
+	const jsonStr = tryExtractJsonString(trimmed);
+	if (jsonStr) {
+		const jsonReply = await handleJsonReply(
+			jsonStr,
+			responseText,
+			chatIdStr,
+			traceId,
+			history,
+			lastMsg,
+			senderUserId,
+			senderFirstName,
+			senderUsername,
+		);
+		if (jsonReply) return jsonReply;
 	}
 
-	// Plain text response (e.g. from tool execution or unstructured output)
-	fsm.transition("COMPLETED");
-	return cleanedText;
+	// Markdown or plain text response (e.g. from tool execution or unstructured output)
+	return trimmed;
 }
+
+type MediaReplyParams = [
+	buffer: Buffer,
+	mimeType: string,
+	history: MessageRow[],
+	topicSummary: string | null,
+	onToolCall?: ToolCallCallback,
+	chatId?: string,
+	onToolProgress?: ToolProgressCallback,
+	targetMessage?: TargetMessageInfo,
+];
 
 export const GeminiService = {
 	async _generateResponse(
@@ -468,15 +496,16 @@ export const GeminiService = {
 		topicSummary: string | null,
 		options: GenerateResponseOptions,
 	): Promise<string> {
-		const fsm = new AgentStateMachine(options.traceId);
+		const traceId =
+			options.traceId ||
+			`trace_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
 		try {
 			if (history.length === 0) {
 				logger.warn(
-					`[Gemini:${fsm.getTraceId()}] _generateResponse called with empty history. Returning fallback.`,
+					`[Gemini:${traceId}] _generateResponse called with empty history. Returning fallback.`,
 				);
 				return options.fallbackEmpty;
 			}
-			fsm.transition("INITIALIZING");
 			const chatIdStr = options.chatId || history[0]?.chat_id?.toString() || "";
 			const lastMsg = history[history.length - 1];
 			const lastMessageText = resolveLastMessageText(
@@ -494,17 +523,20 @@ export const GeminiService = {
 			const queryForMemory = options.isSpontaneous
 				? topicSummary || "General chat"
 				: lastMessageText;
-			const senderUserId =
-				lastMsg && !lastMsg.is_bot_reply ? lastMsg.user_id : undefined;
+			const targetUserId =
+				options.targetMessage?.userId ??
+				(lastMsg && !lastMsg.is_bot_reply ? lastMsg.user_id : undefined);
+			const senderFirstName = options.targetMessage?.userName;
+			const senderUsername = options.targetMessage?.userUsername;
 			const isPrivate = Boolean(
-				senderUserId && chatIdStr === senderUserId.toString(),
+				targetUserId && chatIdStr === targetUserId.toString(),
 			);
 
 			const memories = chatIdStr
 				? await getRelevantMemories(chatIdStr, queryForMemory, {
 						activeTopic: topicSummary || undefined,
 						history,
-						senderUserId,
+						senderUserId: targetUserId,
 						isPrivateChat: isPrivate,
 					})
 				: [];
@@ -518,7 +550,7 @@ export const GeminiService = {
 			const contents = buildInitialContents(inputPayload, options.media);
 
 			const toolsConfig =
-				CONFIG.ENABLE_WEB_SEARCH && toolRegistry.count > 0
+				toolRegistry.count > 0
 					? [
 							{
 								functionDeclarations: toolRegistry.getFunctionDeclarations(),
@@ -532,29 +564,29 @@ export const GeminiService = {
 			};
 			const genConfig = buildGenConfig(effectiveOptions, toolsConfig);
 
-			const responseText = await runAgentStepLoop(
-				contents,
-				genConfig,
-				chatIdStr,
-				fsm,
-				options.onToolCall,
-			);
+			const responseText = await runAgentLoop(contents, genConfig, {
+				chatId: chatIdStr,
+				sessionId: chatIdStr,
+				traceId,
+				onToolCall: options.onToolCall,
+				onToolProgress: options.onToolProgress,
+				onMediaGenerated: options.onMediaGenerated,
+			});
 
 			const reply = await parseAndProcessReply(
 				responseText,
 				chatIdStr,
-				fsm,
+				traceId,
 				history,
 				lastMsg,
+				targetUserId,
+				senderFirstName,
+				senderUsername,
 			);
 			// If reply is empty (e.g. suppressed due to parse error), do not send fallback message
 			return reply;
 		} catch (error) {
-			fsm.fail(error);
-			logger.error(
-				`Error in Gemini _generateResponse [${fsm.getTraceId()}]:`,
-				error,
-			);
+			logger.error(`Error in Gemini _generateResponse [${traceId}]:`, error);
 			return options.fallbackError;
 		}
 	},
@@ -598,26 +630,90 @@ export const GeminiService = {
 		onToolCall?: ToolCallCallback,
 		chatId?: string,
 		media?: { buffer: Buffer; mimeType: string },
+		onMediaGenerated?: MediaGeneratedCallback,
+		onToolProgress?: ToolProgressCallback,
+		document?: PreparedDocumentContext,
+		targetMessage?: TargetMessageInfo,
 	): Promise<string> {
+		const effectiveMedia = media || document?.mediaPayload;
+
+		let instruction: string | undefined;
+		if (document) {
+			instruction = `The user is referring to or asking about the document '${document.fileName}'. It is saved in your sandbox workspace. Inspect, run (via execute_code), edit/modify (via write_workspace_file/send_workspace_file), or summarize it according to the user's message.`;
+		} else if (media) {
+			instruction =
+				"The user is referring to or asking about the attached photo. Analyze the photo and answer their message/question, or make a natural, fitting comment about the photo in the context of the conversation.";
+		}
+
+		let replyDescription: string;
+		if (document) {
+			replyDescription =
+				"The helpful and natural response regarding the document and the user's request in the conversation.";
+		} else if (media) {
+			replyDescription =
+				"The reply you will write to the photo and the user's message/question in the flow of the conversation.";
+		} else {
+			replyDescription =
+				"The reply you will write to the chat. A short (1-2 sentences).";
+		}
+
+		const fallbackEmpty = document
+			? "I looked at the document, but didn't know what to say."
+			: media
+				? CONFIG.MESSAGES.gemini_empty_image_fallback
+				: CONFIG.MESSAGES.gemini_empty_reply_fallback;
+
+		const fallbackError = document
+			? "I ran into an issue while processing the document, please try again."
+			: media
+				? CONFIG.MESSAGES.gemini_error_image_fallback
+				: CONFIG.MESSAGES.gemini_error_reply_fallback;
+
+		const mediaFallbackText = document
+			? `[Document: ${document.fileName}]`
+			: media
+				? "[Photo]"
+				: "[Media]";
+
 		return this._generateResponse(history, topicSummary, {
 			chatId,
 			isSpontaneous,
-			media,
-			instruction: media
-				? "The user is referring to or asking about the attached photo. Analyze the photo and answer their message/question, or make a natural, fitting comment about the photo in the context of the conversation."
-				: undefined,
-			replyDescription: media
-				? "The reply you will write to the photo and the user's message/question in the flow of the conversation."
-				: "The reply you will write to the chat. A short (1-2 sentences).",
-			fallbackEmpty: media
-				? CONFIG.MESSAGES.gemini_empty_image_fallback
-				: CONFIG.MESSAGES.gemini_empty_reply_fallback,
-			fallbackError: media
-				? CONFIG.MESSAGES.gemini_error_image_fallback
-				: CONFIG.MESSAGES.gemini_error_reply_fallback,
-			mediaFallbackText: media ? "[Photo]" : "[Media]",
+			media: effectiveMedia,
+			document,
+			instruction,
+			replyDescription,
+			fallbackEmpty,
+			fallbackError,
+			mediaFallbackText,
 			onToolCall,
+			onToolProgress,
+			onMediaGenerated,
+			targetMessage,
 		});
+	},
+
+	async generateDocumentReply(
+		document: PreparedDocumentContext,
+		history: MessageRow[],
+		topicSummary: string | null,
+		onToolCall?: ToolCallCallback,
+		chatId?: string,
+		onMediaGenerated?: MediaGeneratedCallback,
+		onToolProgress?: ToolProgressCallback,
+		targetMessage?: TargetMessageInfo,
+	): Promise<string> {
+		return this.generateReply(
+			history,
+			topicSummary,
+			false,
+			onToolCall,
+			chatId,
+			document.mediaPayload,
+			onMediaGenerated,
+			onToolProgress,
+			document,
+			targetMessage,
+		);
 	},
 
 	async summarizeTopic(history: MessageRow[]): Promise<string> {
@@ -686,76 +782,53 @@ export const GeminiService = {
 		}
 	},
 
-	async generateMediaReply(
-		media: { buffer: Buffer; mimeType: string },
-		history: MessageRow[],
-		topicSummary: string | null,
-		options: {
-			instruction: string;
-			replyDescription: string;
-			fallbackEmpty: string;
-			fallbackError: string;
-			mediaFallbackText: string;
-			onToolCall?: ToolCallCallback;
-			chatId?: string;
-		},
-	): Promise<string> {
-		return this._generateResponse(history, topicSummary, {
-			media,
-			...options,
-		});
-	},
-
-	async generateImageReply(
-		imageBuffer: Buffer,
-		mimeType: string,
-		history: MessageRow[],
-		topicSummary: string | null,
-		onToolCall?: ToolCallCallback,
-		chatId?: string,
-	): Promise<string> {
-		return this.generateMediaReply(
-			{ buffer: imageBuffer, mimeType },
+	async generateImageReply(...args: MediaReplyParams): Promise<string> {
+		const [
+			imageBuffer,
+			mimeType,
 			history,
 			topicSummary,
-			{
-				instruction:
-					"Analyze the photo and respond to the user's message/question, or make a natural, fitting comment about the photo in the context of the conversation.",
-				replyDescription:
-					"The reply you will write to the photo and the flow of the conversation.",
-				fallbackEmpty: CONFIG.MESSAGES.gemini_empty_image_fallback,
-				fallbackError: CONFIG.MESSAGES.gemini_error_image_fallback,
-				mediaFallbackText: "[Photo]",
-				onToolCall,
-				chatId,
-			},
+			onToolCall,
+			chatId,
+			onToolProgress,
+			targetMessage,
+		] = args;
+		return this.generateReply(
+			history,
+			topicSummary,
+			false,
+			onToolCall,
+			chatId,
+			{ buffer: imageBuffer, mimeType },
+			undefined,
+			onToolProgress,
+			undefined,
+			targetMessage,
 		);
 	},
 
-	async generateVoiceReply(
-		audioBuffer: Buffer,
-		mimeType: string,
-		history: MessageRow[],
-		topicSummary: string | null,
-		onToolCall?: ToolCallCallback,
-		chatId?: string,
-	): Promise<string> {
-		return this.generateMediaReply(
-			{ buffer: audioBuffer, mimeType },
+	async generateVoiceReply(...args: MediaReplyParams): Promise<string> {
+		const [
+			audioBuffer,
+			mimeType,
 			history,
 			topicSummary,
-			{
-				instruction:
-					"The user sent a voice message. Listen, understand what is being said, and answer in a friendly way suitable for the conversation.",
-				replyDescription:
-					"The reply you will write to the voice message and the flow of the conversation.",
-				fallbackEmpty: "I heard the voice message but didn't know what to say.",
-				fallbackError:
-					"I got confused while listening to the voice message, can you try again?",
-				mediaFallbackText: "[Voice]",
-				onToolCall,
-				chatId,
-			},
+			onToolCall,
+			chatId,
+			onToolProgress,
+			targetMessage,
+		] = args;
+		return this.generateReply(
+			history,
+			topicSummary,
+			false,
+			onToolCall,
+			chatId,
+			{ buffer: audioBuffer, mimeType },
+			undefined,
+			onToolProgress,
+			undefined,
+			targetMessage,
 		);
 	},
 

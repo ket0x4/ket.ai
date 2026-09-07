@@ -4,6 +4,7 @@ import { Repository } from "../../db/repository";
 import logger from "../../utils/logger";
 import { ai } from "./client";
 import { processNewMemory } from "./memory";
+import { getMemoryUpdateItemSchema } from "./schemas";
 import { getThinkingConfig, resolveTargetUserId, runWithRetry } from "./utils";
 
 const backgroundCounter = new Map<string, number>();
@@ -60,36 +61,7 @@ ${formattedHistory}`;
 function getExtractionSchema(): Record<string, unknown> {
 	return {
 		type: "ARRAY",
-		items: {
-			type: "OBJECT",
-			properties: {
-				user_id: {
-					type: "INTEGER",
-					description:
-						"The integer user_id extracted from User_ID field if available.",
-				},
-				user_name: {
-					type: "STRING",
-					description: "First name of the user.",
-				},
-				fact: {
-					type: "STRING",
-					description:
-						"Factual statement (e.g. 'likes coffee', 'moved to Ankara'). Do not use word 'User'.",
-				},
-				category: {
-					type: "STRING",
-					description:
-						"'PROFILE' for permanent facts, 'DYNAMIC' for medium-term, 'TEMPORARY' for upcoming events.",
-				},
-				ttl_days: {
-					type: "INTEGER",
-					description:
-						"Expiry in days for temporary facts, or null/0 for permanent facts.",
-				},
-			},
-			required: ["user_name", "fact"],
-		},
+		items: getMemoryUpdateItemSchema(),
 	};
 }
 
@@ -122,6 +94,20 @@ async function saveExtractedMemories(
 			item.user_id,
 			recentMessages,
 		);
+
+		if (targetUserId && Repository.isUserOptedOut(targetUserId)) {
+			logger.debug(
+				`[MemoryWorker] Skipped saving memory for opted-out user ${targetUserId}`,
+			);
+			continue;
+		}
+
+		if (Repository.isUsernameOptedOut(item.user_name)) {
+			logger.debug(
+				`[MemoryWorker] Skipped saving memory for opted-out username "${item.user_name}"`,
+			);
+			continue;
+		}
 
 		await processNewMemory(chatIdStr, combinedFact, {
 			userId: targetUserId,

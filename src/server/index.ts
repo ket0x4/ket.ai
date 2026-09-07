@@ -23,6 +23,7 @@ import {
 	getThinkingConfig,
 	runWithRetry,
 } from "../services/gemini/utils";
+import { formatChatTitle, isPlaceholderChatTitle } from "../utils/chatTitle";
 import logger from "../utils/logger";
 import { extractTelegramChatTitle } from "../utils/message";
 import { ToolTraceLogger } from "../utils/toolTrace";
@@ -179,13 +180,16 @@ async function getAuthContext(req: Request): Promise<AuthContext> {
 			? "admin"
 			: "user";
 
+	const isOptedOut = Repository.isUserOptedOut(user.id);
+
 	return {
 		valid: true,
-		user,
+		user: { ...user, is_opted_out: isOptedOut },
 		role,
 		isOwner,
 		adminChatIds,
 		memberChatIds,
+		isOptedOut,
 	};
 }
 
@@ -278,12 +282,7 @@ function formatTopChats(
 ) {
 	return chats.map((c) => ({
 		...c,
-		title:
-			!c.title || c.title === "Whitelisted Chat" || c.title === "Seeded Group"
-				? c.chat_id.startsWith("-")
-					? `Group (${c.chat_id})`
-					: `Chat (${c.chat_id})`
-				: c.title,
+		title: formatChatTitle(c.chat_id, c.title),
 	}));
 }
 
@@ -627,11 +626,7 @@ function handleMemoriesGet(url: URL, auth: AuthContext): Response {
 
 	const mapped = rows.map((r) => {
 		let chatTitle = r.chat_title;
-		if (
-			!chatTitle ||
-			chatTitle === "Whitelisted Chat" ||
-			chatTitle === "Seeded Group"
-		) {
+		if (isPlaceholderChatTitle(chatTitle)) {
 			if (auth.user && r.chat_id === auth.user.id.toString()) {
 				chatTitle = `Personal Profile (${auth.user.first_name || "Me"})`;
 			} else if (r.user_first_name) {
@@ -689,6 +684,13 @@ async function handleMemoriesPost(
 					403,
 				);
 			}
+		}
+
+		if (Repository.isUserOptedOut(auth.user.id)) {
+			return errorResponse(
+				"Cannot create memory: You are opted out of bot memory and processing.",
+				400,
+			);
 		}
 
 		await processNewMemory(body.chatId, body.memoryText, {
@@ -1169,14 +1171,63 @@ async function handleSandbox(
 	}
 }
 
-function isPlaceholderTitle(title?: string | null): boolean {
-	return (
-		!title ||
-		title.trim() === "" ||
-		title === "Whitelisted Chat" ||
-		title === "Seeded Group" ||
-		title.startsWith("Group (-")
-	);
+async function handleSandboxExecute(
+	req: Request,
+	auth: AuthContext,
+): Promise<Response> {
+	if (!auth.isOwner && auth.role !== "admin") {
+		return errorResponse(
+			"Forbidden: Admin or owner role required to execute code",
+			403,
+		);
+	}
+	try {
+		const body = (await req.json()) as Record<string, unknown>;
+		const sandboxUrl = CONFIG.SANDBOX_URL.replace(/\/+$/, "");
+		const targetUrl = `${sandboxUrl}/execute`;
+
+		const isStreaming =
+			Boolean(body.stream) ||
+			req.headers.get("accept")?.includes("text/event-stream") === true;
+
+		const headers: Record<string, string> = {
+			"Content-Type": "application/json",
+		};
+		if (isStreaming) {
+			headers.Accept = "text/event-stream";
+		}
+
+		const upstreamRes = await fetch(targetUrl, {
+			method: "POST",
+			headers,
+			body: JSON.stringify({
+				...body,
+				stream: isStreaming,
+			}),
+		});
+
+		if (isStreaming && upstreamRes.body) {
+			return new Response(upstreamRes.body, {
+				status: upstreamRes.status,
+				headers: {
+					"Content-Type": "text/event-stream; charset=utf-8",
+					"Cache-Control": "no-cache, no-transform",
+					Connection: "keep-alive",
+					"Access-Control-Allow-Origin": "*",
+				},
+			});
+		}
+
+		const data = await upstreamRes.json();
+		return jsonResponse(data, upstreamRes.status);
+	} catch (e) {
+		logger.error("[Server] Error in sandbox direct execute:", e);
+		return errorResponse(
+			"Failed to execute sandbox script: " +
+				(e instanceof Error ? e.message : String(e)),
+			500,
+		);
+	}
 }
 
 async function fetchTelegramTitle(chatId: string): Promise<string | null> {
@@ -1213,7 +1264,7 @@ async function resolveChatDisplayTitle(
 	currentTitle: string | null | undefined,
 	currentUser?: TelegramUser,
 ): Promise<string> {
-	if (currentTitle && !isPlaceholderTitle(currentTitle)) {
+	if (currentTitle && !isPlaceholderChatTitle(currentTitle)) {
 		return currentTitle;
 	}
 
@@ -1654,24 +1705,6 @@ function handleLogsGet(url: URL, auth: AuthContext): Response {
 	}
 }
 
-const MIME_TYPES: Record<string, string> = {
-	".html": "text/html; charset=utf-8",
-	".js": "text/javascript; charset=utf-8",
-	".mjs": "text/javascript; charset=utf-8",
-	".css": "text/css; charset=utf-8",
-	".json": "application/json; charset=utf-8",
-	".png": "image/png",
-	".jpg": "image/jpeg",
-	".jpeg": "image/jpeg",
-	".gif": "image/gif",
-	".svg": "image/svg+xml",
-	".ico": "image/x-icon",
-	".woff": "font/woff",
-	".woff2": "font/woff2",
-	".ttf": "font/ttf",
-	".webp": "image/webp",
-};
-
 const PUBLIC_DIR = path.resolve(process.cwd(), "public");
 
 function serveStaticFile(pathname: string): Response {
@@ -1695,7 +1728,7 @@ function serveStaticFile(pathname: string): Response {
 			}
 
 			const file = Bun.file(filePath);
-			const mime = MIME_TYPES[ext] || file.type || "application/octet-stream";
+			const mime = file.type || "application/octet-stream";
 			const isHashedAsset = cleanPath.startsWith("/assets/");
 
 			return new Response(file, {
@@ -1745,12 +1778,62 @@ function handleAuthAndStatsRoutes(
 			isOwner: auth.isOwner,
 			adminChatIds: auth.adminChatIds,
 			memberChatIds: auth.memberChatIds,
+			isOptedOut:
+				auth.isOptedOut ??
+				(auth.user ? Repository.isUserOptedOut(auth.user.id) : false),
 		});
 	}
 	if (pathname === "/api/stats" && req.method === "GET") {
 		return handleStats(auth);
 	}
 	return null;
+}
+
+async function handleUserOptOut(
+	req: Request,
+	auth: AuthContext,
+): Promise<Response> {
+	if (!auth.valid || !auth.user) {
+		return errorResponse("Unauthorized: Valid session required", 401);
+	}
+
+	if (req.method === "GET") {
+		return jsonResponse({
+			isOptedOut: Repository.isUserOptedOut(auth.user.id),
+		});
+	}
+
+	if (req.method === "POST" || req.method === "PATCH") {
+		try {
+			const body = (await req.json().catch(() => ({}))) as {
+				optedOut?: boolean;
+				is_opted_out?: boolean;
+			};
+			const optedOut = Boolean(body.optedOut ?? body.is_opted_out);
+
+			Repository.setUserOptOut(auth.user.id, optedOut, {
+				username: auth.user.username,
+				firstName: auth.user.first_name,
+			});
+
+			logger.info(
+				`[Server] User ${auth.user.id} (${auth.user.first_name}) updated opt-out status to ${optedOut} via WebUI`,
+			);
+
+			return jsonResponse({
+				success: true,
+				isOptedOut: optedOut,
+				message: optedOut
+					? "You have successfully opted out of bot interactions and memory."
+					: "You have successfully opted in to bot interactions.",
+			});
+		} catch (e) {
+			logger.error("[Server] Error updating user opt-out status:", e);
+			return errorResponse("Failed to update opt-out status", 500);
+		}
+	}
+
+	return errorResponse("Method not allowed", 405);
 }
 
 function handleIndividualMemoryRoutes(
@@ -1839,6 +1922,9 @@ function handleAdminAndToolsRoutes(
 	if (pathname === "/api/sandbox" && req.method === "POST") {
 		return handleSandbox(req, auth);
 	}
+	if (pathname === "/api/sandbox/execute" && req.method === "POST") {
+		return handleSandboxExecute(req, auth);
+	}
 	if (pathname === "/api/logs" && req.method === "GET") {
 		return handleLogsGet(url, auth);
 	}
@@ -1854,6 +1940,10 @@ async function handleApiRequest(
 
 	const authOrStats = handleAuthAndStatsRoutes(pathname, req, auth);
 	if (authOrStats) return authOrStats;
+
+	if (pathname === "/api/user/opt-out") {
+		return handleUserOptOut(req, auth);
+	}
 
 	if (pathname === "/api/settings") {
 		return handleSettings(req, auth);

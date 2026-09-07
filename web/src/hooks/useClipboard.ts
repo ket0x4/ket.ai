@@ -14,19 +14,7 @@ export function useClipboard(options: UseClipboardOptions = {}) {
 		async (text: string) => {
 			if (!text) return false;
 			try {
-				if (navigator.clipboard) {
-					await navigator.clipboard.writeText(text);
-				} else {
-					// Fallback for older web views
-					const textarea = document.createElement("textarea");
-					textarea.value = text;
-					textarea.style.position = "fixed";
-					textarea.style.opacity = "0";
-					document.body.appendChild(textarea);
-					textarea.select();
-					document.execCommand("copy");
-					document.body.removeChild(textarea);
-				}
+				await navigator.clipboard.writeText(text);
 				setCopied(true);
 				if (successMessage) {
 					toast.success(successMessage);

@@ -5,3 +5,4 @@ export * from "./SandboxDiagnosticsView";
 export * from "./SandboxPayloadTraceView";
 export * from "./SandboxPromptTemplates";
 export * from "./SandboxResponseView";
+export * from "./SandboxTerminalLiveView";

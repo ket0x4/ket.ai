@@ -3,7 +3,7 @@ import {
 	cleanMemoryText,
 	getChatDisplayName,
 	normalizeSearchText,
-} from "../web/src/lib/utils";
+} from "../web/src/lib/text";
 
 test("cleanMemoryText strips date, time, and author prefixes", () => {
 	expect(

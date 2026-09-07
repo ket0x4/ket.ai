@@ -4,8 +4,10 @@ import { db } from "../db/index";
 import { Repository } from "../db/repository";
 import { registerChatHandlers } from "../modules/chat";
 import { registerCommandHandlers } from "../modules/commands";
+import { registerDocumentHandlers } from "../modules/document";
 import { registerImageHandlers } from "../modules/image";
 import { registerVoiceHandlers } from "../modules/voice";
+import { isPlaceholderChatTitle } from "../utils/chatTitle";
 import logger from "../utils/logger";
 import {
 	downloadTelegramFileById,
@@ -17,7 +19,9 @@ import { extractTelegramChatTitle } from "../utils/message";
 import { describeImage, transcribeAudio } from "./gemini/mediaPerception";
 import { checkAndRunBackgroundMemoryExtraction } from "./gemini/memoryWorker";
 
-export const bot = new GrammyBot(CONFIG.TELEGRAM_BOT_TOKEN);
+export const bot = new GrammyBot(
+	CONFIG.TELEGRAM_BOT_TOKEN || "000000000:TEST_MOCK_TELEGRAM_TOKEN",
+);
 
 // Global per-chat lock to prevent concurrency race conditions when generating replies
 const chatLocks = new Map<string, Promise<void>>();
@@ -28,7 +32,7 @@ export async function withChatLock<T>(
 ): Promise<T> {
 	const currentLock = chatLocks.get(chatId) || Promise.resolve();
 
-	let releaseLock: () => void;
+	let releaseLock!: () => void;
 	const newLock = new Promise<void>((resolve) => {
 		releaseLock = resolve;
 	});
@@ -45,7 +49,6 @@ export async function withChatLock<T>(
 		await currentLock;
 		return await fn();
 	} finally {
-		// @ts-expect-error releaseLock is initialized inside new Promise executor synchronously
 		releaseLock();
 		if (chatLocks.get(chatId) === newLock) {
 			chatLocks.delete(chatId);
@@ -53,11 +56,20 @@ export async function withChatLock<T>(
 	}
 }
 
-function saveOutgoingMessage(
+interface OutgoingMessageInfo {
+	chatId: string;
+	msgId: number;
+	text: string;
+	sentAt: number;
+	replyToMessageId?: number;
+}
+
+export function saveOutgoingMessage(
 	chatId: string,
 	msgId: number,
 	text: string,
-	sentMsg: unknown,
+	sentAt?: number,
+	replyToMessageId?: number,
 ) {
 	Repository.saveMessage({
 		chatId,
@@ -66,43 +78,135 @@ function saveOutgoingMessage(
 		username: botUsername || "ket",
 		firstName: "ket.ai",
 		text,
+		replyToMessageId,
 		isBotReply: true,
-		sentAt:
-			(sentMsg as { date?: number })?.date || Math.floor(Date.now() / 1000),
+		sentAt: sentAt || Math.floor(Date.now() / 1000),
 	});
 }
 
-function isTransientStatusMessage(text: string): boolean {
+export function isTransientStatusMessage(text: string): boolean {
+	if (!text) return false;
+	const trimmed = text.trim();
 	return (
-		text === CONFIG.MESSAGES.tool_status_web_search ||
-		text.includes("gimme a sec bro, checking")
+		trimmed === CONFIG.MESSAGES.tool_status_web_search ||
+		trimmed.startsWith("🔍 Searching") ||
+		trimmed.startsWith("⚡ Executing") ||
+		trimmed.startsWith("⚡ ") ||
+		trimmed.startsWith("📦 Installing") ||
+		trimmed.startsWith("📄 Reading workspace") ||
+		trimmed.startsWith("✏️ Writing workspace") ||
+		trimmed.startsWith("📤 Preparing and sending") ||
+		trimmed.startsWith("📁 Scanning session") ||
+		trimmed.startsWith("🧹 Cleaning and resetting") ||
+		trimmed.startsWith("Spawning subagent") ||
+		trimmed.includes("────────────────────────")
 	);
 }
 
-function extractOutgoingPayload(
+function resolveMediaFallbackText(method: string): string {
+	switch (method) {
+		case "sendPhoto":
+			return "[Photo]";
+		case "sendVoice":
+			return "[Voice]";
+		case "sendAudio":
+			return "[Audio]";
+		case "sendDocument":
+			return "[Document]";
+		case "sendVideo":
+			return "[Video]";
+		default:
+			return "";
+	}
+}
+
+function extractOutgoingText(
+	payloadRecord: Record<string, unknown>,
+	innerResult?: Record<string, unknown>,
+	method = "sendMessage",
+): string {
+	if (typeof payloadRecord.text === "string") return payloadRecord.text;
+	if (typeof payloadRecord.caption === "string") return payloadRecord.caption;
+	if (typeof innerResult?.text === "string") return innerResult.text;
+	if (typeof innerResult?.caption === "string") return innerResult.caption;
+	return resolveMediaFallbackText(method);
+}
+
+function extractReplyToId(
+	payloadRecord: Record<string, unknown>,
+	innerResult?: Record<string, unknown>,
+): number | undefined {
+	const replyParams = payloadRecord.reply_parameters as
+		| Record<string, unknown>
+		| undefined;
+	const replyToMsg = innerResult?.reply_to_message as
+		| Record<string, unknown>
+		| undefined;
+
+	return (
+		(payloadRecord.reply_to_message_id as number) ||
+		(replyParams?.message_id as number) ||
+		(replyToMsg?.message_id as number) ||
+		undefined
+	);
+}
+
+const SUPPORTED_OUTGOING_METHODS = new Set([
+	"sendMessage",
+	"editMessageText",
+	"sendPhoto",
+	"sendDocument",
+	"sendVoice",
+	"sendAudio",
+	"sendVideo",
+]);
+
+export function extractOutgoingPayload(
 	method: string,
 	payload: unknown,
 	result: unknown,
-): { chatId: string; msgId: number; text: string } | null {
-	if (method !== "sendMessage" && method !== "editMessageText") return null;
+): OutgoingMessageInfo | null {
+	if (!SUPPORTED_OUTGOING_METHODS.has(method)) return null;
 	if (!payload || typeof payload !== "object") return null;
-	if (!("chat_id" in payload) || !("text" in payload)) return null;
 
 	const payloadRecord = payload as Record<string, unknown>;
 	const chatId = String(payloadRecord.chat_id ?? "");
-	const text = String(payloadRecord.text ?? "");
-	if (isTransientStatusMessage(text)) return null;
+	if (!chatId) return null;
 
 	const resultRecord =
 		typeof result === "object" && result !== null
 			? (result as Record<string, unknown>)
 			: undefined;
+	const innerResult =
+		resultRecord &&
+		typeof resultRecord.result === "object" &&
+		resultRecord.result !== null
+			? (resultRecord.result as Record<string, unknown>)
+			: resultRecord;
+
 	const msgId =
 		(payloadRecord.message_id as number) ||
+		(innerResult?.message_id as number) ||
 		(resultRecord?.message_id as number);
+	if (!msgId) return null;
 
-	if (!chatId || !msgId) return null;
-	return { chatId, msgId, text };
+	const text = extractOutgoingText(payloadRecord, innerResult, method);
+	if (isTransientStatusMessage(text)) return null;
+
+	const sentAt =
+		(innerResult?.date as number) ||
+		(resultRecord?.date as number) ||
+		Math.floor(Date.now() / 1000);
+
+	const replyToMessageId = extractReplyToId(payloadRecord, innerResult);
+
+	return {
+		chatId,
+		msgId,
+		text,
+		sentAt,
+		replyToMessageId,
+	};
 }
 
 function archiveOutgoingMessage(
@@ -113,25 +217,34 @@ function archiveOutgoingMessage(
 	try {
 		const extracted = extractOutgoingPayload(method, payload, result);
 		if (!extracted) return;
-		const { chatId, msgId, text } = extracted;
+		const { chatId, msgId, text, sentAt, replyToMessageId } = extracted;
 
 		if (method === "editMessageText") {
 			const updated = Repository.updateMessageText(chatId, msgId, text);
 			if (!updated) {
-				saveOutgoingMessage(chatId, msgId, text, result);
+				saveOutgoingMessage(chatId, msgId, text, sentAt, replyToMessageId);
 			}
 		} else {
-			saveOutgoingMessage(chatId, msgId, text, result);
+			saveOutgoingMessage(chatId, msgId, text, sentAt, replyToMessageId);
 		}
 	} catch (e) {
 		logger.error("[Bot Outgoing Logger] Failed to archive bot reply:", e);
 	}
 }
 
-// Intercept outgoing sendMessage and editMessageText API calls to save/update the bot's own replies in SQLite history.
+// Intercept outgoing sendMessage, editMessageText, and deleteMessage API calls to sync SQLite history.
 bot.api.config.use(async (prev, method, payload, signal) => {
 	const result = await prev(method, payload, signal);
-	archiveOutgoingMessage(method, payload, result);
+	if (method === "deleteMessage" && payload && typeof payload === "object") {
+		const payloadRecord = payload as Record<string, unknown>;
+		const chatId = String(payloadRecord.chat_id ?? "");
+		const msgId = Number(payloadRecord.message_id ?? 0);
+		if (chatId && msgId) {
+			Repository.deleteMessage(chatId, msgId);
+		}
+	} else {
+		archiveOutgoingMessage(method, payload, result);
+	}
 	return result;
 });
 
@@ -236,16 +349,6 @@ function checkBotWritePermission(
 		return permissions.can_send_messages !== false;
 	}
 	return true;
-}
-
-function isPlaceholderChatTitle(title?: string | null): boolean {
-	return (
-		!title ||
-		title.trim() === "" ||
-		title === "Whitelisted Chat" ||
-		title === "Seeded Group" ||
-		title.startsWith("Group (-")
-	);
 }
 
 async function syncSingleChatTitle(
@@ -408,7 +511,25 @@ interface ExtractedMediaInfo {
 	photoFileId?: string;
 	voiceFileId?: string;
 	voiceMimeType?: string;
+	documentFileId?: string;
+	documentFileName?: string;
+	documentMimeType?: string;
 	initialText?: string;
+}
+
+function resolveInitialMediaText(
+	textContent: string,
+	photoFileId?: string,
+	voiceFileId?: string,
+	documentFileName?: string,
+	documentFileId?: string,
+): string | undefined {
+	if (textContent) return textContent;
+	if (photoFileId) return "[Image]";
+	if (voiceFileId) return "[Ses Kaydı]";
+	if (documentFileName) return `[Document: ${documentFileName}]`;
+	if (documentFileId) return "[Document]";
+	return undefined;
 }
 
 function extractMessageMediaInfo(msg?: Context["message"]): ExtractedMediaInfo {
@@ -422,18 +543,26 @@ function extractMessageMediaInfo(msg?: Context["message"]): ExtractedMediaInfo {
 			: undefined);
 	const voiceFileId = msg.voice?.file_id || msg.audio?.file_id;
 	const voiceMimeType = msg.voice?.mime_type || msg.audio?.mime_type;
+	const documentFileId = msg.document?.file_id;
+	const documentFileName = msg.document?.file_name;
+	const documentMimeType = msg.document?.mime_type;
 
-	let initialText: string | undefined = textContent || undefined;
-	if (!initialText) {
-		if (photoFileId) initialText = "[Image]";
-		else if (voiceFileId) initialText = "[Ses Kaydı]";
-	}
+	const initialText = resolveInitialMediaText(
+		textContent,
+		photoFileId,
+		voiceFileId,
+		documentFileName,
+		documentFileId,
+	);
 
 	return {
 		textContent,
 		photoFileId,
 		voiceFileId,
 		voiceMimeType,
+		documentFileId,
+		documentFileName,
+		documentMimeType,
 		initialText,
 	};
 }
@@ -509,6 +638,29 @@ async function initBot() {
 		}
 	});
 
+	// 2b. Middleware: Opt-Out User Guard (completely ignores opted-out users)
+	// ponytail: Intercept at top-level middleware so opted-out users skip all message archiving,
+	// media perception, and LLM handlers with zero DB overhead.
+	bot.use(async (ctx, next) => {
+		const from = ctx.from;
+		if (!from || !Repository.isUserOptedOut(from.id)) {
+			return await next();
+		}
+
+		// If user is opted-out, allow opt-in and opt-out commands through
+		const text = (ctx.message?.text || ctx.message?.caption || "").trim();
+		const isOptCommand =
+			/^\/(?:optin|opt_in|optout|opt_out)(?:@\w+)?(?:\s|$)/i.test(text);
+		if (isOptCommand) {
+			return await next();
+		}
+
+		// Completely ignore all other messages, photos, voice notes, and interactions
+		logger.debug(
+			`[OptOut] Ignored interaction from opted-out user ${from.id} (${from.first_name}) in chat ${ctx.chat?.id}`,
+		);
+	});
+
 	// 3. Supergroup Migration Handler
 	bot.on("message:migrate_to_chat_id", async (ctx) => {
 		const oldChatId = ctx.chat.id.toString();
@@ -536,6 +688,14 @@ async function initBot() {
 
 			if (!chat || !msg || !from) return await next();
 
+			// Do not archive opt-in/opt-out commands or messages from opted-out users
+			const text = (msg.text || msg.caption || "").trim();
+			const isOptCommand =
+				/^\/(?:optin|opt_in|optout|opt_out)(?:@\w+)?(?:\s|$)/i.test(text);
+			if (isOptCommand || Repository.isUserOptedOut(from.id)) {
+				return await next();
+			}
+
 			const chatIdStr = chat.id.toString();
 			const mediaInfo = extractMessageMediaInfo(msg);
 			const isSelf = from.is_bot && from.username === botUsername;
@@ -549,6 +709,9 @@ async function initBot() {
 				replyToMessageId: msg.reply_to_message?.message_id || undefined,
 				text: mediaInfo.initialText,
 				photoFileId: mediaInfo.photoFileId,
+				documentFileId: mediaInfo.documentFileId,
+				documentFileName: mediaInfo.documentFileName,
+				documentMimeType: mediaInfo.documentMimeType,
 				isBotReply: isSelf,
 				sentAt: msg.date,
 			});
@@ -601,6 +764,7 @@ async function initBot() {
 	registerChatHandlers(bot);
 	registerImageHandlers(bot);
 	registerVoiceHandlers(bot);
+	registerDocumentHandlers(bot);
 
 	logger.info("All bot modules successfully registered.");
 }

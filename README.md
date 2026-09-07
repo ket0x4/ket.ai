@@ -19,6 +19,7 @@ It doesn't just reply to direct messages; it understands the flow of the convers
   - **Telegram Mini App Dashboard:** Manage, search, export/import, and prune group memories via `/app` or `/admin`.
   - **Natural Intent Triggers:** Automatic priority extraction when users say *"remember this"*, *"keep in mind"*, *"note this"*, or *"save this"*.
 - **Image and Audio Recognition:** It can view photos and listen to voice messages shared in the group, and reply with fitting, humorous, "shitposter buddy" style responses.
+- **Document & File Operations (Code Execution, Editing & Summarization):** Send any code, document, or data file (.py, .js, .ts, .csv, .xlsx, .pdf, .txt, etc.) directly or reply to one. Ket stages the file into an isolated session sandbox workspace where it can execute scripts, analyze and plot data, fix bugs, summarize contents, and export edited files back to Telegram.
 - **Spontaneous Mode:** Ket can spontaneously jump into the chat flow with a certain probability (e.g., 5%) to drop a funny or sarcastic comment, making the group chat feel alive.
 
 ## Technology Stack

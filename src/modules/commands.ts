@@ -1,4 +1,6 @@
-import { type Bot, type Context, InlineKeyboard } from "grammy";
+import type { Bot, Context } from "grammy";
+import { resetWorkspace } from "../agent/tools/workspaceTools";
+import { buildMiniAppKeyboard } from "../bot/ui/index";
 import { CONFIG } from "../config/index";
 import { Repository } from "../db/repository";
 import { processNewMemory } from "../services/gemini/memory";
@@ -88,7 +90,10 @@ export function registerCommandHandlers(bot: Bot) {
 				"• `/app` or `/admin` — Open Web Mini App Dashboard\n" +
 				"• `/remember <fact>` — Save a new fact to memory\n" +
 				"• `/prob [0-100]` — Set random reply probability (Admin)\n" +
-				"• `/reset` — Clear chat history and memory (Admin)",
+				"• `/reset` — Clear chat history and memory (Admin)\n\n" +
+				"**Privacy Commands**:\n" +
+				"• `/optout` — Completely opt-out from bot processing & memories\n" +
+				"• `/optin` — Opt back in to bot interactions",
 			{ parse_mode: "Markdown" },
 		);
 	});
@@ -108,22 +113,9 @@ export function registerCommandHandlers(bot: Bot) {
 				`[Commands:app] User ${ctx.from?.id} (${ctx.from?.first_name}) opened Mini App dashboard button in chat ${ctx.chat?.id}`,
 			);
 
-			const appUrl =
-				CONFIG.WEB_APP_URL || `http://localhost:${CONFIG.WEB_PORT}`;
 			const isPrivate = ctx.chat?.type === "private";
 			const botUsername = ctx.me?.username || "";
-
-			const keyboard = new InlineKeyboard();
-			if (isPrivate) {
-				keyboard.webApp("Open Dashboard", appUrl);
-			} else if (botUsername) {
-				keyboard.url(
-					"Open Mini App",
-					`https://t.me/${botUsername}?startapp=dashboard`,
-				);
-			} else {
-				keyboard.webApp("Open Dashboard", appUrl);
-			}
+			const keyboard = buildMiniAppKeyboard(isPrivate, botUsername);
 
 			await ctx.reply(
 				"Click the button below to open the Admin & Memory Dashboard:",
@@ -148,10 +140,34 @@ export function registerCommandHandlers(bot: Bot) {
 
 		const chatId = ctx.chat.id.toString();
 		Repository.clearChatHistory(chatId);
+		resetWorkspace({ sessionId: chatId }).catch(() => {});
+
 		logger.info(
-			`[Commands:reset] Cleared chat history and memories for chat ${chatId} by user ${ctx.from?.id} (${ctx.from?.first_name})`,
+			`[Commands:reset] Cleared chat history, memories, and sandbox workspace for chat ${chatId} by user ${ctx.from?.id} (${ctx.from?.first_name})`,
 		);
-		await ctx.reply("Chat history and group memories cleared successfully.");
+		await ctx.reply(
+			"Chat history, group memories, and sandbox workspace cleared successfully.",
+		);
+	});
+
+	// 3b. /reset_sandbox command to reset code execution workspace
+	bot.command(["reset_sandbox", "clear_session"], async (ctx) => {
+		if (!ctx.chat) return;
+
+		if (!(await isAuthorized(ctx))) {
+			logger.warn(
+				`[Commands:reset_sandbox] Unauthorized attempt by user ${ctx.from?.id} in chat ${ctx.chat.id}`,
+			);
+			await ctx.reply(CONFIG.MESSAGES.not_authorized_command);
+			return;
+		}
+
+		const chatId = ctx.chat.id.toString();
+		await resetWorkspace({ sessionId: chatId });
+		logger.info(
+			`[Commands:reset_sandbox] Reset sandbox workspace for chat ${chatId} by user ${ctx.from?.id}`,
+		);
+		await ctx.reply("🧹 Sandbox workspace files cleared successfully.");
 	});
 
 	async function fetchTelegramChatTitle(
@@ -298,13 +314,30 @@ export function registerCommandHandlers(bot: Bot) {
 		const chatIdStr = ctx.chat.id.toString();
 
 		const { fact, userId, userName } = resolveRememberTarget(ctx);
+		if (
+			Repository.isUserOptedOut(userId) ||
+			(userName && Repository.isUsernameOptedOut(userName))
+		) {
+			logger.info(
+				`[Commands:remember] Denied memory save for opted-out user ${userId} (${userName}) in chat ${chatIdStr}`,
+			);
+			await ctx.reply(
+				`Cannot save memory: ${userName} has opted out of bot memory and processing.`,
+				{ reply_to_message_id: ctx.message?.message_id },
+			);
+			return;
+		}
+
 		if (!fact) {
 			logger.info(
 				`[Commands:remember] User ${ctx.from.id} (${ctx.from.first_name}) invoked /remember with empty fact in chat ${chatIdStr}`,
 			);
 			await ctx.reply(
 				"Usage: `/remember <fact>` or reply to a message with `/remember`.",
-				{ parse_mode: "Markdown" },
+				{
+					parse_mode: "Markdown",
+					reply_to_message_id: ctx.message?.message_id,
+				},
 			);
 			return;
 		}
@@ -322,6 +355,63 @@ export function registerCommandHandlers(bot: Bot) {
 
 		await ctx.reply(`[OK] Saved memory for ${userName}: "${fact}"`, {
 			parse_mode: "Markdown",
+			reply_to_message_id: ctx.message?.message_id,
 		});
+	});
+
+	// 8. /optout command — completely opt out of bot interactions, memories, and message processing
+	bot.command(["optout", "opt_out"], async (ctx) => {
+		if (!ctx.from) return;
+		const userId = ctx.from.id;
+		const userName = ctx.from.first_name || "User";
+
+		if (Repository.isUserOptedOut(userId)) {
+			await ctx.reply(
+				"You are already opted out. I am completely ignoring your messages and will not store any memories. Use /optin to opt back in.",
+				{ reply_to_message_id: ctx.message?.message_id },
+			);
+			return;
+		}
+
+		Repository.setUserOptOut(userId, true, {
+			username: ctx.from.username,
+			firstName: ctx.from.first_name,
+		});
+
+		logger.info(
+			`[Commands:optout] User ${userId} (${userName}) opted out in chat ${ctx.chat?.id}`,
+		);
+		await ctx.reply(
+			"You have successfully opted out. I will completely ignore your messages, voice, and photos, and will not store memories or respond to you in any chat. To opt back in, send /optin.",
+			{ reply_to_message_id: ctx.message?.message_id },
+		);
+	});
+
+	// 9. /optin command — opt back in to bot interactions
+	bot.command(["optin", "opt_in"], async (ctx) => {
+		if (!ctx.from) return;
+		const userId = ctx.from.id;
+		const userName = ctx.from.first_name || "User";
+
+		if (!Repository.isUserOptedOut(userId)) {
+			await ctx.reply(
+				"You are already opted in. I am actively participating and responding to your messages.",
+				{ reply_to_message_id: ctx.message?.message_id },
+			);
+			return;
+		}
+
+		Repository.setUserOptOut(userId, false, {
+			username: ctx.from.username,
+			firstName: ctx.from.first_name,
+		});
+
+		logger.info(
+			`[Commands:optin] User ${userId} (${userName}) opted back in in chat ${ctx.chat?.id}`,
+		);
+		await ctx.reply(
+			"You have successfully opted back in! I will now process your messages, respond when mentioned, and interact normally.",
+			{ reply_to_message_id: ctx.message?.message_id },
+		);
 	});
 }

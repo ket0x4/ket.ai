@@ -8,6 +8,8 @@ import {
 	Layers,
 	MessageSquare,
 	Server,
+	ShieldCheck,
+	ShieldOff,
 	Sparkles,
 	Users,
 } from "lucide-react";
@@ -28,80 +30,75 @@ import {
 	CardHeader,
 	CardTitle,
 } from "@/components/ui/card";
+import { Switch } from "@/components/ui/switch";
 import { MEMORY_CATEGORY_LIST } from "@/lib/constants";
 import { formatBytes, formatUptime } from "@/lib/utils";
 import type { StatsResponse, UserRole } from "@/types";
 
-function getMetricCards(
-	role: UserRole,
-	stats: StatsResponse | null,
-): MetricCardProps[] {
-	if (role === "owner") {
-		return [
-			{
-				title: "Registered Groups",
-				value: stats?.totalChats ?? 0,
-				icon: Users,
-				iconColor: "text-blue-400",
-				description: "Total chat contexts",
-			},
-			{
-				title: "Whitelisted",
-				value: stats?.allowedChats ?? 0,
-				icon: CheckCircle2,
-				iconColor: "text-emerald-400",
-				valueColor: "text-emerald-400",
-				description: "Active authorized groups",
-			},
-			{
-				title: "Total Memories",
-				value: stats?.totalMemories ?? 0,
-				icon: Brain,
-				iconColor: "text-purple-400",
-				description: "Semantic fact embeddings",
-			},
-			{
-				title: "Messages",
-				value: stats?.totalMessages ?? 0,
-				icon: MessageSquare,
-				iconColor: "text-amber-400",
-				description: "Processed chat turns",
-			},
-		];
-	}
-
-	if (role === "admin") {
-		return [
-			{
-				title: "Managed Groups",
-				value: stats?.managedGroupsCount ?? 0,
-				icon: Users,
-				iconColor: "text-blue-400",
-				description: "Where you are admin",
-			},
-			{
-				title: "Memories",
-				value: stats?.totalMemories ?? 0,
-				icon: Brain,
-				iconColor: "text-purple-400",
-				description: "Saved in your groups",
-			},
-			{
-				title: "Group Messages",
-				value: stats?.totalMessages ?? 0,
-				icon: MessageSquare,
-				iconColor: "text-emerald-400",
-				valueColor: "text-emerald-400",
-				description: "Across managed channels",
-				colSpan: 2,
-			},
-		];
-	}
-
-	return [
+const METRICS_BY_ROLE: Record<
+	UserRole,
+	(s: StatsResponse | null) => MetricCardProps[]
+> = {
+	owner: (s) => [
+		{
+			title: "Registered Groups",
+			value: s?.totalChats ?? 0,
+			icon: Users,
+			iconColor: "text-blue-400",
+			description: "Total chat contexts",
+		},
+		{
+			title: "Whitelisted",
+			value: s?.allowedChats ?? 0,
+			icon: CheckCircle2,
+			iconColor: "text-emerald-400",
+			valueColor: "text-emerald-400",
+			description: "Active authorized groups",
+		},
+		{
+			title: "Total Memories",
+			value: s?.totalMemories ?? 0,
+			icon: Brain,
+			iconColor: "text-purple-400",
+			description: "Semantic fact embeddings",
+		},
+		{
+			title: "Messages",
+			value: s?.totalMessages ?? 0,
+			icon: MessageSquare,
+			iconColor: "text-amber-400",
+			description: "Processed chat turns",
+		},
+	],
+	admin: (s) => [
+		{
+			title: "Managed Groups",
+			value: s?.managedGroupsCount ?? 0,
+			icon: Users,
+			iconColor: "text-blue-400",
+			description: "Where you are admin",
+		},
+		{
+			title: "Memories",
+			value: s?.totalMemories ?? 0,
+			icon: Brain,
+			iconColor: "text-purple-400",
+			description: "Saved in your groups",
+		},
+		{
+			title: "Group Messages",
+			value: s?.totalMessages ?? 0,
+			icon: MessageSquare,
+			iconColor: "text-emerald-400",
+			valueColor: "text-emerald-400",
+			description: "Across managed channels",
+			colSpan: 2,
+		},
+	],
+	user: (s) => [
 		{
 			title: "My Saved Facts",
-			value: stats?.totalMemories ?? 0,
+			value: s?.totalMemories ?? 0,
 			icon: Brain,
 			iconColor: "text-blue-400",
 			valueColor: "text-blue-400",
@@ -109,21 +106,21 @@ function getMetricCards(
 		},
 		{
 			title: "My Groups",
-			value: stats?.totalGroups ?? 0,
+			value: s?.totalGroups ?? 0,
 			icon: Users,
 			iconColor: "text-purple-400",
 			description: "Active group memberships",
 		},
 		{
 			title: "Recorded Messages",
-			value: stats?.totalMessages ?? 0,
+			value: s?.totalMessages ?? 0,
 			icon: MessageSquare,
 			iconColor: "text-amber-400",
 			description: "Recorded interactions",
 			colSpan: 2,
 		},
-	];
-}
+	],
+};
 
 const MemoryDistributionCard: FC<{
 	stats: StatsResponse | null;
@@ -324,12 +321,98 @@ const TopActiveGroupsCard: FC<{
 	</Card>
 );
 
+const BotPrivacyCard: FC<{
+	isOptedOut?: boolean;
+	onToggleOptOut?: (optedOut: boolean) => Promise<void>;
+	isUpdating?: boolean;
+}> = ({ isOptedOut = false, onToggleOptOut, isUpdating = false }) => {
+	return (
+		<Card
+			className={`glass-card transition-all duration-300 ${
+				isOptedOut
+					? "border-rose-500/40 bg-rose-500/5 shadow-lg shadow-rose-950/20"
+					: "border-border/60 hover:border-primary/40"
+			}`}
+		>
+			<CardHeader className="pb-3 flex flex-row items-center justify-between gap-4">
+				<div className="space-y-1 min-w-0">
+					<div className="flex items-center gap-2 flex-wrap">
+						{isOptedOut ? (
+							<ShieldOff className="w-5 h-5 text-rose-400 shrink-0" />
+						) : (
+							<ShieldCheck className="w-5 h-5 text-emerald-400 shrink-0" />
+						)}
+						<CardTitle className="text-base font-semibold">
+							Bot Privacy & Opt-Out
+						</CardTitle>
+						<span
+							className={`text-[11px] font-mono font-medium px-2 py-0.5 rounded-full border ${
+								isOptedOut
+									? "bg-rose-500/15 border-rose-500/30 text-rose-300"
+									: "bg-emerald-500/15 border-emerald-500/30 text-emerald-300"
+							}`}
+						>
+							{isOptedOut ? "Opted Out (Ignored)" : "Active (Opted In)"}
+						</span>
+					</div>
+					<CardDescription className="text-xs">
+						{isOptedOut
+							? "The bot is fully ignoring you across all group and private chats. No memories, text, photos, or voice notes are processed."
+							: "The bot processes your text messages, voice, and photos, responds when mentioned or replied to, and saves profile memories."}
+					</CardDescription>
+				</div>
+				<div className="flex items-center gap-2 shrink-0">
+					<span className="text-xs text-muted-foreground hidden sm:inline">
+						{isOptedOut ? "Opted Out" : "Opt In"}
+					</span>
+					<Switch
+						checked={isOptedOut}
+						onCheckedChange={(checked) => onToggleOptOut?.(checked)}
+						disabled={isUpdating}
+						className="data-[state=checked]:bg-rose-600 data-[state=unchecked]:bg-emerald-600"
+					/>
+				</div>
+			</CardHeader>
+			<CardContent className="pt-0">
+				<div className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-xl bg-secondary/40 border border-border/40 text-xs">
+					<div className="text-muted-foreground flex items-center gap-1.5 flex-wrap">
+						<span>You can also toggle this at any time via Telegram:</span>
+						<code className="px-1.5 py-0.5 rounded bg-background border border-border text-[11px] font-mono text-primary">
+							/optout
+						</code>
+						<span>or</span>
+						<code className="px-1.5 py-0.5 rounded bg-background border border-border text-[11px] font-mono text-primary">
+							/optin
+						</code>
+					</div>
+					<Button
+						variant={isOptedOut ? "default" : "outline"}
+						size="sm"
+						disabled={isUpdating}
+						onClick={() => onToggleOptOut?.(!isOptedOut)}
+						className={`h-8 text-xs font-medium ${
+							isOptedOut
+								? "bg-emerald-600 hover:bg-emerald-500 text-white"
+								: "border-rose-500/40 text-rose-400 hover:bg-rose-500/10"
+						}`}
+					>
+						{isOptedOut ? "Opt Back In" : "Opt Out Fully"}
+					</Button>
+				</div>
+			</CardContent>
+		</Card>
+	);
+};
+
 interface DashboardTabProps {
 	stats: StatsResponse | null;
 	role: UserRole;
 	isLoading: boolean;
 	onNavigateToGroups: () => void;
 	onRefresh: () => void;
+	isOptedOut?: boolean;
+	onToggleOptOut?: (optedOut: boolean) => Promise<void>;
+	isUpdatingOptOut?: boolean;
 }
 
 export const DashboardTab: FC<DashboardTabProps> = ({
@@ -338,6 +421,9 @@ export const DashboardTab: FC<DashboardTabProps> = ({
 	isLoading,
 	onNavigateToGroups,
 	onRefresh,
+	isOptedOut = false,
+	onToggleOptOut,
+	isUpdatingOptOut = false,
 }) => {
 	if (isLoading && !stats) {
 		return (
@@ -349,10 +435,16 @@ export const DashboardTab: FC<DashboardTabProps> = ({
 		);
 	}
 
-	const metricCards = getMetricCards(role, stats);
+	const metricCards = METRICS_BY_ROLE[role](stats);
 
 	return (
 		<div className="space-y-6 animate-in fade-in duration-200">
+			<BotPrivacyCard
+				isOptedOut={isOptedOut}
+				onToggleOptOut={onToggleOptOut}
+				isUpdating={isUpdatingOptOut}
+			/>
+
 			<div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
 				{metricCards.map((card) => (
 					<MetricCard key={card.title} {...card} />

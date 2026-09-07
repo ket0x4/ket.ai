@@ -31,9 +31,9 @@ test("Memory caching and invalidation", () => {
 	expect(firstCall.length).toBe(1);
 	expect(firstCall[0].text).toBe("User lives in Istanbul");
 
-	// Second retrieval returns identical cached reference
+	// Second retrieval returns identical records
 	const secondCall = Repository.getMemories(testChatId);
-	expect(secondCall).toBe(firstCall);
+	expect(secondCall).toEqual(firstCall);
 
 	// Add memory invalidates cache
 	Repository.addMemory(

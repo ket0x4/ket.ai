@@ -1,21 +1,24 @@
-import { Code2, Sparkles } from "lucide-react";
+import { Code2, ImageIcon, Sparkles } from "lucide-react";
 import type { FC } from "react";
 import { CopyButton } from "@/components/common";
 import { Badge } from "@/components/ui/badge";
+import type { SandboxGeneratedImage } from "@/types";
 
 export interface SandboxResponseViewProps {
 	reply?: string;
 	personaName?: string;
+	images?: SandboxGeneratedImage[];
 	isExecuting: boolean;
 }
 
 export const SandboxResponseView: FC<SandboxResponseViewProps> = ({
 	reply,
 	personaName,
+	images,
 	isExecuting,
 }) => {
 	return (
-		<div className="space-y-3">
+		<div className="space-y-4">
 			<div className="flex items-center justify-between text-xs text-muted-foreground">
 				<div className="flex items-center gap-2">
 					<span>Generated Reply:</span>
@@ -54,6 +57,44 @@ export const SandboxResponseView: FC<SandboxResponseViewProps> = ({
 					</div>
 				)}
 			</div>
+
+			{images && images.length > 0 && (
+				<div className="space-y-2.5 pt-2">
+					<div className="flex items-center gap-2 text-xs font-semibold text-zinc-300">
+						<ImageIcon className="w-4 h-4 text-primary" />
+						<span>Generated Visual Output(s) ({images.length})</span>
+					</div>
+					<div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+						{images.map((img) => (
+							<div
+								key={`${img.filename}-${img.data.slice(0, 16)}`}
+								className="rounded-xl border border-zinc-800 bg-zinc-950/80 p-2.5 space-y-2"
+							>
+								<div className="flex items-center justify-between text-[11px] text-zinc-400 px-1">
+									<span className="font-mono font-medium text-zinc-300 truncate">
+										{img.filename}
+									</span>
+									{img.sizeBytes && (
+										<Badge
+											variant="outline"
+											className="text-[10px] bg-secondary/30 text-zinc-400"
+										>
+											{Math.round(img.sizeBytes / 1024)} KB
+										</Badge>
+									)}
+								</div>
+								<div className="rounded-lg overflow-hidden bg-black/50 border border-zinc-800 flex items-center justify-center">
+									<img
+										src={`data:${img.mimeType};base64,${img.data}`}
+										alt={img.filename}
+										className="max-h-72 w-full object-contain"
+									/>
+								</div>
+							</div>
+						))}
+					</div>
+				</div>
+			)}
 		</div>
 	);
 };

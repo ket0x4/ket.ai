@@ -1,6 +1,6 @@
 import { CONFIG } from "../config/index";
 import logger from "../utils/logger";
-import { dotProduct, normalizeVector } from "../utils/vector";
+import { normalizeVector } from "../utils/vector";
 import { db } from "./index";
 
 interface ChatRow {
@@ -36,6 +36,9 @@ export interface MessageRow {
 	reply_to_message_id: number | null;
 	text: string | null;
 	photo_file_id: string | null;
+	document_file_id?: string | null;
+	document_file_name?: string | null;
+	document_mime_type?: string | null;
 	is_bot_reply: number; // 0 or 1
 	sent_at: number;
 }
@@ -84,28 +87,63 @@ const stmts = {
        first_name = excluded.first_name,
        last_updated = excluded.last_updated`,
 	),
+	getUser: db.prepare("SELECT * FROM users WHERE user_id = ?"),
+	insertUserWithOptOut: db.prepare(
+		`INSERT INTO users (user_id, username, first_name, is_opted_out, last_updated) VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(user_id) DO UPDATE SET
+       username = COALESCE(excluded.username, users.username),
+       first_name = COALESCE(excluded.first_name, users.first_name),
+       is_opted_out = excluded.is_opted_out,
+       last_updated = excluded.last_updated`,
+	),
+	getOptedOutUsers: db.prepare(
+		"SELECT user_id, username FROM users WHERE is_opted_out = 1",
+	),
 
 	insertMessage: db.prepare(
-		`INSERT INTO messages (chat_id, message_id, user_id, reply_to_message_id, text, photo_file_id, is_bot_reply, sent_at) 
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		`INSERT INTO messages (chat_id, message_id, user_id, reply_to_message_id, text, photo_file_id, document_file_id, document_file_name, document_mime_type, is_bot_reply, sent_at) 
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(chat_id, message_id) DO UPDATE SET
        text = excluded.text,
-       photo_file_id = excluded.photo_file_id`,
+       photo_file_id = excluded.photo_file_id,
+       document_file_id = excluded.document_file_id,
+       document_file_name = excluded.document_file_name,
+       document_mime_type = excluded.document_mime_type`,
 	),
 
 	getRecentMessages: db.prepare(
 		`SELECT m.*, u.username, u.first_name 
-     FROM (SELECT * FROM messages WHERE chat_id = ? ORDER BY sent_at DESC, id DESC LIMIT ?) m
+     FROM (
+       SELECT * FROM messages 
+       WHERE chat_id = ? 
+         AND (user_id = 0 OR user_id NOT IN (SELECT user_id FROM users WHERE is_opted_out = 1))
+       ORDER BY sent_at DESC, id DESC LIMIT ?
+     ) m
      LEFT JOIN users u ON m.user_id = u.user_id
      ORDER BY m.sent_at ASC, m.id ASC`,
 	),
 	getMessage: db.prepare(
 		"SELECT * FROM messages WHERE chat_id = ? AND message_id = ?",
 	),
+	getMessageWithUser: db.prepare(
+		`SELECT m.*, u.username, u.first_name 
+     FROM messages m 
+     LEFT JOIN users u ON m.user_id = u.user_id 
+     WHERE m.chat_id = ? AND m.message_id = ?`,
+	),
+	findUserByName: db.prepare(
+		`SELECT user_id, username, first_name, last_updated 
+     FROM users 
+     WHERE LOWER(first_name) = LOWER(?) OR LOWER(username) = LOWER(?) 
+     ORDER BY last_updated DESC LIMIT 1`,
+	),
 	getMessageCount: db.prepare(
 		"SELECT COUNT(*) as count FROM messages WHERE chat_id = ?",
 	),
 	deleteMessages: db.prepare("DELETE FROM messages WHERE chat_id = ?"),
+	deleteMessage: db.prepare(
+		"DELETE FROM messages WHERE chat_id = ? AND message_id = ?",
+	),
 	deleteMemories: db.prepare("DELETE FROM memories WHERE chat_id = ?"),
 	resetTopic: db.prepare(
 		"UPDATE chats SET current_topic = NULL WHERE chat_id = ?",
@@ -211,159 +249,148 @@ export interface MemoryItem {
 	expiresAt: number | null;
 }
 
-// High-performance bounded LRU cache for parsed memory embeddings per chat
-class MemoryLRUCache {
-	private readonly maxChats: number;
-	private readonly maxTotalItems: number;
-	private readonly cache: Map<string, MemoryItem[]>;
-	private totalItems: number;
-
-	constructor(maxChats = 200, maxTotalItems = 30000) {
-		this.maxChats = maxChats;
-		this.maxTotalItems = maxTotalItems;
-		this.cache = new Map();
-		this.totalItems = 0;
-	}
-
-	get(chatId: string): MemoryItem[] | undefined {
-		const items = this.cache.get(chatId);
-		if (items) {
-			// Refresh LRU order
-			this.cache.delete(chatId);
-			this.cache.set(chatId, items);
-		}
-		return items;
-	}
-
-	has(chatId: string): boolean {
-		return this.cache.has(chatId);
-	}
-
-	set(chatId: string, items: MemoryItem[]): void {
-		const old = this.cache.get(chatId);
-		if (old) {
-			this.totalItems -= old.length;
-			this.cache.delete(chatId);
-		}
-		this.cache.set(chatId, items);
-		this.totalItems += items.length;
-		this.evictIfNeeded();
-	}
-
-	addMemory(chatId: string, item: MemoryItem): void {
-		const items = this.cache.get(chatId);
-		if (!items) return; // Not cached yet; will be populated on demand
-
-		const updated = [...items, item];
-		if (updated.length > 10000) {
-			updated.shift();
-		}
-		this.set(chatId, updated);
-	}
-
-	deleteMemories(ids: number[], chatId?: string): void {
-		const idSet = new Set(ids);
-		if (chatId) {
-			const items = this.cache.get(chatId);
-			if (items) {
-				const filtered = items.filter((m) => !idSet.has(m.id));
-				this.set(chatId, filtered);
-			}
-		} else {
-			for (const [cId, items] of this.cache.entries()) {
-				const filtered = items.filter((m) => !idSet.has(m.id));
-				this.set(cId, filtered);
-			}
-		}
-	}
-
-	updateMemory(
-		id: number,
-		text: string,
-		category: "PROFILE" | "DYNAMIC" | "TEMPORARY",
-		embedding?: Float32Array,
-		chatId?: string,
-	): void {
-		const updateItem = (m: MemoryItem): MemoryItem => {
-			if (m.id !== id) return m;
-			const newEmbedding =
-				embedding && embedding.length > 0 ? embedding : m.embedding;
-			return {
-				...m,
-				text,
-				category,
-				embedding: newEmbedding,
-				normalizedEmbedding:
-					embedding && embedding.length > 0
-						? normalizeVector(newEmbedding)
-						: m.normalizedEmbedding,
-			};
-		};
-
-		if (chatId) {
-			const items = this.cache.get(chatId);
-			if (items) {
-				this.set(chatId, items.map(updateItem));
-			}
-		} else {
-			for (const [cId, items] of this.cache.entries()) {
-				this.set(cId, items.map(updateItem));
-			}
-		}
-	}
-
-	pruneExpired(chatId: string, now: number): void {
-		const items = this.cache.get(chatId);
-		if (items) {
-			const filtered = items.filter(
-				(m) => m.expiresAt === null || m.expiresAt > now,
+// ponytail: SQLite in WAL mode executes in microseconds; queried directly without LRU cache
+function rowToMemoryItem(row: {
+	id: number;
+	memory_text: string;
+	embedding: Uint8Array | null;
+	created_at: number;
+	user_id: number | null;
+	category: string | null;
+	expires_at: number | null;
+}): MemoryItem {
+	let embeddingArray: Float32Array;
+	let normalizedArray: Float32Array;
+	if (row.embedding && row.embedding.byteLength > 0) {
+		if (row.embedding.byteOffset % 4 === 0) {
+			embeddingArray = new Float32Array(
+				row.embedding.buffer,
+				row.embedding.byteOffset,
+				row.embedding.byteLength / 4,
 			);
-			this.set(chatId, filtered);
+		} else {
+			const alignedBuffer = new ArrayBuffer(row.embedding.byteLength);
+			new Uint8Array(alignedBuffer).set(row.embedding);
+			embeddingArray = new Float32Array(
+				alignedBuffer,
+				0,
+				row.embedding.byteLength / 4,
+			);
 		}
+		normalizedArray = normalizeVector(embeddingArray);
+	} else {
+		embeddingArray = new Float32Array(0);
+		normalizedArray = new Float32Array(0);
 	}
 
-	delete(chatId: string): void {
-		const items = this.cache.get(chatId);
-		if (items) {
-			this.totalItems -= items.length;
-			this.cache.delete(chatId);
-		}
-	}
-
-	clear(): void {
-		this.cache.clear();
-		this.totalItems = 0;
-	}
-
-	private evictIfNeeded(): void {
-		while (
-			(this.cache.size > this.maxChats ||
-				this.totalItems > this.maxTotalItems) &&
-			this.cache.size > 0
-		) {
-			const oldestKey = this.cache.keys().next().value;
-			if (oldestKey) {
-				this.delete(oldestKey);
-			} else {
-				break;
-			}
-		}
-	}
+	return {
+		id: row.id,
+		text: row.memory_text,
+		embedding: embeddingArray,
+		normalizedEmbedding: normalizedArray,
+		createdAt: row.created_at,
+		userId: row.user_id,
+		category:
+			(row.category as "PROFILE" | "DYNAMIC" | "TEMPORARY") || "PROFILE",
+		expiresAt: row.expires_at,
+	};
 }
 
-const memoryCache = new MemoryLRUCache();
+// ponytail: In-memory Sets for instant O(1) opt-out check on every message.
+// Ceiling: multi-instance scaling; upgrade path: Redis Set or PubSub if scaled horizontally.
+const optedOutUserIds = new Set<number>();
+const optedOutUsernames = new Set<string>();
+
+function initOptedOutCache() {
+	try {
+		const rows = stmts.getOptedOutUsers.all() as Array<{
+			user_id: number;
+			username?: string | null;
+		}>;
+		for (const r of rows) {
+			optedOutUserIds.add(r.user_id);
+			if (r.username) {
+				optedOutUsernames.add(r.username.toLowerCase());
+			}
+		}
+	} catch (e) {
+		logger.warn("[Repository] Failed to initialize opted-out users cache:", e);
+	}
+}
+initOptedOutCache();
 
 export const Repository = {
 	/**
-	 * Clears the in-memory memory cache for a specific chat or all chats.
+	 * Checks if a user has opted out of bot interactions and memory by ID.
 	 */
-	clearMemoryCache(chatId?: string): void {
-		if (chatId) {
-			memoryCache.delete(chatId);
-		} else {
-			memoryCache.clear();
-		}
+	isUserOptedOut(userId?: number | null): boolean {
+		if (!userId || userId <= 0) return false;
+		return optedOutUserIds.has(userId);
 	},
+
+	/**
+	 * Checks if a user has opted out of bot interactions and memory by username.
+	 */
+	isUsernameOptedOut(username?: string | null): boolean {
+		if (!username) return false;
+		const clean = username.replace(/^@/, "").trim().toLowerCase();
+		return optedOutUsernames.has(clean);
+	},
+
+	/**
+	 * Sets the opt-out status for a specific user.
+	 */
+	setUserOptOut(
+		userId: number,
+		isOptedOut: boolean,
+		details?: { username?: string; firstName?: string },
+	): void {
+		if (!userId || userId <= 0) return;
+		const now = Math.floor(Date.now() / 1000);
+		const optValue = isOptedOut ? 1 : 0;
+
+		stmts.insertUserWithOptOut.run(
+			userId,
+			details?.username || null,
+			details?.firstName || null,
+			optValue,
+			now,
+		);
+
+		if (isOptedOut) {
+			optedOutUserIds.add(userId);
+			if (details?.username) {
+				optedOutUsernames.add(details.username.toLowerCase());
+			}
+		} else {
+			optedOutUserIds.delete(userId);
+			if (details?.username) {
+				optedOutUsernames.delete(details.username.toLowerCase());
+			}
+		}
+
+		// Clear memory cache so opted-out user's memories are immediately excluded/invalidated
+		this.clearMemoryCache();
+	},
+
+	/**
+	 * Returns all currently opted-out user IDs.
+	 */
+	getOptedOutUserIds(): number[] {
+		return Array.from(optedOutUserIds);
+	},
+
+	/**
+	 * Returns all currently opted-out usernames.
+	 */
+	getOptedOutUsernames(): string[] {
+		return Array.from(optedOutUsernames);
+	},
+	/**
+	 * Clears the in-memory memory cache for a specific chat or all chats.
+	 * Kept as no-op for API compatibility; SQLite WAL mode queries directly.
+	 */
+	clearMemoryCache(_chatId?: string): void {},
 
 	/**
 	 * Seeds the database with a list of initially allowed chat IDs from config.
@@ -530,6 +557,9 @@ export const Repository = {
 		replyToMessageId?: number;
 		text?: string;
 		photoFileId?: string;
+		documentFileId?: string;
+		documentFileName?: string;
+		documentMimeType?: string;
 		isBotReply?: boolean;
 		sentAt: number;
 	}): void {
@@ -550,6 +580,9 @@ export const Repository = {
 				params.replyToMessageId || null,
 				params.text || null,
 				params.photoFileId || null,
+				params.documentFileId || null,
+				params.documentFileName || null,
+				params.documentMimeType || null,
 				params.isBotReply ? 1 : 0,
 				params.sentAt,
 			);
@@ -571,7 +604,8 @@ export const Repository = {
 	 * Gets recent messages for sliding window context (ordered chronologically).
 	 */
 	getRecentMessages(chatId: string, limit: number = 15): MessageRow[] {
-		return stmts.getRecentMessages.all(chatId, limit) as MessageRow[];
+		const rows = stmts.getRecentMessages.all(chatId, limit) as MessageRow[];
+		return rows.filter((r) => !r.user_id || !this.isUserOptedOut(r.user_id));
 	},
 
 	/**
@@ -582,6 +616,36 @@ export const Repository = {
 	},
 
 	/**
+	 * Retrieves a single message with joined user details (username, first_name).
+	 */
+	getMessageWithUser(chatId: string, messageId: number): MessageRow | null {
+		return (
+			(stmts.getMessageWithUser.get(chatId, messageId) as MessageRow) || null
+		);
+	},
+
+	/**
+	 * Looks up a Telegram user by username or first name.
+	 */
+	getUserByName(name: string): {
+		user_id: number;
+		username: string | null;
+		first_name: string | null;
+		last_updated: number;
+	} | null {
+		if (!name?.trim()) return null;
+		const clean = name.trim().toLowerCase();
+		return (
+			(stmts.findUserByName.get(clean, clean) as {
+				user_id: number;
+				username: string | null;
+				first_name: string | null;
+				last_updated: number;
+			} | null) || null
+		);
+	},
+
+	/**
 	 * Counts total messages in a chat (used to decide when to run summarization).
 	 */
 	getMessageCount(chatId: string): number {
@@ -589,6 +653,22 @@ export const Repository = {
 			count: number;
 		} | null;
 		return result ? result.count : 0;
+	},
+
+	/**
+	 * Deletes a single message from chat history by chat_id and message_id.
+	 */
+	deleteMessage(chatId: string, messageId: number): boolean {
+		try {
+			const info = stmts.deleteMessage.run(chatId, messageId);
+			return info.changes > 0;
+		} catch (e) {
+			logger.error(
+				`[DB] Error deleting message ${messageId} in chat ${chatId}:`,
+				e,
+			);
+			return false;
+		}
 	},
 
 	/**
@@ -649,7 +729,7 @@ export const Repository = {
 			floatArray.byteLength,
 		);
 
-		const insertResult = stmts.insertMemory.run(
+		stmts.insertMemory.run(
 			chatId,
 			memoryText,
 			buffer,
@@ -658,30 +738,12 @@ export const Repository = {
 			category,
 			expiresAt,
 		);
-
-		const insertedId = Number(insertResult.lastInsertRowid);
-		const normalized = normalizeVector(floatArray);
-		memoryCache.addMemory(chatId, {
-			id: insertedId,
-			text: memoryText,
-			embedding: floatArray,
-			normalizedEmbedding: normalized,
-			createdAt: now,
-			userId,
-			category,
-			expiresAt,
-		});
 	},
 
 	/**
-	 * Retrieves all memory facts for a chat with their embeddings (cached in-memory).
+	 * Retrieves all memory facts for a chat with their embeddings directly from SQLite.
 	 */
-	getMemories(chatId: string): MemoryItem[] {
-		const cached = memoryCache.get(chatId);
-		if (cached) {
-			return cached;
-		}
-
+	getMemories(chatId: string, includeOptedOut: boolean = false): MemoryItem[] {
 		const rows = stmts.getMemories.all(chatId) as {
 			id: number;
 			memory_text: string;
@@ -692,46 +754,13 @@ export const Repository = {
 			expires_at: number | null;
 		}[];
 
-		const parsed: MemoryItem[] = rows.map((row) => {
-			let embeddingArray: Float32Array;
-			let normalizedArray: Float32Array;
-			if (row.embedding && row.embedding.byteLength > 0) {
-				if (row.embedding.byteOffset % 4 === 0) {
-					embeddingArray = new Float32Array(
-						row.embedding.buffer,
-						row.embedding.byteOffset,
-						row.embedding.byteLength / 4,
-					);
-				} else {
-					const alignedBuffer = new ArrayBuffer(row.embedding.byteLength);
-					new Uint8Array(alignedBuffer).set(row.embedding);
-					embeddingArray = new Float32Array(
-						alignedBuffer,
-						0,
-						row.embedding.byteLength / 4,
-					);
-				}
-				normalizedArray = normalizeVector(embeddingArray);
-			} else {
-				embeddingArray = new Float32Array(0);
-				normalizedArray = new Float32Array(0);
-			}
+		const parsed = rows.map(rowToMemoryItem);
 
-			return {
-				id: row.id,
-				text: row.memory_text,
-				embedding: embeddingArray,
-				normalizedEmbedding: normalizedArray,
-				createdAt: row.created_at,
-				userId: row.user_id,
-				category:
-					(row.category as "PROFILE" | "DYNAMIC" | "TEMPORARY") || "PROFILE",
-				expiresAt: row.expires_at,
-			};
-		});
+		if (includeOptedOut || optedOutUserIds.size === 0) {
+			return parsed;
+		}
 
-		memoryCache.set(chatId, parsed);
-		return parsed;
+		return parsed.filter((m) => !m.userId || !this.isUserOptedOut(m.userId));
 	},
 
 	/**
@@ -744,7 +773,6 @@ export const Repository = {
 		}[];
 		const deletedCount = deletedRows.length;
 		if (deletedCount > 0) {
-			memoryCache.pruneExpired(chatId, now);
 			logger.info(
 				`[Memory] Pruned ${deletedCount} expired memories for chat ${chatId}.`,
 			);
@@ -798,9 +826,9 @@ export const Repository = {
 	},
 
 	/**
-	 * Deletes specific memories by their IDs and updates cache.
+	 * Deletes specific memories by their IDs.
 	 */
-	deleteMemoriesByIds(ids: number[], chatId?: string): void {
+	deleteMemoriesByIds(ids: number[], _chatId?: string): void {
 		if (ids.length === 0) return;
 		const deleteMany = db.transaction((memoryIds: number[]) => {
 			for (const id of memoryIds) {
@@ -808,7 +836,6 @@ export const Repository = {
 			}
 		});
 		deleteMany(ids);
-		memoryCache.deleteMemories(ids, chatId);
 	},
 
 	/**
@@ -819,12 +846,11 @@ export const Repository = {
 		text: string,
 		category?: string,
 		embedding?: number[] | Float32Array,
-		chatId?: string,
+		_chatId?: string,
 	): void {
 		const cat = (category as "PROFILE" | "DYNAMIC" | "TEMPORARY") || "PROFILE";
-		let floatArray: Float32Array | undefined;
 		if (embedding && embedding.length > 0) {
-			floatArray =
+			const floatArray =
 				embedding instanceof Float32Array
 					? new Float32Array(embedding)
 					: new Float32Array(embedding);
@@ -837,15 +863,13 @@ export const Repository = {
 		} else {
 			stmts.updateMemoryWithoutEmbedding.run(text, cat, id);
 		}
-		memoryCache.updateMemory(id, text, cat, floatArray, chatId);
 	},
 
 	/**
-	 * Clears all memories for a chat and invalidates cache.
+	 * Clears all memories for a chat.
 	 */
 	clearMemories(chatId: string): void {
 		stmts.deleteMemories.run(chatId);
-		memoryCache.delete(chatId);
 	},
 
 	/**
@@ -936,6 +960,7 @@ export const Repository = {
 	 * Gets memories associated with a specific user in a chat.
 	 */
 	getUserMemories(chatId: string, userId: number): MemoryItem[] {
+		if (this.isUserOptedOut(userId)) return [];
 		const all = this.getMemories(chatId);
 		return all.filter((m) => m.userId === userId);
 	},
@@ -952,6 +977,7 @@ export const Repository = {
 		category: string;
 		expires_at: number | null;
 	}> {
+		if (this.isUserOptedOut(userId)) return [];
 		return stmts.getUserMemories.all(userId) as Array<{
 			id: number;
 			chat_id: string;
