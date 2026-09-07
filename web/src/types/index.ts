@@ -6,6 +6,7 @@ export interface TelegramUser {
 	language_code?: string;
 	is_premium?: boolean;
 	photo_url?: string;
+	is_opted_out?: boolean;
 }
 
 export type UserRole = "owner" | "admin" | "user";
@@ -17,6 +18,7 @@ export interface AuthContext {
 	isOwner: boolean;
 	adminChatIds: string[];
 	memberChatIds: string[];
+	isOptedOut?: boolean;
 }
 
 interface CategoryStats {

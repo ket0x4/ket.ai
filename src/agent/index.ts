@@ -1,24 +1,16 @@
-import { CONFIG, onBotSettingsUpdated } from "../config";
+import { CONFIG, onBotSettingsUpdated } from "../config/index";
 import {
-	type AgentExecutorOptions,
 	executeFunctionCallsInParallel,
 	executeSingleToolCall,
 	extractFunctionCalls,
 	type MediaGeneratedCallback,
-	type RawFunctionCall,
 	runAgentLoop,
 	type ToolCallCallback,
 	type ToolProgressCallback,
 } from "./executor";
 import { AgentStateMachine } from "./fsm";
-import { ToolRegistry, toolRegistry } from "./registry";
-import {
-	extractMediaArtifactsFromResult,
-	inferArtifactType,
-	parseGeneratedArtifact,
-	sanitizeToolResultForLLM,
-	smartTruncateText,
-} from "./sanitizer";
+import { toolRegistry } from "./registry";
+import { sanitizeToolResultForLLM, smartTruncateText } from "./sanitizer";
 import { codeExecutionTool } from "./tools/codeExecution";
 import { webSearchTool } from "./tools/webSearch";
 import {
@@ -28,17 +20,8 @@ import {
 	sendWorkspaceFileTool,
 	writeWorkspaceFileTool,
 } from "./tools/workspaceTools";
-import type {
-	AgentTool,
-	ArtifactMediaType,
-	FunctionDeclaration,
-	GeneratedMediaArtifact,
-	JSONSchemaType,
-	ToolExecutionContext,
-	ToolParameterSchema,
-	ToolProgressUpdate,
-} from "./types";
-import { type ValidationResult, validateToolArguments } from "./validator";
+import type { AgentTool, GeneratedMediaArtifact } from "./types";
+import { validateToolArguments } from "./validator";
 
 const CODE_TOOLS: AgentTool[] = [
 	codeExecutionTool,
@@ -49,9 +32,6 @@ const CODE_TOOLS: AgentTool[] = [
 	resetWorkspaceTool,
 ];
 
-/**
- * Synchronizes the global toolRegistry with the current CONFIG settings.
- */
 export function syncToolsWithConfig(): void {
 	if (CONFIG.ENABLE_WEB_SEARCH) {
 		if (!toolRegistry.hasTool(webSearchTool.name)) {
@@ -74,7 +54,7 @@ export function syncToolsWithConfig(): void {
 	}
 }
 
-// Register default built-in tools based on initial config
+// Initial synchronization on module load
 syncToolsWithConfig();
 
 // Keep tool registry synchronized if settings change dynamically at runtime
@@ -83,40 +63,20 @@ onBotSettingsUpdated(() => {
 });
 
 export type {
-	AgentExecutorOptions,
-	AgentTool,
-	ArtifactMediaType,
-	FunctionDeclaration,
 	GeneratedMediaArtifact,
-	JSONSchemaType,
 	MediaGeneratedCallback,
-	RawFunctionCall,
 	ToolCallCallback,
-	ToolExecutionContext,
-	ToolParameterSchema,
 	ToolProgressCallback,
-	ToolProgressUpdate,
-	ValidationResult,
 };
 export {
 	AgentStateMachine,
-	codeExecutionTool,
 	executeFunctionCallsInParallel,
 	executeSingleToolCall,
 	extractFunctionCalls,
-	extractMediaArtifactsFromResult,
-	inferArtifactType,
-	listWorkspaceFilesTool,
-	parseGeneratedArtifact,
-	readWorkspaceFileTool,
-	resetWorkspaceTool,
 	runAgentLoop,
 	sanitizeToolResultForLLM,
-	sendWorkspaceFileTool,
 	smartTruncateText,
-	ToolRegistry,
 	toolRegistry,
 	validateToolArguments,
 	webSearchTool,
-	writeWorkspaceFileTool,
 };

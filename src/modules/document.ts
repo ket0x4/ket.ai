@@ -1,8 +1,8 @@
 import type { Bot, Context } from "grammy";
-import { createToolNotifier, sendSingleArtifact } from "../bot/ui";
+import { createToolNotifier, sendSingleArtifact } from "../bot/ui/index";
 import { CONFIG } from "../config";
 import { Repository } from "../db/repository";
-import { botUsername, withChatLock, withTyping } from "../services/bot";
+import { withChatLock, withTyping } from "../services/bot";
 import {
 	prepareDocumentContext,
 	stageDocumentInWorkspace,
@@ -119,7 +119,7 @@ async function executeDocumentReplyWorkflow(
 	}
 }
 
-export async function processDocumentMessage(
+async function processDocumentMessage(
 	ctx: Context,
 	chatIdStr: string,
 ): Promise<void> {
@@ -142,25 +142,7 @@ export function registerDocumentHandlers(bot: Bot) {
 		const doc = ctx.message.document;
 		if (!doc) return;
 
-		const caption = ctx.message.caption || "";
-		const botName = botUsername || "ket";
-		const nicknameRegex = new RegExp(
-			`\\b${botName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`,
-			"i",
-		);
-		const containsNickname =
-			nicknameRegex.test(caption) || /\bket\b/i.test(caption);
-		const isMentioned = Boolean(
-			botUsername && caption.includes(`@${botUsername}`),
-		);
-
-		const isDirect = isDirectMediaInteraction(
-			ctx,
-			"Document",
-			containsNickname || isMentioned,
-		);
-
-		if (!isDirect) {
+		if (!isDirectMediaInteraction(ctx, "Document")) {
 			return;
 		}
 

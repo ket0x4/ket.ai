@@ -1,6 +1,6 @@
 import type { ToolParameterSchema } from "./types";
 
-export interface ValidationResult {
+interface ValidationResult {
 	valid: boolean;
 	error?: string;
 }

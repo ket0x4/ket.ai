@@ -55,7 +55,7 @@ export async function withChatLock<T>(
 	}
 }
 
-export interface OutgoingMessageInfo {
+interface OutgoingMessageInfo {
 	chatId: string;
 	msgId: number;
 	text: string;
@@ -647,6 +647,29 @@ async function initBot() {
 		}
 	});
 
+	// 2b. Middleware: Opt-Out User Guard (completely ignores opted-out users)
+	// ponytail: Intercept at top-level middleware so opted-out users skip all message archiving,
+	// media perception, and LLM handlers with zero DB overhead.
+	bot.use(async (ctx, next) => {
+		const from = ctx.from;
+		if (!from || !Repository.isUserOptedOut(from.id)) {
+			return await next();
+		}
+
+		// If user is opted-out, allow opt-in and opt-out commands through
+		const text = (ctx.message?.text || ctx.message?.caption || "").trim();
+		const isOptCommand =
+			/^\/(?:optin|opt_in|optout|opt_out)(?:@\w+)?(?:\s|$)/i.test(text);
+		if (isOptCommand) {
+			return await next();
+		}
+
+		// Completely ignore all other messages, photos, voice notes, and interactions
+		logger.debug(
+			`[OptOut] Ignored interaction from opted-out user ${from.id} (${from.first_name}) in chat ${ctx.chat?.id}`,
+		);
+	});
+
 	// 3. Supergroup Migration Handler
 	bot.on("message:migrate_to_chat_id", async (ctx) => {
 		const oldChatId = ctx.chat.id.toString();
@@ -673,6 +696,14 @@ async function initBot() {
 			const from = ctx.from;
 
 			if (!chat || !msg || !from) return await next();
+
+			// Do not archive opt-in/opt-out commands or messages from opted-out users
+			const text = (msg.text || msg.caption || "").trim();
+			const isOptCommand =
+				/^\/(?:optin|opt_in|optout|opt_out)(?:@\w+)?(?:\s|$)/i.test(text);
+			if (isOptCommand || Repository.isUserOptedOut(from.id)) {
+				return await next();
+			}
 
 			const chatIdStr = chat.id.toString();
 			const mediaInfo = extractMessageMediaInfo(msg);

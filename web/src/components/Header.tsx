@@ -1,4 +1,4 @@
-import { Bot } from "lucide-react";
+import { Bot, ShieldCheck, ShieldOff } from "lucide-react";
 import type { FC } from "react";
 import { Badge } from "@/components/ui/badge";
 import { USER_ROLES } from "@/lib/constants";
@@ -8,9 +8,17 @@ interface HeaderProps {
 	user: TelegramUser | null;
 	role: UserRole;
 	isOnline?: boolean;
+	isOptedOut?: boolean;
+	onToggleOptOut?: () => void;
 }
 
-export const Header: FC<HeaderProps> = ({ user, role, isOnline = true }) => {
+export const Header: FC<HeaderProps> = ({
+	user,
+	role,
+	isOnline = true,
+	isOptedOut = false,
+	onToggleOptOut,
+}) => {
 	const roleMeta = USER_ROLES[role] || USER_ROLES.user;
 	const RoleIcon = roleMeta.icon;
 
@@ -62,6 +70,31 @@ export const Header: FC<HeaderProps> = ({ user, role, isOnline = true }) => {
 						<RoleIcon className={`w-3 h-3 ${roleMeta.iconColor}`} />
 						<span className="hidden xs:inline sm:inline">{roleMeta.label}</span>
 					</Badge>
+					{user && (
+						<Badge
+							variant="outline"
+							onClick={onToggleOptOut}
+							className={`flex items-center gap-1 shrink-0 text-[10px] sm:text-xs transition-colors cursor-pointer ${
+								isOptedOut
+									? "bg-rose-500/15 border-rose-500/30 text-rose-300 hover:bg-rose-500/25"
+									: "bg-emerald-500/10 border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20"
+							}`}
+							title={
+								isOptedOut
+									? "You are opted out. Bot ignores all messages & memories. Click to opt back in."
+									: "Bot is active and processing interactions. Click to opt out."
+							}
+						>
+							{isOptedOut ? (
+								<ShieldOff className="w-3 h-3 text-rose-400" />
+							) : (
+								<ShieldCheck className="w-3 h-3 text-emerald-400" />
+							)}
+							<span className="hidden sm:inline">
+								{isOptedOut ? "Opted Out" : "Opted In"}
+							</span>
+						</Badge>
+					)}
 				</div>
 			</div>
 		</header>

@@ -37,7 +37,26 @@ export function isDirectMediaInteraction(
 	);
 	const isPrivateChat = chat.type === "private";
 
-	return isReplyToBot || isPrivateChat || Boolean(extraCondition);
+	if (isReplyToBot || isPrivateChat || extraCondition) {
+		return true;
+	}
+
+	const caption = msg.caption || "";
+	if (caption) {
+		const botName = botUsername || "ket";
+		const nicknameRegex = new RegExp(
+			`\\b${botName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`,
+			"i",
+		);
+		const containsNickname =
+			nicknameRegex.test(caption) || /\bket\b/i.test(caption);
+		const isMentioned = Boolean(
+			botUsername && caption.includes(`@${botUsername}`),
+		);
+		return containsNickname || isMentioned;
+	}
+
+	return false;
 }
 
 export async function processMediaInteraction(

@@ -8,6 +8,8 @@ import {
 	Layers,
 	MessageSquare,
 	Server,
+	ShieldCheck,
+	ShieldOff,
 	Sparkles,
 	Users,
 } from "lucide-react";
@@ -28,6 +30,7 @@ import {
 	CardHeader,
 	CardTitle,
 } from "@/components/ui/card";
+import { Switch } from "@/components/ui/switch";
 import { MEMORY_CATEGORY_LIST } from "@/lib/constants";
 import { formatBytes, formatUptime } from "@/lib/utils";
 import type { StatsResponse, UserRole } from "@/types";
@@ -324,12 +327,98 @@ const TopActiveGroupsCard: FC<{
 	</Card>
 );
 
+const BotPrivacyCard: FC<{
+	isOptedOut?: boolean;
+	onToggleOptOut?: (optedOut: boolean) => Promise<void>;
+	isUpdating?: boolean;
+}> = ({ isOptedOut = false, onToggleOptOut, isUpdating = false }) => {
+	return (
+		<Card
+			className={`glass-card transition-all duration-300 ${
+				isOptedOut
+					? "border-rose-500/40 bg-rose-500/5 shadow-lg shadow-rose-950/20"
+					: "border-border/60 hover:border-primary/40"
+			}`}
+		>
+			<CardHeader className="pb-3 flex flex-row items-center justify-between gap-4">
+				<div className="space-y-1 min-w-0">
+					<div className="flex items-center gap-2 flex-wrap">
+						{isOptedOut ? (
+							<ShieldOff className="w-5 h-5 text-rose-400 shrink-0" />
+						) : (
+							<ShieldCheck className="w-5 h-5 text-emerald-400 shrink-0" />
+						)}
+						<CardTitle className="text-base font-semibold">
+							Bot Privacy & Opt-Out
+						</CardTitle>
+						<span
+							className={`text-[11px] font-mono font-medium px-2 py-0.5 rounded-full border ${
+								isOptedOut
+									? "bg-rose-500/15 border-rose-500/30 text-rose-300"
+									: "bg-emerald-500/15 border-emerald-500/30 text-emerald-300"
+							}`}
+						>
+							{isOptedOut ? "Opted Out (Ignored)" : "Active (Opted In)"}
+						</span>
+					</div>
+					<CardDescription className="text-xs">
+						{isOptedOut
+							? "The bot is fully ignoring you across all group and private chats. No memories, text, photos, or voice notes are processed."
+							: "The bot processes your text messages, voice, and photos, responds when mentioned or replied to, and saves profile memories."}
+					</CardDescription>
+				</div>
+				<div className="flex items-center gap-2 shrink-0">
+					<span className="text-xs text-muted-foreground hidden sm:inline">
+						{isOptedOut ? "Opted Out" : "Opt In"}
+					</span>
+					<Switch
+						checked={isOptedOut}
+						onCheckedChange={(checked) => onToggleOptOut?.(checked)}
+						disabled={isUpdating}
+						className="data-[state=checked]:bg-rose-600 data-[state=unchecked]:bg-emerald-600"
+					/>
+				</div>
+			</CardHeader>
+			<CardContent className="pt-0">
+				<div className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-xl bg-secondary/40 border border-border/40 text-xs">
+					<div className="text-muted-foreground flex items-center gap-1.5 flex-wrap">
+						<span>You can also toggle this at any time via Telegram:</span>
+						<code className="px-1.5 py-0.5 rounded bg-background border border-border text-[11px] font-mono text-primary">
+							/optout
+						</code>
+						<span>or</span>
+						<code className="px-1.5 py-0.5 rounded bg-background border border-border text-[11px] font-mono text-primary">
+							/optin
+						</code>
+					</div>
+					<Button
+						variant={isOptedOut ? "default" : "outline"}
+						size="sm"
+						disabled={isUpdating}
+						onClick={() => onToggleOptOut?.(!isOptedOut)}
+						className={`h-8 text-xs font-medium ${
+							isOptedOut
+								? "bg-emerald-600 hover:bg-emerald-500 text-white"
+								: "border-rose-500/40 text-rose-400 hover:bg-rose-500/10"
+						}`}
+					>
+						{isOptedOut ? "Opt Back In" : "Opt Out Fully"}
+					</Button>
+				</div>
+			</CardContent>
+		</Card>
+	);
+};
+
 interface DashboardTabProps {
 	stats: StatsResponse | null;
 	role: UserRole;
 	isLoading: boolean;
 	onNavigateToGroups: () => void;
 	onRefresh: () => void;
+	isOptedOut?: boolean;
+	onToggleOptOut?: (optedOut: boolean) => Promise<void>;
+	isUpdatingOptOut?: boolean;
 }
 
 export const DashboardTab: FC<DashboardTabProps> = ({
@@ -338,6 +427,9 @@ export const DashboardTab: FC<DashboardTabProps> = ({
 	isLoading,
 	onNavigateToGroups,
 	onRefresh,
+	isOptedOut = false,
+	onToggleOptOut,
+	isUpdatingOptOut = false,
 }) => {
 	if (isLoading && !stats) {
 		return (
@@ -353,6 +445,12 @@ export const DashboardTab: FC<DashboardTabProps> = ({
 
 	return (
 		<div className="space-y-6 animate-in fade-in duration-200">
+			<BotPrivacyCard
+				isOptedOut={isOptedOut}
+				onToggleOptOut={onToggleOptOut}
+				isUpdating={isUpdatingOptOut}
+			/>
+
 			<div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
 				{metricCards.map((card) => (
 					<MetricCard key={card.title} {...card} />

@@ -51,7 +51,7 @@ export function inferArtifactType(
 	return "document";
 }
 
-export function extractRawArtifacts(result: unknown): unknown[] {
+function extractRawArtifacts(result: unknown): unknown[] {
 	if (!result || typeof result !== "object") return [];
 	const obj = result as { artifacts?: unknown; images?: unknown };
 	if (Array.isArray(obj.artifacts)) return obj.artifacts;
@@ -59,7 +59,7 @@ export function extractRawArtifacts(result: unknown): unknown[] {
 	return [];
 }
 
-export function parseGeneratedArtifact(art: {
+function parseGeneratedArtifact(art: {
 	filename?: string;
 	mimeType?: string;
 	data?: string;

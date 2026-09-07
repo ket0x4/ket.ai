@@ -2,13 +2,13 @@ import { CONFIG } from "../../config";
 import logger from "../../utils/logger";
 import type { AgentTool, ToolExecutionContext } from "../types";
 
-export interface CodeExecutionProgressEvent {
+interface CodeExecutionProgressEvent {
 	type: "status" | "stdout" | "stderr";
 	text: string;
 	fullStdoutSoFar?: string;
 }
 
-export interface CodeExecutionArgs {
+interface CodeExecutionArgs {
 	language: "python" | "javascript" | "typescript" | "bash";
 	code: string;
 	packages?: string[];
@@ -19,9 +19,9 @@ export interface CodeExecutionArgs {
 	onProgress?: (event: CodeExecutionProgressEvent) => void;
 }
 
-export type ArtifactType = "image" | "document" | "video" | "audio";
+type ArtifactType = "image" | "document" | "video" | "audio";
 
-export interface CodeExecutionArtifact {
+interface CodeExecutionArtifact {
 	filename: string;
 	mimeType: string;
 	data: string; // base64
@@ -29,9 +29,9 @@ export interface CodeExecutionArtifact {
 	type: ArtifactType;
 }
 
-export type CodeExecutionImage = CodeExecutionArtifact;
+type CodeExecutionImage = CodeExecutionArtifact;
 
-export interface CodeExecutionResult {
+interface CodeExecutionResult {
 	success: boolean;
 	stdout: string;
 	stderr?: string;

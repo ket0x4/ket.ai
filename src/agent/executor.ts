@@ -31,13 +31,13 @@ export type MediaGeneratedCallback = (
 	media: GeneratedMediaArtifact[],
 ) => Promise<void> | void;
 
-export interface RawFunctionCall {
+interface RawFunctionCall {
 	id?: string;
 	name: string;
 	args?: Record<string, unknown>;
 }
 
-export interface AgentExecutorOptions {
+interface AgentExecutorOptions {
 	chatId?: string;
 	sessionId?: string;
 	traceId?: string;
@@ -50,11 +50,19 @@ export interface AgentExecutorOptions {
  * Extracts function calls from Gemini model response.
  */
 export function extractFunctionCalls(response: {
-	functionCalls?: RawFunctionCall[];
+	functionCalls?: Array<{
+		id?: string;
+		name?: string;
+		args?: Record<string, unknown>;
+	}>;
 	candidates?: Array<{
 		content?: {
 			parts?: Array<{
-				functionCall?: RawFunctionCall;
+				functionCall?: {
+					id?: string;
+					name?: string;
+					args?: Record<string, unknown>;
+				};
 			}>;
 		};
 	}>;

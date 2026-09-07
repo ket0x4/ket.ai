@@ -3,7 +3,7 @@ import type { ToolProgressUpdate } from "../../agent/types";
 import { CONFIG } from "../../config";
 import logger from "../../utils/logger";
 
-export interface ToolNotifier {
+interface ToolNotifier {
 	onToolCall: (
 		toolName: string,
 		args?: Record<string, unknown>,
@@ -17,7 +17,7 @@ export interface ToolNotifier {
 	cleanup: () => Promise<void>;
 }
 
-export function normalizeLanguageName(raw?: unknown): string {
+function normalizeLanguageName(raw?: unknown): string {
 	if (typeof raw !== "string") return "script";
 	const lower = raw.toLowerCase();
 	if (lower === "python") return "Python";
@@ -27,9 +27,7 @@ export function normalizeLanguageName(raw?: unknown): string {
 	return raw;
 }
 
-export function resolveExecuteCodeMessage(
-	args: Record<string, unknown>,
-): string {
+function resolveExecuteCodeMessage(args: Record<string, unknown>): string {
 	const packages = Array.isArray(args.packages)
 		? (args.packages as string[])
 		: [];
@@ -44,7 +42,7 @@ export function resolveExecuteCodeMessage(
 	return `⚡ Executing ${lang} script${filename} in sandbox...`;
 }
 
-export function resolveToolStatusMessage(
+function resolveToolStatusMessage(
 	toolName: string,
 	args: Record<string, unknown> = {},
 ): string {
@@ -73,10 +71,7 @@ export function resolveToolStatusMessage(
 	}
 }
 
-export function extractRecentStdoutSnippet(
-	fullStdout?: string,
-	maxLines = 3,
-): string {
+function extractRecentStdoutSnippet(fullStdout?: string, maxLines = 3): string {
 	if (!fullStdout) return "";
 	const lines = fullStdout
 		.split("\n")

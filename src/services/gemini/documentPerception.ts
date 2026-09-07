@@ -109,7 +109,7 @@ export function sanitizeDocumentFilename(rawFilename?: string): string {
 /**
  * Heuristically checks whether a buffer is UTF-8 text or binary.
  */
-export function isLikelyTextBuffer(buffer: Buffer): boolean {
+function isLikelyTextBuffer(buffer: Buffer): boolean {
 	const len = Math.min(buffer.length, 1024);
 	for (let i = 0; i < len; i++) {
 		if (buffer[i] === 0) {

@@ -9,13 +9,13 @@ import type {
 	ToolExecutionContext,
 } from "../types";
 
-export interface ReadWorkspaceFileArgs {
+interface ReadWorkspaceFileArgs {
 	filename: string;
 	sessionId?: string;
 	encoding?: "utf-8" | "base64";
 }
 
-export interface ReadWorkspaceFileResult {
+interface ReadWorkspaceFileResult {
 	success: boolean;
 	filename: string;
 	content?: string;
@@ -25,7 +25,7 @@ export interface ReadWorkspaceFileResult {
 	system_note?: string;
 }
 
-export interface WriteWorkspaceFileArgs {
+interface WriteWorkspaceFileArgs {
 	filename: string;
 	content: string;
 	sessionId?: string;
@@ -33,7 +33,7 @@ export interface WriteWorkspaceFileArgs {
 	sendToUser?: boolean;
 }
 
-export interface WriteWorkspaceFileResult {
+interface WriteWorkspaceFileResult {
 	success: boolean;
 	filename: string;
 	sizeBytes?: number;
@@ -41,13 +41,13 @@ export interface WriteWorkspaceFileResult {
 	system_note?: string;
 }
 
-export interface SendWorkspaceFileArgs {
+interface SendWorkspaceFileArgs {
 	filename: string;
 	caption?: string;
 	sessionId?: string;
 }
 
-export interface SendWorkspaceFileResult {
+interface SendWorkspaceFileResult {
 	success: boolean;
 	filename: string;
 	sizeBytes?: number;
@@ -55,18 +55,18 @@ export interface SendWorkspaceFileResult {
 	system_note?: string;
 }
 
-export interface ListWorkspaceFilesArgs {
+interface ListWorkspaceFilesArgs {
 	sessionId?: string;
 }
 
-export interface WorkspaceFileInfo {
+interface WorkspaceFileInfo {
 	filename: string;
 	sizeBytes: number;
 	modifiedAt: string;
 	isImage: boolean;
 }
 
-export interface ListWorkspaceFilesResult {
+interface ListWorkspaceFilesResult {
 	success: boolean;
 	files: WorkspaceFileInfo[];
 	totalFiles: number;
@@ -74,11 +74,11 @@ export interface ListWorkspaceFilesResult {
 	system_note?: string;
 }
 
-export interface ResetWorkspaceArgs {
+interface ResetWorkspaceArgs {
 	sessionId?: string;
 }
 
-export interface ResetWorkspaceResult {
+interface ResetWorkspaceResult {
 	success: boolean;
 	message?: string;
 	error?: string;
@@ -321,40 +321,27 @@ export async function sendWorkspaceFile(
 	args: SendWorkspaceFileArgs,
 	context?: ToolExecutionContext,
 ): Promise<SendWorkspaceFileResult> {
-	const filename = validateFilename(args.filename);
-	if (!filename) {
+	const readRes = await readWorkspaceFile(
+		{
+			filename: args.filename,
+			sessionId: args.sessionId,
+			encoding: "base64",
+		},
+		context,
+	);
+
+	if (!readRes.success || !readRes.data) {
 		return {
 			success: false,
-			filename: "",
-			error: "Filename parameter is required.",
+			filename: readRes.filename,
+			error: readRes.error,
+			system_note: `Could not retrieve '${args.filename}' to send to user. Ensure file exists in workspace.`,
 		};
 	}
 
-	const resolvedSessionId = resolveSessionId(context, args.sessionId);
-
 	try {
-		const res = await postToWorkspaceSandbox<{
-			success: boolean;
-			filename?: string;
-			data?: string;
-			sizeBytes?: number;
-			error?: string;
-		}>("/workspace/read", {
-			filename,
-			sessionId: resolvedSessionId,
-			encoding: "base64",
-		});
-
-		if (!res.ok || !res.data.success || !res.data.data) {
-			return {
-				success: false,
-				filename,
-				error: res.ok ? res.data.error : res.error,
-				system_note: `Could not retrieve '${filename}' to send to user. Ensure file exists in workspace.`,
-			};
-		}
-
-		const buffer = Buffer.from(res.data.data, "base64");
+		const filename = readRes.filename;
+		const buffer = Buffer.from(readRes.data, "base64");
 		const ext = extname(filename).toLowerCase();
 		const mapping = WORKSPACE_FILE_MIME_MAP[ext];
 		const mimeType = mapping?.mimeType || "application/octet-stream";
@@ -380,10 +367,13 @@ export async function sendWorkspaceFile(
 		};
 	} catch (err) {
 		const msg = err instanceof Error ? err.message : String(err);
-		logger.error(`[WorkspaceTools] Error sending file ${filename}:`, err);
+		logger.error(
+			`[WorkspaceTools] Error sending file ${readRes.filename}:`,
+			err,
+		);
 		return {
 			success: false,
-			filename,
+			filename: readRes.filename,
 			error: msg,
 			system_note: "Failed to read file from workspace for delivery.",
 		};

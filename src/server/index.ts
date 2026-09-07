@@ -179,13 +179,16 @@ async function getAuthContext(req: Request): Promise<AuthContext> {
 			? "admin"
 			: "user";
 
+	const isOptedOut = Repository.isUserOptedOut(user.id);
+
 	return {
 		valid: true,
-		user,
+		user: { ...user, is_opted_out: isOptedOut },
 		role,
 		isOwner,
 		adminChatIds,
 		memberChatIds,
+		isOptedOut,
 	};
 }
 
@@ -689,6 +692,13 @@ async function handleMemoriesPost(
 					403,
 				);
 			}
+		}
+
+		if (Repository.isUserOptedOut(auth.user.id)) {
+			return errorResponse(
+				"Cannot create memory: You are opted out of bot memory and processing.",
+				400,
+			);
 		}
 
 		await processNewMemory(body.chatId, body.memoryText, {
@@ -1804,12 +1814,62 @@ function handleAuthAndStatsRoutes(
 			isOwner: auth.isOwner,
 			adminChatIds: auth.adminChatIds,
 			memberChatIds: auth.memberChatIds,
+			isOptedOut:
+				auth.isOptedOut ??
+				(auth.user ? Repository.isUserOptedOut(auth.user.id) : false),
 		});
 	}
 	if (pathname === "/api/stats" && req.method === "GET") {
 		return handleStats(auth);
 	}
 	return null;
+}
+
+async function handleUserOptOut(
+	req: Request,
+	auth: AuthContext,
+): Promise<Response> {
+	if (!auth.valid || !auth.user) {
+		return errorResponse("Unauthorized: Valid session required", 401);
+	}
+
+	if (req.method === "GET") {
+		return jsonResponse({
+			isOptedOut: Repository.isUserOptedOut(auth.user.id),
+		});
+	}
+
+	if (req.method === "POST" || req.method === "PATCH") {
+		try {
+			const body = (await req.json().catch(() => ({}))) as {
+				optedOut?: boolean;
+				is_opted_out?: boolean;
+			};
+			const optedOut = Boolean(body.optedOut ?? body.is_opted_out);
+
+			Repository.setUserOptOut(auth.user.id, optedOut, {
+				username: auth.user.username,
+				firstName: auth.user.first_name,
+			});
+
+			logger.info(
+				`[Server] User ${auth.user.id} (${auth.user.first_name}) updated opt-out status to ${optedOut} via WebUI`,
+			);
+
+			return jsonResponse({
+				success: true,
+				isOptedOut: optedOut,
+				message: optedOut
+					? "You have successfully opted out of bot interactions and memory."
+					: "You have successfully opted in to bot interactions.",
+			});
+		} catch (e) {
+			logger.error("[Server] Error updating user opt-out status:", e);
+			return errorResponse("Failed to update opt-out status", 500);
+		}
+	}
+
+	return errorResponse("Method not allowed", 405);
 }
 
 function handleIndividualMemoryRoutes(
@@ -1916,6 +1976,10 @@ async function handleApiRequest(
 
 	const authOrStats = handleAuthAndStatsRoutes(pathname, req, auth);
 	if (authOrStats) return authOrStats;
+
+	if (pathname === "/api/user/opt-out") {
+		return handleUserOptOut(req, auth);
+	}
 
 	if (pathname === "/api/settings") {
 		return handleSettings(req, auth);

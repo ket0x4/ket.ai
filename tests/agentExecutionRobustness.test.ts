@@ -29,17 +29,18 @@ function createMockHistory(text = "Calculate something") {
 	return [
 		{
 			id: 1,
-			chat_id: 12345,
+			chat_id: "12345",
 			message_id: 10,
 			user_id: 100,
 			username: "testuser",
 			first_name: "Test",
 			text,
-			is_bot_reply: false,
+			is_bot_reply: 0,
 			reply_to_message_id: null,
 			photo_file_id: null,
 			voice_file_id: null,
 			created_at: 1000,
+			sent_at: 1000,
 		},
 	];
 }

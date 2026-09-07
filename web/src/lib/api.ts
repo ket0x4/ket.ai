@@ -155,6 +155,17 @@ export const api = {
 	auth: {
 		me: () => apiFetch<AuthContext>("/api/me"),
 	},
+	user: {
+		getOptOut: () => apiFetch<{ isOptedOut: boolean }>("/api/user/opt-out"),
+		setOptOut: (optedOut: boolean) =>
+			apiFetch<{ success: boolean; isOptedOut: boolean; message: string }>(
+				"/api/user/opt-out",
+				{
+					method: "POST",
+					body: JSON.stringify({ optedOut }),
+				},
+			),
+	},
 	stats: {
 		get: () => apiFetch<StatsResponse>("/api/stats"),
 	},

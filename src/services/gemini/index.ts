@@ -23,15 +23,7 @@ import {
 	runWithRetry,
 } from "./utils";
 
-export type {
-	ArtifactMediaType,
-	GeneratedMediaArtifact,
-	MediaGeneratedCallback,
-	ToolCallCallback,
-	ToolProgressCallback,
-	ToolProgressUpdate,
-} from "../../agent/index";
-export type { PreparedDocumentContext } from "./documentPerception";
+export type { GeneratedMediaArtifact } from "../../agent/index";
 
 const lastSummarizedCount = new Map<string, number>();
 const MAX_TRACKED_CHATS = 200;
@@ -260,6 +252,64 @@ function buildInitialContents(
 	return [{ role: "user", parts: initialParts }];
 }
 
+interface ExtractedMemoryItem {
+	user_id?: number;
+	user_name?: string;
+	fact?: string;
+	category?: string;
+	ttl_days?: number;
+}
+
+async function saveSingleExtractedMemory(
+	chatIdStr: string,
+	mem: ExtractedMemoryItem,
+	history: MessageRow[],
+	senderUserId?: number,
+	senderFirstName?: string,
+	senderUsername?: string,
+): Promise<void> {
+	if (!mem.user_name || !mem.fact) return;
+
+	const targetUserId = resolveTargetUserId(
+		mem.user_name,
+		mem.user_id,
+		history,
+		senderUserId,
+		senderFirstName,
+		senderUsername,
+	);
+
+	if (targetUserId && Repository.isUserOptedOut(targetUserId)) {
+		logger.debug(
+			`[Gemini:saveExtractedMemories] Skipped memory for opted-out user ${targetUserId}`,
+		);
+		return;
+	}
+
+	if (Repository.isUsernameOptedOut(mem.user_name)) {
+		logger.debug(
+			`[Gemini:saveExtractedMemories] Skipped memory for opted-out username "${mem.user_name}"`,
+		);
+		return;
+	}
+
+	const cat =
+		(mem.category as "PROFILE" | "DYNAMIC" | "TEMPORARY") || "PROFILE";
+	const ttl =
+		typeof mem.ttl_days === "number" && mem.ttl_days > 0
+			? mem.ttl_days
+			: cat === "TEMPORARY"
+				? 3
+				: null;
+
+	await processNewMemory(chatIdStr, `${mem.user_name}: ${mem.fact}`, {
+		userId: targetUserId,
+		category: cat,
+		ttlDays: ttl,
+		priority: "low",
+	});
+}
+
 async function processExtractedMemories(
 	chatIdStr: string,
 	memoryUpdates: unknown[],
@@ -276,39 +326,15 @@ async function processExtractedMemories(
 		return;
 	}
 
-	for (const mem of memoryUpdates as Array<{
-		user_id?: number;
-		user_name?: string;
-		fact?: string;
-		category?: string;
-		ttl_days?: number;
-	}>) {
-		if (!mem.user_name || !mem.fact) continue;
-		const combinedFact = `${mem.user_name}: ${mem.fact}`;
-		const cat =
-			(mem.category as "PROFILE" | "DYNAMIC" | "TEMPORARY") || "PROFILE";
-		const ttl =
-			typeof mem.ttl_days === "number" && mem.ttl_days > 0
-				? mem.ttl_days
-				: cat === "TEMPORARY"
-					? 3
-					: null;
-
-		const targetUserId = resolveTargetUserId(
-			mem.user_name,
-			mem.user_id,
+	for (const mem of memoryUpdates as ExtractedMemoryItem[]) {
+		await saveSingleExtractedMemory(
+			chatIdStr,
+			mem,
 			history,
 			senderUserId,
 			senderFirstName,
 			senderUsername,
 		);
-
-		await processNewMemory(chatIdStr, combinedFact, {
-			userId: targetUserId,
-			category: cat,
-			ttlDays: ttl,
-			priority: "low",
-		});
 	}
 }
 
@@ -489,6 +515,17 @@ async function parseAndProcessReply(
 	fsm.transition("COMPLETED");
 	return trimmed;
 }
+
+type MediaReplyParams = [
+	buffer: Buffer,
+	mimeType: string,
+	history: MessageRow[],
+	topicSummary: string | null,
+	onToolCall?: ToolCallCallback,
+	chatId?: string,
+	onToolProgress?: ToolProgressCallback,
+	targetMessage?: TargetMessageInfo,
+];
 
 export const GeminiService = {
 	async _generateResponse(
@@ -807,17 +844,42 @@ export const GeminiService = {
 		});
 	},
 
-	async generateImageReply(
-		imageBuffer: Buffer,
-		mimeType: string,
+	async _dispatchMediaReply(
+		payload: { buffer: Buffer; mimeType: string },
 		history: MessageRow[],
 		topicSummary: string | null,
-		onToolCall?: ToolCallCallback,
-		chatId?: string,
-		onToolProgress?: ToolProgressCallback,
-		targetMessage?: TargetMessageInfo,
+		spec: {
+			instruction: string;
+			replyDescription: string;
+			fallbackEmpty: string;
+			fallbackError: string;
+			mediaFallbackText: string;
+		},
+		extra: {
+			onToolCall?: ToolCallCallback;
+			chatId?: string;
+			onToolProgress?: ToolProgressCallback;
+			targetMessage?: TargetMessageInfo;
+		},
 	): Promise<string> {
-		return this.generateMediaReply(
+		return this.generateMediaReply(payload, history, topicSummary, {
+			...spec,
+			...extra,
+		});
+	},
+
+	async generateImageReply(...args: MediaReplyParams): Promise<string> {
+		const [
+			imageBuffer,
+			mimeType,
+			history,
+			topicSummary,
+			onToolCall,
+			chatId,
+			onToolProgress,
+			targetMessage,
+		] = args;
+		return this._dispatchMediaReply(
 			{ buffer: imageBuffer, mimeType },
 			history,
 			topicSummary,
@@ -829,25 +891,23 @@ export const GeminiService = {
 				fallbackEmpty: CONFIG.MESSAGES.gemini_empty_image_fallback,
 				fallbackError: CONFIG.MESSAGES.gemini_error_image_fallback,
 				mediaFallbackText: "[Photo]",
-				onToolCall,
-				onToolProgress,
-				chatId,
-				targetMessage,
 			},
+			{ onToolCall, chatId, onToolProgress, targetMessage },
 		);
 	},
 
-	async generateVoiceReply(
-		audioBuffer: Buffer,
-		mimeType: string,
-		history: MessageRow[],
-		topicSummary: string | null,
-		onToolCall?: ToolCallCallback,
-		chatId?: string,
-		onToolProgress?: ToolProgressCallback,
-		targetMessage?: TargetMessageInfo,
-	): Promise<string> {
-		return this.generateMediaReply(
+	async generateVoiceReply(...args: MediaReplyParams): Promise<string> {
+		const [
+			audioBuffer,
+			mimeType,
+			history,
+			topicSummary,
+			onToolCall,
+			chatId,
+			onToolProgress,
+			targetMessage,
+		] = args;
+		return this._dispatchMediaReply(
 			{ buffer: audioBuffer, mimeType },
 			history,
 			topicSummary,
@@ -860,11 +920,8 @@ export const GeminiService = {
 				fallbackError:
 					"I got confused while listening to the voice message, can you try again?",
 				mediaFallbackText: "[Voice]",
-				onToolCall,
-				onToolProgress,
-				chatId,
-				targetMessage,
 			},
+			{ onToolCall, chatId, onToolProgress, targetMessage },
 		);
 	},
 

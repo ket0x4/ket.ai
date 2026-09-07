@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { Context } from "grammy";
+import type { MessageRow } from "../src/db/repository";
 import { ai } from "../src/services/gemini/client";
 import { GeminiService } from "../src/services/gemini/index";
 import { getSystemInstruction } from "../src/services/gemini/utils";
@@ -140,7 +141,7 @@ describe("Markdown Formatting & Message Utility Tests", () => {
 						user_id: 123,
 						text: "run script",
 						sent_at: Math.floor(Date.now() / 1000),
-					},
+					} as unknown as MessageRow,
 				],
 				null,
 			);

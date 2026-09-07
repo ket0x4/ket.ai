@@ -123,6 +123,20 @@ async function saveExtractedMemories(
 			recentMessages,
 		);
 
+		if (targetUserId && Repository.isUserOptedOut(targetUserId)) {
+			logger.debug(
+				`[MemoryWorker] Skipped saving memory for opted-out user ${targetUserId}`,
+			);
+			continue;
+		}
+
+		if (Repository.isUsernameOptedOut(item.user_name)) {
+			logger.debug(
+				`[MemoryWorker] Skipped saving memory for opted-out username "${item.user_name}"`,
+			);
+			continue;
+		}
+
 		await processNewMemory(chatIdStr, combinedFact, {
 			userId: targetUserId,
 			category: cat,

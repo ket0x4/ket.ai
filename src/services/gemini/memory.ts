@@ -95,6 +95,27 @@ export async function processNewMemory(
 ) {
 	if (!memoryText?.trim() || !chatIdStr) return;
 
+	if (options?.userId && Repository.isUserOptedOut(options.userId)) {
+		logger.debug(
+			`[Memory Store] Skipped memory for opted-out user ${options.userId} in chat ${chatIdStr}:`,
+			memoryText,
+		);
+		return;
+	}
+
+	// Check if memory fact begins with an opted-out user prefix (e.g. "alice: likes tea")
+	const colonIndex = memoryText.indexOf(":");
+	if (colonIndex > 0) {
+		const prefix = memoryText.slice(0, colonIndex).trim();
+		if (Repository.isUsernameOptedOut(prefix)) {
+			logger.debug(
+				`[Memory Store] Skipped memory for opted-out username "${prefix}" in chat ${chatIdStr}:`,
+				memoryText,
+			);
+			return;
+		}
+	}
+
 	const memText = memoryText.trim();
 	const existing = Repository.getMemories(chatIdStr);
 
@@ -258,6 +279,9 @@ function resolveChatMemories(
 			}
 		}
 	}
+	allMemories = allMemories.filter(
+		(m) => !m.userId || !Repository.isUserOptedOut(m.userId),
+	);
 	return allMemories;
 }
 

@@ -79,6 +79,8 @@ export default function App() {
 	const [role, setRole] = useState<UserRole>("user");
 	const [adminChatIds, setAdminChatIds] = useState<string[]>([]);
 	const [memberChatIds, setMemberChatIds] = useState<string[]>([]);
+	const [isOptedOut, setIsOptedOut] = useState(false);
+	const [isUpdatingOptOut, setIsUpdatingOptOut] = useState(false);
 
 	// Navigation tab state
 	const [activeTab, setActiveTab] = useState("dashboard");
@@ -106,6 +108,22 @@ export default function App() {
 		persona?: Persona | null;
 	}>({ open: false, mode: "add", persona: null });
 
+	// Toggle user opt-out status
+	const handleToggleOptOut = useCallback(async (optedOut: boolean) => {
+		try {
+			setIsUpdatingOptOut(true);
+			const res = await api.user.setOptOut(optedOut);
+			setIsOptedOut(res.isOptedOut);
+			toast.success(res.message);
+		} catch (err: unknown) {
+			const msg =
+				err instanceof Error ? err.message : "Failed to update opt-out status";
+			toast.error(msg);
+		} finally {
+			setIsUpdatingOptOut(false);
+		}
+	}, []);
+
 	// Authenticate session
 	const authenticate = useCallback(async () => {
 		const tg = getTelegramWebApp();
@@ -121,6 +139,7 @@ export default function App() {
 				setRole(auth.role || "user");
 				setAdminChatIds(auth.adminChatIds || []);
 				setMemberChatIds(auth.memberChatIds || []);
+				setIsOptedOut(Boolean(auth.isOptedOut ?? auth.user.is_opted_out));
 			} else {
 				setIsAuthenticated(false);
 			}
@@ -196,7 +215,13 @@ export default function App() {
 	return (
 		<div className="min-h-[100dvh] flex flex-col bg-background text-foreground selection:bg-primary/20">
 			{/* Top Header */}
-			<Header user={currentUser} role={role} isOnline={true} />
+			<Header
+				user={currentUser}
+				role={role}
+				isOnline={true}
+				isOptedOut={isOptedOut}
+				onToggleOptOut={() => handleToggleOptOut(!isOptedOut)}
+			/>
 
 			{/* Main Container */}
 			<main className="flex-1 max-w-6xl w-full mx-auto px-3 sm:px-6 py-4 sm:py-6 space-y-5">
@@ -231,6 +256,9 @@ export default function App() {
 							isLoading={isLoadingData}
 							onNavigateToGroups={() => setActiveTab("groups")}
 							onRefresh={loadAppData}
+							isOptedOut={isOptedOut}
+							onToggleOptOut={handleToggleOptOut}
+							isUpdatingOptOut={isUpdatingOptOut}
 						/>
 					</TabsContent>
 

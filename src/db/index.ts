@@ -40,9 +40,23 @@ function runMigrations() {
       user_id INTEGER PRIMARY KEY,
       username TEXT,
       first_name TEXT,
+      is_opted_out INTEGER DEFAULT 0,
       last_updated INTEGER NOT NULL
     ) STRICT;
   `);
+
+	// Ensure is_opted_out column exists for existing databases
+	try {
+		const userColumns = db.prepare("PRAGMA table_info(users)").all() as Array<{
+			name: string;
+		}>;
+		const hasOptedOut = userColumns.some((col) => col.name === "is_opted_out");
+		if (!hasOptedOut) {
+			db.run("ALTER TABLE users ADD COLUMN is_opted_out INTEGER DEFAULT 0");
+		}
+	} catch (e) {
+		logger.debug("[DB Migration] is_opted_out check/alter skipped:", e);
+	}
 
 	// Table: chats
 	db.run(`

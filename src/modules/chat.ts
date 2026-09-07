@@ -1,5 +1,5 @@
 import type { Bot, Context } from "grammy";
-import { createToolNotifier, sendSingleArtifact } from "../bot/ui";
+import { createToolNotifier, sendSingleArtifact } from "../bot/ui/index";
 import { CONFIG } from "../config";
 import { Repository } from "../db/repository";
 import { botUsername, withChatLock, withTyping } from "../services/bot";
@@ -27,11 +27,28 @@ import { sendLongMessage } from "../utils/message";
 
 const COOLDOWN_SECONDS = 300; // 5 minutes cooldown between random replies
 
+function getValidReplyMessage(
+	ctx: Context,
+	mediaType: string,
+): NonNullable<Context["message"]>["reply_to_message"] | undefined {
+	const replyToMsg = ctx.message?.reply_to_message;
+	if (!replyToMsg) return undefined;
+
+	if (replyToMsg.from?.id && Repository.isUserOptedOut(replyToMsg.from.id)) {
+		logger.debug(
+			`[Chat] Skipping replied ${mediaType} from opted-out user ${replyToMsg.from.id}`,
+		);
+		return undefined;
+	}
+
+	return replyToMsg;
+}
+
 async function resolveRepliedPhoto(
 	ctx: Context,
 	chatIdStr: string,
 ): Promise<{ buffer: Buffer; mimeType: string } | undefined> {
-	const replyToMsg = ctx.message?.reply_to_message;
+	const replyToMsg = getValidReplyMessage(ctx, "photo");
 	if (!replyToMsg) return undefined;
 
 	let photoFileId = extractPhotoFileId(replyToMsg.photo);
@@ -40,6 +57,9 @@ async function resolveRepliedPhoto(
 	}
 	if (!photoFileId && replyToMsg.message_id) {
 		const dbMsg = Repository.getMessage(chatIdStr, replyToMsg.message_id);
+		if (dbMsg?.user_id && Repository.isUserOptedOut(dbMsg.user_id)) {
+			return undefined;
+		}
 		if (dbMsg?.photo_file_id) {
 			photoFileId = dbMsg.photo_file_id;
 		}
@@ -77,7 +97,7 @@ async function resolveRepliedPhoto(
 async function resolveRepliedAudio(
 	ctx: Context,
 ): Promise<{ buffer: Buffer; mimeType: string } | undefined> {
-	const replyToMsg = ctx.message?.reply_to_message;
+	const replyToMsg = getValidReplyMessage(ctx, "audio");
 	if (!replyToMsg) return undefined;
 
 	const voiceFileId = replyToMsg.voice?.file_id || replyToMsg.audio?.file_id;
@@ -121,44 +141,60 @@ async function resolveRepliedMedia(
 	return resolveRepliedAudio(ctx);
 }
 
+function extractRepliedDocMeta(
+	replyToMsg: NonNullable<Context["message"]>["reply_to_message"],
+	chatIdStr: string,
+): { fileId?: string; fileName?: string; mimeType?: string } {
+	if (!replyToMsg) return {};
+	if (replyToMsg.document?.file_id) {
+		return {
+			fileId: replyToMsg.document.file_id,
+			fileName: replyToMsg.document.file_name,
+			mimeType: replyToMsg.document.mime_type,
+		};
+	}
+	if (replyToMsg.message_id) {
+		const dbMsg = Repository.getMessage(chatIdStr, replyToMsg.message_id);
+		if (dbMsg && !Repository.isUserOptedOut(dbMsg.user_id)) {
+			return {
+				fileId: dbMsg.document_file_id || undefined,
+				fileName: dbMsg.document_file_name || undefined,
+				mimeType: dbMsg.document_mime_type || undefined,
+			};
+		}
+	}
+	return {};
+}
+
 async function resolveRepliedDocument(
 	ctx: Context,
 	chatIdStr: string,
 ): Promise<PreparedDocumentContext | undefined> {
-	const replyToMsg = ctx.message?.reply_to_message;
+	const replyToMsg = getValidReplyMessage(ctx, "document");
 	if (!replyToMsg) return undefined;
 
-	let docFileId = replyToMsg.document?.file_id;
-	let docFileName = replyToMsg.document?.file_name;
-	let docMimeType = replyToMsg.document?.mime_type;
+	const { fileId, fileName, mimeType } = extractRepliedDocMeta(
+		replyToMsg,
+		chatIdStr,
+	);
+	if (!fileId) return undefined;
 
-	if (!docFileId && replyToMsg.message_id) {
-		const dbMsg = Repository.getMessage(chatIdStr, replyToMsg.message_id);
-		if (dbMsg?.document_file_id) {
-			docFileId = dbMsg.document_file_id;
-			docFileName = dbMsg.document_file_name || undefined;
-			docMimeType = dbMsg.document_mime_type || undefined;
-		}
-	}
-
-	if (!docFileId) return undefined;
-
-	const cleanName = sanitizeDocumentFilename(docFileName || "document.bin");
+	const cleanName = sanitizeDocumentFilename(fileName || "document.bin");
 	logger.info(
-		`[Chat] Reply to document message detected (${cleanName}, file_id: ${docFileId}). Downloading...`,
+		`[Chat] Reply to document message detected (${cleanName}, file_id: ${fileId}). Downloading...`,
 	);
 
 	try {
 		const downloadResult = await downloadTelegramFileById(
 			ctx,
-			docFileId,
+			fileId,
 			"document",
 		);
 		if (!isDownloadError(downloadResult)) {
 			const docContext = prepareDocumentContext(
 				downloadResult.buffer,
 				cleanName,
-				docMimeType,
+				mimeType,
 			);
 			// Automatically stage into chat sandbox workspace
 			await stageDocumentInWorkspace(
@@ -234,9 +270,6 @@ export function resolveReplyContext(
 		text,
 	};
 }
-
-// Re-export presentation UI helpers from src/bot/ui for backward compatibility
-export { createToolNotifier, sendSingleArtifact };
 
 async function generateAndSendReply(
 	ctx: Context,

@@ -79,7 +79,7 @@ describe("Robust Conversation Follow-Up Detection", () => {
 	const baseTime = Math.floor(Date.now() / 1000);
 
 	it("should detect quick follow-up from same user", () => {
-		Repository.createChat(testChatId, "group", 1);
+		Repository.createChat(testChatId, "group", true);
 		Repository.saveMessage({
 			chatId: testChatId,
 			messageId: 1,
@@ -111,7 +111,7 @@ describe("Robust Conversation Follow-Up Detection", () => {
 
 	it("should handle multi-part bot responses properly", () => {
 		const chatMulti = `test_multi_${Date.now()}`;
-		Repository.createChat(chatMulti, "group", 1);
+		Repository.createChat(chatMulti, "group", true);
 		// User sends prompt
 		Repository.saveMessage({
 			chatId: chatMulti,
@@ -192,7 +192,7 @@ describe("Dynamic Tool Registry Sync", () => {
 describe("Single Message Deletion in Repository", () => {
 	it("should delete a single message by chat_id and message_id", () => {
 		const chatId = `test_del_${Date.now()}`;
-		Repository.createChat(chatId, "group", 1);
+		Repository.createChat(chatId, "group", true);
 		Repository.saveMessage({
 			chatId,
 			messageId: 999,
