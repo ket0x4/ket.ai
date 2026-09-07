@@ -1,6 +1,6 @@
 import type { SandboxExecuteResponse, SandboxStreamEvent } from "./contracts";
 
-export function parseSseFrame(raw: string): SandboxStreamEvent | null {
+function parseSseFrame(raw: string): SandboxStreamEvent | null {
 	const trimmed = raw.trim();
 	if (!trimmed) return null;
 

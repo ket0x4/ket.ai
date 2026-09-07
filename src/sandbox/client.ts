@@ -1,5 +1,4 @@
 import { CONFIG } from "../config";
-import logger from "../utils/logger";
 import type {
 	SandboxExecuteRequest,
 	SandboxExecuteResponse,
@@ -11,7 +10,7 @@ import type {
 } from "./contracts";
 import { readSseStream } from "./sse";
 
-export class SandboxClientError extends Error {
+class SandboxClientError extends Error {
 	readonly status?: number;
 
 	constructor(message: string, status?: number) {
@@ -55,11 +54,11 @@ async function requestJson<T>(
 	}
 }
 
-export interface SandboxExecuteCallbacks {
+interface SandboxExecuteCallbacks {
 	onEvent?: (event: SandboxStreamEvent) => void;
 }
 
-export class SandboxClient {
+class SandboxClient {
 	async execute(
 		request: SandboxExecuteRequest,
 	): Promise<SandboxExecuteResponse> {
@@ -171,8 +170,4 @@ export function isSandboxConnectionError(error: unknown): boolean {
 		lower.includes("connection refused") ||
 		lower.includes("failed to connect")
 	);
-}
-
-export function logSandboxClientError(message: string, error: unknown): void {
-	logger.error(`[SandboxClient] ${message}`, error);
 }
