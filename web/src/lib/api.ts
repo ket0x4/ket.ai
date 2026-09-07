@@ -103,16 +103,15 @@ async function apiFetch<T>(
 	return (await res.json()) as T;
 }
 
-function parseSseMessagePart(
-	part: string,
-	onChunk: (event: {
-		type: "status" | "stdout" | "stderr" | "result" | string;
-		text: string;
-		data?: unknown;
-	}) => void,
-) {
-	const trimmed = part.trim();
-	if (!trimmed) return;
+type SseEvent = {
+	type: "status" | "stdout" | "stderr" | "result" | string;
+	text: string;
+	data?: unknown;
+};
+
+function parseSseFrame(raw: string): SseEvent | null {
+	const trimmed = raw.trim();
+	if (!trimmed) return null;
 	let eventType = "message";
 	let dataText = "";
 	for (const line of trimmed.split("\n")) {
@@ -123,16 +122,12 @@ function parseSseMessagePart(
 	try {
 		parsedData = JSON.parse(dataText);
 	} catch {}
-	onChunk({ type: eventType, text: dataText, data: parsedData });
+	return { type: eventType, text: dataText, data: parsedData };
 }
 
 async function readSseStream(
 	body: ReadableStream<Uint8Array>,
-	onChunk: (event: {
-		type: "status" | "stdout" | "stderr" | "result" | string;
-		text: string;
-		data?: unknown;
-	}) => void,
+	onChunk: (event: SseEvent) => void,
 ) {
 	const reader = body.getReader();
 	const decoder = new TextDecoder();
@@ -145,7 +140,8 @@ async function readSseStream(
 			const parts = buffer.split("\n\n");
 			buffer = parts.pop() || "";
 			for (const part of parts) {
-				parseSseMessagePart(part, onChunk);
+				const event = parseSseFrame(part);
+				if (event) onChunk(event);
 			}
 		}
 	}
@@ -156,7 +152,6 @@ export const api = {
 		me: () => apiFetch<AuthContext>("/api/me"),
 	},
 	user: {
-		getOptOut: () => apiFetch<{ isOptedOut: boolean }>("/api/user/opt-out"),
 		setOptOut: (optedOut: boolean) =>
 			apiFetch<{ success: boolean; isOptedOut: boolean; message: string }>(
 				"/api/user/opt-out",
@@ -222,21 +217,6 @@ export const api = {
 				method: "PATCH",
 				body: JSON.stringify(data),
 			}),
-		delete: (chatId: string) =>
-			apiFetch<{ success: boolean; message: string }>(`/api/chats/${chatId}`, {
-				method: "DELETE",
-			}),
-		allow: (chatId: string) =>
-			apiFetch<{ success: boolean; chat: Chat }>(`/api/chats/${chatId}/allow`, {
-				method: "POST",
-			}),
-		disallow: (chatId: string) =>
-			apiFetch<{ success: boolean; chat: Chat }>(
-				`/api/chats/${chatId}/disallow`,
-				{
-					method: "POST",
-				},
-			),
 	},
 	memories: {
 		list: (params?: {
@@ -339,39 +319,6 @@ export const api = {
 	sandbox: {
 		run: (data: SandboxRunOptions) =>
 			apiFetch<SandboxResponse>("/api/sandbox", {
-				method: "POST",
-				body: JSON.stringify(data),
-			}),
-		execute: (data: {
-			language: string;
-			code: string;
-			packages?: string[];
-			sessionId?: string;
-			filename?: string;
-			target_files?: string[];
-		}) =>
-			apiFetch<{
-				success: boolean;
-				stdout: string;
-				stderr?: string;
-				exitCode: number;
-				executionTimeMs: number;
-				errorHint?: string;
-				artifacts?: Array<{
-					filename: string;
-					mimeType: string;
-					data: string;
-					type: string;
-					sizeBytes: number;
-				}>;
-				images?: Array<{
-					filename: string;
-					mimeType: string;
-					data: string;
-					type: string;
-					sizeBytes: number;
-				}>;
-			}>("/api/sandbox/execute", {
 				method: "POST",
 				body: JSON.stringify(data),
 			}),

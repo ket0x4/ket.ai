@@ -35,76 +35,70 @@ import { MEMORY_CATEGORY_LIST } from "@/lib/constants";
 import { formatBytes, formatUptime } from "@/lib/utils";
 import type { StatsResponse, UserRole } from "@/types";
 
-function getMetricCards(
-	role: UserRole,
-	stats: StatsResponse | null,
-): MetricCardProps[] {
-	if (role === "owner") {
-		return [
-			{
-				title: "Registered Groups",
-				value: stats?.totalChats ?? 0,
-				icon: Users,
-				iconColor: "text-blue-400",
-				description: "Total chat contexts",
-			},
-			{
-				title: "Whitelisted",
-				value: stats?.allowedChats ?? 0,
-				icon: CheckCircle2,
-				iconColor: "text-emerald-400",
-				valueColor: "text-emerald-400",
-				description: "Active authorized groups",
-			},
-			{
-				title: "Total Memories",
-				value: stats?.totalMemories ?? 0,
-				icon: Brain,
-				iconColor: "text-purple-400",
-				description: "Semantic fact embeddings",
-			},
-			{
-				title: "Messages",
-				value: stats?.totalMessages ?? 0,
-				icon: MessageSquare,
-				iconColor: "text-amber-400",
-				description: "Processed chat turns",
-			},
-		];
-	}
-
-	if (role === "admin") {
-		return [
-			{
-				title: "Managed Groups",
-				value: stats?.managedGroupsCount ?? 0,
-				icon: Users,
-				iconColor: "text-blue-400",
-				description: "Where you are admin",
-			},
-			{
-				title: "Memories",
-				value: stats?.totalMemories ?? 0,
-				icon: Brain,
-				iconColor: "text-purple-400",
-				description: "Saved in your groups",
-			},
-			{
-				title: "Group Messages",
-				value: stats?.totalMessages ?? 0,
-				icon: MessageSquare,
-				iconColor: "text-emerald-400",
-				valueColor: "text-emerald-400",
-				description: "Across managed channels",
-				colSpan: 2,
-			},
-		];
-	}
-
-	return [
+const METRICS_BY_ROLE: Record<
+	UserRole,
+	(s: StatsResponse | null) => MetricCardProps[]
+> = {
+	owner: (s) => [
+		{
+			title: "Registered Groups",
+			value: s?.totalChats ?? 0,
+			icon: Users,
+			iconColor: "text-blue-400",
+			description: "Total chat contexts",
+		},
+		{
+			title: "Whitelisted",
+			value: s?.allowedChats ?? 0,
+			icon: CheckCircle2,
+			iconColor: "text-emerald-400",
+			valueColor: "text-emerald-400",
+			description: "Active authorized groups",
+		},
+		{
+			title: "Total Memories",
+			value: s?.totalMemories ?? 0,
+			icon: Brain,
+			iconColor: "text-purple-400",
+			description: "Semantic fact embeddings",
+		},
+		{
+			title: "Messages",
+			value: s?.totalMessages ?? 0,
+			icon: MessageSquare,
+			iconColor: "text-amber-400",
+			description: "Processed chat turns",
+		},
+	],
+	admin: (s) => [
+		{
+			title: "Managed Groups",
+			value: s?.managedGroupsCount ?? 0,
+			icon: Users,
+			iconColor: "text-blue-400",
+			description: "Where you are admin",
+		},
+		{
+			title: "Memories",
+			value: s?.totalMemories ?? 0,
+			icon: Brain,
+			iconColor: "text-purple-400",
+			description: "Saved in your groups",
+		},
+		{
+			title: "Group Messages",
+			value: s?.totalMessages ?? 0,
+			icon: MessageSquare,
+			iconColor: "text-emerald-400",
+			valueColor: "text-emerald-400",
+			description: "Across managed channels",
+			colSpan: 2,
+		},
+	],
+	user: (s) => [
 		{
 			title: "My Saved Facts",
-			value: stats?.totalMemories ?? 0,
+			value: s?.totalMemories ?? 0,
 			icon: Brain,
 			iconColor: "text-blue-400",
 			valueColor: "text-blue-400",
@@ -112,21 +106,21 @@ function getMetricCards(
 		},
 		{
 			title: "My Groups",
-			value: stats?.totalGroups ?? 0,
+			value: s?.totalGroups ?? 0,
 			icon: Users,
 			iconColor: "text-purple-400",
 			description: "Active group memberships",
 		},
 		{
 			title: "Recorded Messages",
-			value: stats?.totalMessages ?? 0,
+			value: s?.totalMessages ?? 0,
 			icon: MessageSquare,
 			iconColor: "text-amber-400",
 			description: "Recorded interactions",
 			colSpan: 2,
 		},
-	];
-}
+	],
+};
 
 const MemoryDistributionCard: FC<{
 	stats: StatsResponse | null;
@@ -441,7 +435,7 @@ export const DashboardTab: FC<DashboardTabProps> = ({
 		);
 	}
 
-	const metricCards = getMetricCards(role, stats);
+	const metricCards = METRICS_BY_ROLE[role](stats);
 
 	return (
 		<div className="space-y-6 animate-in fade-in duration-200">

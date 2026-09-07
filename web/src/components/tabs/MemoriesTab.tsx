@@ -303,22 +303,12 @@ export const MemoriesTab: FC<MemoriesTabProps> = ({
 	};
 
 	const getChatLabel = (m: Memory) => {
-		if (
-			m.chat_title &&
-			m.chat_title !== "Whitelisted Chat" &&
-			m.chat_title !== "Seeded Group"
-		) {
-			return m.chat_title;
-		}
 		if (currentUser && m.chat_id === currentUser.id.toString()) {
 			return `Personal Profile (${currentUser.first_name || "Me"})`;
 		}
 		const found = chats.find((c) => c.chat_id === m.chat_id);
-		return found
-			? getChatDisplayName(found)
-			: m.chat_id.startsWith("-")
-				? `Group (${m.chat_id})`
-				: `Chat (${m.chat_id})`;
+		if (found) return getChatDisplayName(found);
+		return getChatDisplayName({ chat_id: m.chat_id, title: m.chat_title });
 	};
 
 	return (

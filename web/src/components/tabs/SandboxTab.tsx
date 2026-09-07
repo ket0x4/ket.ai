@@ -45,33 +45,6 @@ import {
 	type TerminalLogEntry,
 } from "./sandbox";
 
-function detectCodeLanguage(code: string): string {
-	const trimmed = code.trim();
-	if (
-		trimmed.startsWith("#!/bin/bash") ||
-		trimmed.startsWith("curl ") ||
-		trimmed.startsWith("echo ") ||
-		trimmed.startsWith("ls ")
-	) {
-		return "bash";
-	}
-	if (
-		trimmed.includes("interface ") ||
-		trimmed.includes(": string") ||
-		trimmed.includes(": number")
-	) {
-		return "typescript";
-	}
-	if (
-		trimmed.includes("console.log") ||
-		trimmed.includes("const ") ||
-		trimmed.includes("let ")
-	) {
-		return "javascript";
-	}
-	return "python";
-}
-
 interface DispatchEventState {
 	setTerminalStatus: (s: string) => void;
 	setTerminalLogs: (
@@ -366,17 +339,12 @@ const SandboxOutputSection: FC<OutputSectionProps> = ({
 interface SandboxTabProps {
 	chats?: Chat[];
 	personas?: Persona[];
-	onRefresh?: () => void;
 }
 
 export const SandboxTab: FC<SandboxTabProps> = ({
-	chats: initialChats = [],
-	personas: initialPersonas = [],
+	chats = [],
+	personas = [],
 }) => {
-	const [chats, setChats] = useState<Chat[]>(initialChats);
-	const [personas, setPersonas] = useState<Persona[]>(initialPersonas);
-	const [isLoadingContext, setIsLoadingContext] = useState(false);
-
 	const [selectedChatId, setSelectedChatId] = useState<string>("");
 	const [selectedPersonaId, setSelectedPersonaId] = useState<string>("default");
 
@@ -420,7 +388,7 @@ export const SandboxTab: FC<SandboxTabProps> = ({
 		setActiveResultTab("terminal");
 
 		const startTime = Date.now();
-		const language = detectCodeLanguage(trimmed);
+		const language = "python";
 
 		const dispatchState: DispatchEventState = {
 			setTerminalStatus,
@@ -458,29 +426,6 @@ export const SandboxTab: FC<SandboxTabProps> = ({
 			setIsStreamingCode(false);
 		}
 	};
-
-	useEffect(() => {
-		if (initialChats.length > 0) setChats(initialChats);
-	}, [initialChats]);
-
-	useEffect(() => {
-		if (initialPersonas.length > 0) setPersonas(initialPersonas);
-	}, [initialPersonas]);
-
-	useEffect(() => {
-		if (chats.length === 0 || personas.length === 0) {
-			setIsLoadingContext(true);
-			Promise.all([
-				api.chats.list().catch(() => []),
-				api.personas.list().catch(() => ({ personas: [], activePersonas: {} })),
-			])
-				.then(([chatList, personaData]) => {
-					if (chatList && chatList.length > 0) setChats(chatList);
-					if (personaData?.personas) setPersonas(personaData.personas);
-				})
-				.finally(() => setIsLoadingContext(false));
-		}
-	}, [chats.length, personas.length]);
 
 	useEffect(() => {
 		if (!selectedChatId && chats.length > 0) {
@@ -597,7 +542,7 @@ export const SandboxTab: FC<SandboxTabProps> = ({
 						onToggleMemory={setEnableMemory}
 						verbose={verbose}
 						onToggleVerbose={setVerbose}
-						disabled={isLoadingContext || isExecuting}
+						disabled={isExecuting}
 					/>
 
 					<div className="space-y-2">
