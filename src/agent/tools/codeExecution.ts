@@ -1,4 +1,9 @@
 import { CONFIG } from "../../config";
+import { isSandboxConnectionError, sandboxClient } from "../../sandbox/client";
+import type {
+	SandboxExecuteRequest,
+	SandboxExecuteResponse,
+} from "../../sandbox/contracts";
 import logger from "../../utils/logger";
 import type { AgentTool, ToolExecutionContext } from "../types";
 
@@ -70,201 +75,32 @@ function buildSystemNote(data: {
 	return systemNote;
 }
 
-function checkConnectionError(errorMessage: string): boolean {
-	const lowerMsg = errorMessage.toLowerCase();
-	return (
-		lowerMsg.includes("econnrefused") ||
-		lowerMsg.includes("fetch failed") ||
-		lowerMsg.includes("aborterror") ||
-		lowerMsg.includes("unable to connect") ||
-		lowerMsg.includes("connection refused") ||
-		lowerMsg.includes("failed to connect")
-	);
-}
-
-interface RawSandboxExecutionResponse {
-	success: boolean;
-	stdout: string;
-	stderr?: string;
-	exitCode: number;
-	executionTimeMs: number;
-	installedPackages?: string[];
-	artifacts?: CodeExecutionArtifact[];
-	images?: CodeExecutionImage[];
-	errorHint?: string;
-	truncated?: boolean;
-	error?: string;
-}
-
-interface SseParserState {
-	accumulatedStdout: string;
-	accumulatedStderr: string;
-	finalResult: RawSandboxExecutionResponse | null;
-}
-
-function extractSseEventLines(part: string): {
-	eventType: string;
-	dataText: string;
-} {
-	let eventType = "message";
-	let dataText = "";
-	for (const line of part.trim().split("\n")) {
-		if (line.startsWith("event: ")) {
-			eventType = line.slice(7).trim();
-		} else if (line.startsWith("data: ")) {
-			dataText = line.slice(6);
-		}
-	}
-	return { eventType, dataText };
-}
-
-function handleSseStatusEvent(
-	dataText: string,
-	state: SseParserState,
-	onProgress?: (event: CodeExecutionProgressEvent) => void,
-) {
-	let message = dataText;
-	try {
-		const obj = JSON.parse(dataText);
-		if (obj.message) message = obj.message;
-	} catch {}
-	onProgress?.({
-		type: "status",
-		text: message,
-		fullStdoutSoFar: state.accumulatedStdout,
-	});
-}
-
-function processSseEvent(
-	part: string,
-	state: SseParserState,
-	onProgress?: (event: CodeExecutionProgressEvent) => void,
-) {
-	if (!part.trim()) return;
-	const { eventType, dataText } = extractSseEventLines(part);
-
-	if (eventType === "stdout") {
-		state.accumulatedStdout += dataText;
-		onProgress?.({
-			type: "stdout",
-			text: dataText,
-			fullStdoutSoFar: state.accumulatedStdout,
-		});
-	} else if (eventType === "stderr") {
-		state.accumulatedStderr += dataText;
-		onProgress?.({
-			type: "stderr",
-			text: dataText,
-			fullStdoutSoFar: state.accumulatedStdout,
-		});
-	} else if (eventType === "status") {
-		handleSseStatusEvent(dataText, state, onProgress);
-	} else if (eventType === "result") {
-		try {
-			state.finalResult = JSON.parse(dataText) as RawSandboxExecutionResponse;
-		} catch (e) {
-			logger.warn("[CodeExecutionTool] Failed to parse result SSE payload:", e);
-		}
-	}
-}
-
-async function parseSseExecutionResponse(
-	response: Response,
-	onProgress?: (event: CodeExecutionProgressEvent) => void,
-): Promise<RawSandboxExecutionResponse> {
-	if (!response.body) {
-		throw new Error("Sandbox response body is empty");
-	}
-
-	const reader = response.body.getReader();
-	const decoder = new TextDecoder();
-	let buffer = "";
-	const state: SseParserState = {
-		accumulatedStdout: "",
-		accumulatedStderr: "",
-		finalResult: null,
-	};
-
-	while (true) {
-		const { done, value } = await reader.read();
-		if (done) break;
-		if (value) {
-			buffer += decoder.decode(value, { stream: true });
-			const parts = buffer.split("\n\n");
-			buffer = parts.pop() || "";
-
-			for (const part of parts) {
-				processSseEvent(part, state, onProgress);
-			}
-		}
-	}
-
-	if (state.finalResult) {
-		return state.finalResult;
-	}
-
-	return {
-		success: state.accumulatedStderr.length === 0,
-		stdout: state.accumulatedStdout,
-		stderr: state.accumulatedStderr || undefined,
-		exitCode: state.accumulatedStderr.length === 0 ? 0 : 1,
-		executionTimeMs: 0,
-	};
-}
+type RawSandboxExecutionResponse = SandboxExecuteResponse;
 
 async function fetchSandboxExecution(
-	targetUrl: string,
-	payload: Record<string, unknown>,
+	payload: SandboxExecuteRequest,
 	useStreaming: boolean,
 	onProgress?: (event: CodeExecutionProgressEvent) => void,
 ): Promise<RawSandboxExecutionResponse> {
-	const controller = new AbortController();
-	const timeoutId = setTimeout(
-		() => controller.abort(),
-		CONFIG.SANDBOX_TIMEOUT_MS + 5000,
-	);
-
-	const headers: Record<string, string> = {
-		"Content-Type": "application/json",
-	};
-	if (useStreaming) {
-		headers.Accept = "text/event-stream";
-	}
-
-	try {
-		const response = await fetch(targetUrl, {
-			method: "POST",
-			headers,
-			body: JSON.stringify(payload),
-			signal: controller.signal,
-		});
-
-		clearTimeout(timeoutId);
-
-		if (!response.ok) {
-			const errorText = await response.text().catch(() => "");
-			logger.error(
-				`[CodeExecutionTool] Sandbox HTTP error ${response.status}: ${errorText}`,
-			);
-			return {
-				success: false,
-				stdout: "",
-				stderr: `Sandbox returned HTTP ${response.status}: ${errorText}`,
-				exitCode: 1,
-				executionTimeMs: 0,
-				error: `Sandbox execution failed with HTTP ${response.status}`,
-			};
-		}
-
-		const isSse = response.headers
-			.get("content-type")
-			?.includes("text/event-stream");
-		return isSse
-			? await parseSseExecutionResponse(response, onProgress)
-			: ((await response.json()) as RawSandboxExecutionResponse);
-	} finally {
-		clearTimeout(timeoutId);
-	}
+	const result = useStreaming
+		? await sandboxClient.executeStream(payload, {
+				onEvent: (event) => {
+					if (event.type === "status") {
+						const data =
+							typeof event.data === "object" && event.data
+								? (event.data as { message?: string })
+								: undefined;
+						onProgress?.({
+							type: "status",
+							text: data?.message || event.text,
+						});
+					} else if (event.type === "stdout" || event.type === "stderr") {
+						onProgress?.({ type: event.type, text: event.text });
+					}
+				},
+			})
+		: await sandboxClient.execute(payload);
+	return result;
 }
 
 function formatSandboxResult(
@@ -329,9 +165,8 @@ export async function executeInSandbox(
 
 	try {
 		const data = await fetchSandboxExecution(
-			targetUrl,
 			{
-				language,
+				language: language as "python" | "javascript" | "typescript" | "bash",
 				code,
 				packages,
 				sessionId,
@@ -349,7 +184,7 @@ export async function executeInSandbox(
 		const errorMessage = err instanceof Error ? err.message : String(err);
 		logger.error("[CodeExecutionTool] Failed to connect to sandbox:", err);
 
-		const isConnectionError = checkConnectionError(errorMessage);
+		const isConnectionError = isSandboxConnectionError(err);
 		return {
 			success: false,
 			stdout: "",

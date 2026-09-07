@@ -1,5 +1,15 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { extname, isAbsolute, join, relative, resolve } from "node:path";
+import {
+	existsSync,
+	lstatSync,
+	mkdirSync,
+	readdirSync,
+	readFileSync,
+	realpathSync,
+	rmSync,
+	statSync,
+	writeFileSync,
+} from "node:fs";
+import { dirname, extname, isAbsolute, join, relative, resolve } from "node:path";
 
 interface ExecuteRequest {
 	language: "python" | "javascript" | "typescript" | "bash";
@@ -95,7 +105,17 @@ function resolveWorkspace(sessionId?: string): {
 }
 
 function resolveSafePath(workspaceDir: string, relativePath: string): string {
-	const clean = relativePath.trim().replace(/^(\.\.(\/|\\|$))+/, "");
+	const clean = relativePath.trim();
+	if (
+		!clean ||
+		clean.includes("\0") ||
+		isAbsolute(clean) ||
+		clean.split(/[\\/]/).some((segment) => segment === "..")
+	) {
+		throw new Error(
+			"Access denied: Absolute paths and path traversal are forbidden.",
+		);
+	}
 	const normalizedWorkspace = resolve(workspaceDir);
 	const targetPath = resolve(normalizedWorkspace, clean);
 	const rel = relative(normalizedWorkspace, targetPath);
@@ -105,6 +125,23 @@ function resolveSafePath(workspaceDir: string, relativePath: string): string {
 			"Access denied: Path traversal outside workspace is forbidden.",
 		);
 	}
+	// Existing symlinks must resolve inside the workspace. For new files,
+	// validate the nearest existing parent instead.
+	let existingPath = existsSync(targetPath) ? targetPath : dirname(targetPath);
+	while (!existsSync(existingPath) && existingPath !== normalizedWorkspace) {
+		existingPath = dirname(existingPath);
+	}
+	const realWorkspace = realpathSync(normalizedWorkspace);
+	const realExistingPath = realpathSync(existingPath);
+	const realRelative = relative(realWorkspace, realExistingPath);
+	if (realRelative.startsWith("..") || isAbsolute(realRelative)) {
+		throw new Error("Access denied: Symlink escapes workspace.");
+	}
+
+	if (existsSync(targetPath) && lstatSync(targetPath).isSymbolicLink()) {
+		throw new Error("Access denied: Symbolic links are not writable.");
+	}
+
 	return targetPath;
 }
 

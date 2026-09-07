@@ -1,5 +1,5 @@
 import { extname } from "node:path";
-import { CONFIG } from "../../config";
+import { sandboxClient } from "../../sandbox/client";
 import logger from "../../utils/logger";
 import { inferArtifactType } from "../sanitizer";
 import type {
@@ -84,11 +84,6 @@ interface ResetWorkspaceResult {
 	system_note?: string;
 }
 
-function getSandboxTargetUrl(endpoint: string): string {
-	const sandboxUrl = CONFIG.SANDBOX_URL.replace(/\/+$/, "");
-	return `${sandboxUrl}${endpoint}`;
-}
-
 function resolveSessionId(
 	context?: ToolExecutionContext,
 	argsSessionId?: string,
@@ -106,23 +101,46 @@ async function postToWorkspaceSandbox<T>(
 	endpoint: string,
 	body: Record<string, unknown>,
 ): Promise<{ ok: true; data: T } | { ok: false; error: string }> {
-	const targetUrl = getSandboxTargetUrl(endpoint);
-	const response = await fetch(targetUrl, {
-		method: "POST",
-		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify(body),
-	});
-
-	if (!response.ok) {
-		const errorText = await response.text().catch(() => "");
+	try {
+		let data: unknown;
+		switch (endpoint) {
+			case "/workspace/read":
+				data = await sandboxClient.readFile(
+					body as {
+						sessionId: string;
+						filename: string;
+						encoding?: "utf-8" | "base64";
+					},
+				);
+				break;
+			case "/workspace/write":
+				data = await sandboxClient.writeFile(
+					body as {
+						sessionId: string;
+						filename: string;
+						content: string;
+						encoding?: "utf-8" | "base64";
+					},
+				);
+				break;
+			case "/workspace/list":
+				data = await sandboxClient.listFiles(body as { sessionId: string });
+				break;
+			case "/workspace/reset":
+				data = await sandboxClient.resetWorkspace(
+					body as { sessionId: string },
+				);
+				break;
+			default:
+				throw new Error(`Unsupported workspace endpoint: ${endpoint}`);
+		}
+		return { ok: true, data: data as T };
+	} catch (error) {
 		return {
 			ok: false,
-			error: `HTTP ${response.status}: ${errorText}`,
+			error: error instanceof Error ? error.message : String(error),
 		};
 	}
-
-	const data = (await response.json()) as T;
-	return { ok: true, data };
 }
 
 function getWorkspaceFileMime(filename: string): {
