@@ -205,11 +205,9 @@ print(greet("World"))
 		expect(runFixed.stdout).toContain("Hello World");
 	});
 
-	test("toolRegistry includes send_workspace_file and all workspace tools", () => {
-		expect(toolRegistry.hasTool("send_workspace_file")).toBeTrue();
-		expect(toolRegistry.hasTool("write_workspace_file")).toBeTrue();
-		expect(toolRegistry.hasTool("read_workspace_file")).toBeTrue();
-		expect(toolRegistry.hasTool("list_workspace_files")).toBeTrue();
+	test("toolRegistry includes execute_code tool", () => {
+		expect(toolRegistry.hasTool("execute_code")).toBeTrue();
+		expect(toolRegistry.hasTool("send_workspace_file")).toBeFalse();
 	});
 
 	test("SQLite repository stores and retrieves document metadata correctly", () => {

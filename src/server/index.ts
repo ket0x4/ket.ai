@@ -1723,24 +1723,6 @@ function handleLogsGet(url: URL, auth: AuthContext): Response {
 	}
 }
 
-const MIME_TYPES: Record<string, string> = {
-	".html": "text/html; charset=utf-8",
-	".js": "text/javascript; charset=utf-8",
-	".mjs": "text/javascript; charset=utf-8",
-	".css": "text/css; charset=utf-8",
-	".json": "application/json; charset=utf-8",
-	".png": "image/png",
-	".jpg": "image/jpeg",
-	".jpeg": "image/jpeg",
-	".gif": "image/gif",
-	".svg": "image/svg+xml",
-	".ico": "image/x-icon",
-	".woff": "font/woff",
-	".woff2": "font/woff2",
-	".ttf": "font/ttf",
-	".webp": "image/webp",
-};
-
 const PUBLIC_DIR = path.resolve(process.cwd(), "public");
 
 function serveStaticFile(pathname: string): Response {
@@ -1764,7 +1746,7 @@ function serveStaticFile(pathname: string): Response {
 			}
 
 			const file = Bun.file(filePath);
-			const mime = MIME_TYPES[ext] || file.type || "application/octet-stream";
+			const mime = file.type || "application/octet-stream";
 			const isHashedAsset = cleanPath.startsWith("/assets/");
 
 			return new Response(file, {

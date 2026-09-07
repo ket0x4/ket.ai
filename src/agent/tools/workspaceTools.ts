@@ -3,7 +3,6 @@ import { CONFIG } from "../../config";
 import logger from "../../utils/logger";
 import { inferArtifactType } from "../sanitizer";
 import type {
-	AgentTool,
 	ArtifactMediaType,
 	GeneratedMediaArtifact,
 	ToolExecutionContext,
@@ -126,56 +125,14 @@ async function postToWorkspaceSandbox<T>(
 	return { ok: true, data };
 }
 
-const WORKSPACE_FILE_MIME_MAP: Record<
-	string,
-	{ mimeType: string; type: ArtifactMediaType }
-> = {
-	".png": { mimeType: "image/png", type: "image" },
-	".jpg": { mimeType: "image/jpeg", type: "image" },
-	".jpeg": { mimeType: "image/jpeg", type: "image" },
-	".webp": { mimeType: "image/webp", type: "image" },
-	".svg": { mimeType: "image/svg+xml", type: "image" },
-	".gif": { mimeType: "image/gif", type: "image" },
-	".mp4": { mimeType: "video/mp4", type: "video" },
-	".webm": { mimeType: "video/webm", type: "video" },
-	".mp3": { mimeType: "audio/mpeg", type: "audio" },
-	".wav": { mimeType: "audio/wav", type: "audio" },
-	".ogg": { mimeType: "audio/ogg", type: "audio" },
-	".pdf": { mimeType: "application/pdf", type: "document" },
-	".xlsx": {
-		mimeType:
-			"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-		type: "document",
-	},
-	".xls": { mimeType: "application/vnd.ms-excel", type: "document" },
-	".docx": {
-		mimeType:
-			"application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-		type: "document",
-	},
-	".pptx": {
-		mimeType:
-			"application/vnd.openxmlformats-officedocument.presentationml.presentation",
-		type: "document",
-	},
-	".csv": { mimeType: "text/csv", type: "document" },
-	".tsv": { mimeType: "text/tab-separated-values", type: "document" },
-	".json": { mimeType: "application/json", type: "document" },
-	".py": { mimeType: "text/x-python", type: "document" },
-	".js": { mimeType: "application/javascript", type: "document" },
-	".ts": { mimeType: "application/typescript", type: "document" },
-	".sh": { mimeType: "text/x-shellscript", type: "document" },
-	".bash": { mimeType: "text/x-shellscript", type: "document" },
-	".html": { mimeType: "text/html", type: "document" },
-	".css": { mimeType: "text/css", type: "document" },
-	".md": { mimeType: "text/markdown", type: "document" },
-	".sql": { mimeType: "application/sql", type: "document" },
-	".zip": { mimeType: "application/zip", type: "document" },
-	".tar": { mimeType: "application/x-tar", type: "document" },
-	".gz": { mimeType: "application/gzip", type: "document" },
-	".txt": { mimeType: "text/plain", type: "document" },
-	".log": { mimeType: "text/plain", type: "document" },
-};
+function getWorkspaceFileMime(filename: string): {
+	mimeType: string;
+	type: ArtifactMediaType;
+} {
+	const ext = extname(filename).toLowerCase();
+	const mimeType = Bun.file(`file${ext}`).type || "application/octet-stream";
+	return { mimeType, type: inferArtifactType(mimeType) };
+}
 
 export async function readWorkspaceFile(
 	args: ReadWorkspaceFileArgs,
@@ -282,10 +239,7 @@ export async function writeWorkspaceFile(
 				args.encoding === "base64"
 					? Buffer.from(content, "base64")
 					: Buffer.from(content, "utf-8");
-			const ext = extname(filename).toLowerCase();
-			const mapping = WORKSPACE_FILE_MIME_MAP[ext];
-			const mimeType = mapping?.mimeType || "application/octet-stream";
-			const artType = mapping?.type || inferArtifactType(mimeType);
+			const { mimeType, type: artType } = getWorkspaceFileMime(filename);
 
 			context.emitArtifact({
 				filename,
@@ -342,10 +296,7 @@ export async function sendWorkspaceFile(
 	try {
 		const filename = readRes.filename;
 		const buffer = Buffer.from(readRes.data, "base64");
-		const ext = extname(filename).toLowerCase();
-		const mapping = WORKSPACE_FILE_MIME_MAP[ext];
-		const mimeType = mapping?.mimeType || "application/octet-stream";
-		const artType = mapping?.type || inferArtifactType(mimeType);
+		const { mimeType, type: artType } = getWorkspaceFileMime(filename);
 
 		const artifact: GeneratedMediaArtifact = {
 			filename,
@@ -466,120 +417,3 @@ export async function resetWorkspace(
 		};
 	}
 }
-
-export const readWorkspaceFileTool: AgentTool<
-	ReadWorkspaceFileArgs,
-	ReadWorkspaceFileResult
-> = {
-	name: "read_workspace_file",
-	description:
-		"Reads the text content of a file located in the current chat session's persistent sandbox workspace. Use this to inspect code, data, logs, or error stack traces across multi-turn interactions.",
-	parameters: {
-		type: "OBJECT",
-		properties: {
-			filename: {
-				type: "STRING",
-				description:
-					"Relative path or name of the file to read (e.g. 'script.py', 'data.csv', 'output.txt').",
-			},
-		},
-		required: ["filename"],
-	},
-	execute: async (
-		args: ReadWorkspaceFileArgs,
-		context?: ToolExecutionContext,
-	) => readWorkspaceFile(args, context),
-};
-
-export const writeWorkspaceFileTool: AgentTool<
-	WriteWorkspaceFileArgs,
-	WriteWorkspaceFileResult
-> = {
-	name: "write_workspace_file",
-	description:
-		"Writes or updates a file in the current chat session's persistent sandbox workspace without immediately executing it. Use this to stage scripts, write configuration files, or prepare datasets.",
-	parameters: {
-		type: "OBJECT",
-		properties: {
-			filename: {
-				type: "STRING",
-				description:
-					"Relative path or name of the file to write (e.g. 'helper.py', 'config.json', 'data.csv').",
-			},
-			content: {
-				type: "STRING",
-				description: "Complete text content to write to the file.",
-			},
-			sendToUser: {
-				type: "BOOLEAN",
-				description:
-					"Optional. If true, delivers the written file directly to the user as a downloadable file in Telegram.",
-			},
-		},
-		required: ["filename", "content"],
-	},
-	execute: async (
-		args: WriteWorkspaceFileArgs,
-		context?: ToolExecutionContext,
-	) => writeWorkspaceFile(args, context),
-};
-
-export const sendWorkspaceFileTool: AgentTool<
-	SendWorkspaceFileArgs,
-	SendWorkspaceFileResult
-> = {
-	name: "send_workspace_file",
-	description:
-		"Sends a file from the workspace to the user in Telegram as a downloadable document or media attachment. Use this when the user asks to get, download, or receive an edited script, modified code, generated report, or exported file.",
-	parameters: {
-		type: "OBJECT",
-		properties: {
-			filename: {
-				type: "STRING",
-				description:
-					"Name of the file in the workspace to send to the user (e.g. 'script.py', 'report.pdf', 'output.csv').",
-			},
-			caption: {
-				type: "STRING",
-				description: "Optional brief caption or description for the file.",
-			},
-		},
-		required: ["filename"],
-	},
-	execute: async (
-		args: SendWorkspaceFileArgs,
-		context?: ToolExecutionContext,
-	) => sendWorkspaceFile(args, context),
-};
-
-export const listWorkspaceFilesTool: AgentTool<
-	ListWorkspaceFilesArgs,
-	ListWorkspaceFilesResult
-> = {
-	name: "list_workspace_files",
-	description:
-		"Lists all files and generated plots/images currently existing in the chat session's persistent workspace with their sizes and modification times.",
-	parameters: {
-		type: "OBJECT",
-		properties: {},
-	},
-	execute: async (
-		args: ListWorkspaceFilesArgs,
-		context?: ToolExecutionContext,
-	) => listWorkspaceFiles(args, context),
-};
-
-export const resetWorkspaceTool: AgentTool<
-	ResetWorkspaceArgs,
-	ResetWorkspaceResult
-> = {
-	name: "reset_workspace",
-	description:
-		"Clears all files and state in the current chat session's workspace. Use this when the user asks to start fresh or reset the environment.",
-	parameters: {
-		type: "OBJECT",
-		properties: {},
-	},
-	execute: async (args: ResetWorkspaceArgs, context?: ToolExecutionContext) =>
-		resetWorkspace(args, context),
-};

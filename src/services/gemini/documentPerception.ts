@@ -1,4 +1,3 @@
-import { extname } from "node:path";
 import {
 	type WriteWorkspaceFileResult,
 	writeWorkspaceFile,
@@ -22,79 +21,10 @@ export interface PreparedDocumentContext {
 	summaryHint?: string;
 }
 
-const TEXT_EXTENSIONS = new Set([
-	".py",
-	".js",
-	".ts",
-	".jsx",
-	".tsx",
-	".mjs",
-	".cjs",
-	".json",
-	".csv",
-	".tsv",
-	".txt",
-	".md",
-	".markdown",
-	".html",
-	".htm",
-	".css",
-	".scss",
-	".sass",
-	".less",
-	".sh",
-	".bash",
-	".zsh",
-	".sql",
-	".yml",
-	".yaml",
-	".xml",
-	".log",
-	".c",
-	".h",
-	".cpp",
-	".hpp",
-	".cc",
-	".rs",
-	".go",
-	".java",
-	".kt",
-	".php",
-	".rb",
-	".lua",
-	".r",
-	".dart",
-	".swift",
-	".env",
-	".ini",
-	".toml",
-	".conf",
-	".cfg",
-	".dockerfile",
-]);
-
-const SPREADSHEET_EXTENSIONS = new Set([".xlsx", ".xls", ".xlsm", ".parquet"]);
-
-const PDF_EXTENSIONS = new Set([".pdf"]);
-
-const IMAGE_EXTENSIONS = new Set([
-	".png",
-	".jpg",
-	".jpeg",
-	".webp",
-	".gif",
-	".svg",
-	".bmp",
-]);
-
-const AUDIO_EXTENSIONS = new Set([
-	".mp3",
-	".wav",
-	".ogg",
-	".m4a",
-	".flac",
-	".aac",
-]);
+// ponytail: streamlined MIME and extension classification
+const SPREADSHEET_REGEX = /\.(xlsx?|xlsm|parquet)$/i;
+const IMAGE_REGEX = /\.(png|jpe?g|webp|gif|svg|bmp)$/i;
+const AUDIO_REGEX = /\.(mp3|wav|ogg|m4a|flac|aac)$/i;
 
 /**
  * Strips dangerous traversal paths and invalid chars from filenames.
@@ -130,14 +60,13 @@ export function classifyDocument(
 	isAudio: boolean;
 	isSpreadsheet: boolean;
 } {
-	const ext = extname(filename).toLowerCase();
 	const lowerMime = mimeType.toLowerCase();
-
-	const isPdf = PDF_EXTENSIONS.has(ext) || lowerMime === "application/pdf";
-	const isImage = IMAGE_EXTENSIONS.has(ext) || lowerMime.startsWith("image/");
-	const isAudio = AUDIO_EXTENSIONS.has(ext) || lowerMime.startsWith("audio/");
+	const isPdf =
+		filename.toLowerCase().endsWith(".pdf") || lowerMime === "application/pdf";
+	const isImage = IMAGE_REGEX.test(filename) || lowerMime.startsWith("image/");
+	const isAudio = AUDIO_REGEX.test(filename) || lowerMime.startsWith("audio/");
 	const isSpreadsheet =
-		SPREADSHEET_EXTENSIONS.has(ext) ||
+		SPREADSHEET_REGEX.test(filename) ||
 		lowerMime.includes("spreadsheet") ||
 		lowerMime.includes("excel");
 
@@ -146,8 +75,7 @@ export function classifyDocument(
 		!isImage &&
 		!isAudio &&
 		!isSpreadsheet &&
-		(TEXT_EXTENSIONS.has(ext) ||
-			lowerMime.startsWith("text/") ||
+		(lowerMime.startsWith("text/") ||
 			lowerMime.includes("json") ||
 			lowerMime.includes("javascript") ||
 			lowerMime.includes("xml") ||

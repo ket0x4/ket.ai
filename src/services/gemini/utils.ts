@@ -167,42 +167,14 @@ interface QueuedTask<T = unknown> {
 	reject: (reason?: any) => void;
 }
 
-function parseScheduleOptions(optionsOrInterval?: number | ScheduleOptions): {
-	priority: RequestPriority;
-	customIntervalMs?: number;
-} {
-	let priority: RequestPriority = "high";
-	let customIntervalMs: number | undefined;
-
-	if (typeof optionsOrInterval === "number") {
-		customIntervalMs = optionsOrInterval;
-	} else if (
-		typeof optionsOrInterval === "object" &&
-		optionsOrInterval !== null
-	) {
-		if (optionsOrInterval.priority) priority = optionsOrInterval.priority;
-		if (optionsOrInterval.customIntervalMs !== undefined) {
-			customIntervalMs = optionsOrInterval.customIntervalMs;
-		}
-	}
-	return { priority, customIntervalMs };
-}
-
-/**
- * Pacing rate limiter to enforce minimum time interval between consecutive Gemini API requests,
- * utilizing a two-tier priority queue (high for user-facing interactions, low for background tasks).
- * @internal
- */
+// ponytail: streamlined rate limiter enforcing pacing delay and priority ordering
 export class GeminiRateLimiter {
 	private lastRequestEndTime = 0;
-	private minIntervalMs: number;
-	private highPriorityQueue: QueuedTask[] = [];
-	private lowPriorityQueue: QueuedTask[] = [];
+	private highQueue: QueuedTask[] = [];
+	private lowQueue: QueuedTask[] = [];
 	private isProcessing = false;
 
-	constructor(minIntervalMs = 3500) {
-		this.minIntervalMs = minIntervalMs;
-	}
+	constructor(private minIntervalMs = 3500) {}
 
 	public setMinInterval(ms: number): void {
 		this.minIntervalMs = ms;
@@ -210,30 +182,33 @@ export class GeminiRateLimiter {
 
 	public getQueueLength(): { high: number; low: number; total: number } {
 		return {
-			high: this.highPriorityQueue.length,
-			low: this.lowPriorityQueue.length,
-			total: this.highPriorityQueue.length + this.lowPriorityQueue.length,
+			high: this.highQueue.length,
+			low: this.lowQueue.length,
+			total: this.highQueue.length + this.lowQueue.length,
 		};
 	}
 
-	public clearQueue(rejectReason?: string): void {
-		const reason = new Error(rejectReason || "Queue cleared");
-		for (const task of this.highPriorityQueue) {
+	public clearQueue(rejectReason = "Queue cleared"): void {
+		const reason = new Error(rejectReason);
+		for (const task of [...this.highQueue, ...this.lowQueue]) {
 			task.reject(reason);
 		}
-		for (const task of this.lowPriorityQueue) {
-			task.reject(reason);
-		}
-		this.highPriorityQueue = [];
-		this.lowPriorityQueue = [];
+		this.highQueue = [];
+		this.lowQueue = [];
 	}
 
 	public async schedule<T>(
 		fn: () => Promise<T>,
 		optionsOrInterval?: number | ScheduleOptions,
 	): Promise<T> {
-		const { priority, customIntervalMs } =
-			parseScheduleOptions(optionsOrInterval);
+		const priority: RequestPriority =
+			typeof optionsOrInterval === "object" && optionsOrInterval?.priority
+				? optionsOrInterval.priority
+				: "high";
+		const customIntervalMs =
+			typeof optionsOrInterval === "number"
+				? optionsOrInterval
+				: optionsOrInterval?.customIntervalMs;
 
 		return new Promise<T>((resolve, reject) => {
 			const task: QueuedTask<T> = {
@@ -243,47 +218,36 @@ export class GeminiRateLimiter {
 				resolve: resolve as (value: unknown) => void,
 				reject,
 			};
-
-			if (priority === "high") {
-				this.highPriorityQueue.push(task as QueuedTask);
-			} else {
-				this.lowPriorityQueue.push(task as QueuedTask);
-			}
-
+			(priority === "high" ? this.highQueue : this.lowQueue).push(
+				task as QueuedTask,
+			);
 			this.processQueue();
 		});
 	}
 
-	private enforcePacingDelay(candidate: QueuedTask): Promise<void> | null {
+	private async waitPacing(task: QueuedTask): Promise<void> {
 		const isTestEnv =
 			process.env.NODE_ENV === "test" || process.env.BUN_ENV === "test";
 		const interval =
-			candidate.customIntervalMs ??
+			task.customIntervalMs ??
 			(isTestEnv
 				? 0
 				: (CONFIG.GEMINI_MIN_REQUEST_INTERVAL_MS ?? this.minIntervalMs));
 
-		const now = Date.now();
-		const elapsed = now - this.lastRequestEndTime;
-
+		const elapsed = Date.now() - this.lastRequestEndTime;
 		if (interval > 0 && this.lastRequestEndTime > 0 && elapsed < interval) {
-			const waitMs = interval - elapsed;
-			logger.debug(
-				`[RateLimiter] Enforcing ${waitMs}ms artificial pacing delay before Gemini request (${candidate.priority} priority)...`,
-			);
-			return new Promise((r) => setTimeout(r, waitMs));
+			await new Promise((r) => setTimeout(r, interval - elapsed));
 		}
-		return null;
 	}
 
 	private async executeTask(task: QueuedTask): Promise<void> {
+		await this.waitPacing(task);
 		try {
-			const result = await task.fn();
-			this.lastRequestEndTime = Date.now();
-			task.resolve(result);
+			task.resolve(await task.fn());
 		} catch (err) {
-			this.lastRequestEndTime = Date.now();
 			task.reject(err);
+		} finally {
+			this.lastRequestEndTime = Date.now();
 		}
 	}
 
@@ -292,31 +256,15 @@ export class GeminiRateLimiter {
 		this.isProcessing = true;
 
 		try {
-			while (
-				this.highPriorityQueue.length > 0 ||
-				this.lowPriorityQueue.length > 0
-			) {
-				const nextCandidate =
-					this.highPriorityQueue[0] || this.lowPriorityQueue[0];
-				if (!nextCandidate) break;
-
-				const pacingPromise = this.enforcePacingDelay(nextCandidate);
-				if (pacingPromise) {
-					await pacingPromise;
+			while (this.highQueue.length > 0 || this.lowQueue.length > 0) {
+				const task = this.highQueue.shift() || this.lowQueue.shift();
+				if (task) {
+					await this.executeTask(task);
 				}
-
-				const task =
-					this.highPriorityQueue.shift() || this.lowPriorityQueue.shift();
-				if (!task) continue;
-
-				await this.executeTask(task);
 			}
 		} finally {
 			this.isProcessing = false;
-			if (
-				this.highPriorityQueue.length > 0 ||
-				this.lowPriorityQueue.length > 0
-			) {
+			if (this.highQueue.length > 0 || this.lowQueue.length > 0) {
 				this.processQueue();
 			}
 		}

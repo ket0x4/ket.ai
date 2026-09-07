@@ -4,7 +4,6 @@ import type {
 	FunctionDeclaration,
 	ToolExecutionContext,
 } from "./types";
-import { validateToolArguments } from "./validator";
 
 /** @internal */
 export class ToolRegistry {
@@ -83,17 +82,6 @@ export class ToolRegistry {
 		if (!tool) {
 			logger.error(`[ToolRegistry] Tool '${name}' requested but not found`);
 			return { error: `Tool '${name}' is not registered.` };
-		}
-
-		// Validate arguments against tool parameter schema
-		const validation = validateToolArguments(args, tool.parameters);
-		if (!validation.valid) {
-			logger.warn(
-				`[ToolRegistry] Tool '${name}' argument validation failed: ${validation.error}`,
-			);
-			return {
-				error: `Validation error: ${validation.error}`,
-			};
 		}
 
 		try {

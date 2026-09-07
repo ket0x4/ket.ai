@@ -8,29 +8,13 @@ import {
 	type ToolCallCallback,
 	type ToolProgressCallback,
 } from "./executor";
-import { AgentStateMachine } from "./fsm";
 import { toolRegistry } from "./registry";
 import { sanitizeToolResultForLLM, smartTruncateText } from "./sanitizer";
 import { codeExecutionTool } from "./tools/codeExecution";
 import { webSearchTool } from "./tools/webSearch";
-import {
-	listWorkspaceFilesTool,
-	readWorkspaceFileTool,
-	resetWorkspaceTool,
-	sendWorkspaceFileTool,
-	writeWorkspaceFileTool,
-} from "./tools/workspaceTools";
 import type { AgentTool, GeneratedMediaArtifact } from "./types";
-import { validateToolArguments } from "./validator";
 
-const CODE_TOOLS: AgentTool[] = [
-	codeExecutionTool,
-	readWorkspaceFileTool,
-	writeWorkspaceFileTool,
-	sendWorkspaceFileTool,
-	listWorkspaceFilesTool,
-	resetWorkspaceTool,
-];
+const CODE_TOOLS: AgentTool[] = [codeExecutionTool];
 
 export function syncToolsWithConfig(): void {
 	if (CONFIG.ENABLE_WEB_SEARCH) {
@@ -69,7 +53,7 @@ export type {
 	ToolProgressCallback,
 };
 export {
-	AgentStateMachine,
+	codeExecutionTool,
 	executeFunctionCallsInParallel,
 	executeSingleToolCall,
 	extractFunctionCalls,
@@ -77,6 +61,5 @@ export {
 	sanitizeToolResultForLLM,
 	smartTruncateText,
 	toolRegistry,
-	validateToolArguments,
 	webSearchTool,
 };

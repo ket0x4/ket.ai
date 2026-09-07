@@ -1,66 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import {
 	executeFunctionCallsInParallel,
-	executeSingleToolCall,
 	extractFunctionCalls,
 	sanitizeToolResultForLLM,
 	smartTruncateText,
-	validateToolArguments,
 	webSearchTool,
 } from "../src/agent/index";
 import type { AgentTool } from "../src/agent/types";
 import { ai } from "../src/services/gemini/client";
-
-describe("Tool Argument Validator", () => {
-	const testSchema = {
-		type: "OBJECT" as const,
-		properties: {
-			name: { type: "STRING" as const, description: "User name" },
-			count: { type: "INTEGER" as const, description: "Count" },
-			ratio: { type: "NUMBER" as const, description: "Ratio" },
-			active: { type: "BOOLEAN" as const, description: "Is active" },
-			tags: {
-				type: "ARRAY" as const,
-				description: "Tags",
-				items: { type: "STRING" as const },
-			},
-		},
-		required: ["name", "count"],
-	};
-
-	test("passes on valid arguments", () => {
-		const result = validateToolArguments(
-			{ name: "John", count: 5, ratio: 3.14, active: true, tags: ["a", "b"] },
-			testSchema,
-		);
-		expect(result.valid).toBeTrue();
-		expect(result.error).toBeUndefined();
-	});
-
-	test("fails when required parameter is missing", () => {
-		const result = validateToolArguments({ count: 5 }, testSchema);
-		expect(result.valid).toBeFalse();
-		expect(result.error).toContain("Missing required parameter 'name'");
-	});
-
-	test("fails when parameter type is incorrect", () => {
-		const result = validateToolArguments(
-			{ name: "John", count: "five" as unknown as number },
-			testSchema,
-		);
-		expect(result.valid).toBeFalse();
-		expect(result.error).toContain("Invalid type for parameter 'count'");
-	});
-
-	test("fails when array item type is incorrect", () => {
-		const result = validateToolArguments(
-			{ name: "John", count: 1, tags: [123, 456] as unknown as string[] },
-			testSchema,
-		);
-		expect(result.valid).toBeFalse();
-		expect(result.error).toContain("Invalid item type in array 'tags'");
-	});
-});
 
 describe("Output Sanitization & Smart Truncation", () => {
 	test("does not truncate small outputs", () => {
@@ -259,42 +206,6 @@ describe("Parallel Tool Execution Engine", () => {
 			const { toolRegistry } = await import("../src/agent/registry");
 			toolRegistry.unregister("failing_tool");
 			toolRegistry.unregister("healthy_tool");
-		}
-	});
-
-	test("validates parameters in executeSingleToolCall and returns validation error to LLM", async () => {
-		const strictTool: AgentTool<{ email: string }> = {
-			name: "strict_tool",
-			description: "Strict parameter tool",
-			parameters: {
-				type: "OBJECT",
-				properties: {
-					email: { type: "STRING" },
-				},
-				required: ["email"],
-			},
-			execute: async (args) => ({ sentTo: args.email }),
-		};
-
-		const { toolRegistry } = await import("../src/agent/registry");
-		toolRegistry.register(strictTool);
-
-		try {
-			// Call without required 'email'
-			const res = await executeSingleToolCall(
-				{ id: "call_invalid", name: "strict_tool", args: {} },
-				{ traceId: "test_trace" },
-			);
-
-			// biome-ignore lint/suspicious/noExplicitAny: FunctionResponse check
-			const funcResp = (res as any).functionResponse;
-			expect(funcResp.id).toBe("call_invalid");
-			expect(funcResp.response.result.error).toContain(
-				"Missing required parameter 'email'",
-			);
-		} finally {
-			const { toolRegistry } = await import("../src/agent/registry");
-			toolRegistry.unregister("strict_tool");
 		}
 	});
 

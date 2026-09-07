@@ -45,12 +45,9 @@ describe("Stateful Session Workspace & Iterative Debugging", () => {
 		}
 	});
 
-	test("should register all workspace tools in toolRegistry", () => {
-		expect(toolRegistry.hasTool("read_workspace_file")).toBeTrue();
-		expect(toolRegistry.hasTool("write_workspace_file")).toBeTrue();
-		expect(toolRegistry.hasTool("send_workspace_file")).toBeTrue();
-		expect(toolRegistry.hasTool("list_workspace_files")).toBeTrue();
-		expect(toolRegistry.hasTool("reset_workspace")).toBeTrue();
+	test("should register execute_code tool in toolRegistry", () => {
+		expect(toolRegistry.hasTool("execute_code")).toBeTrue();
+		expect(toolRegistry.hasTool("read_workspace_file")).toBeFalse();
 	});
 
 	test("should write and read files in persistent session workspace", async () => {

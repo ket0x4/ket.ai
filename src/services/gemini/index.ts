@@ -1,5 +1,4 @@
 import {
-	AgentStateMachine,
 	type MediaGeneratedCallback,
 	runAgentLoop,
 	type ToolCallCallback,
@@ -393,7 +392,7 @@ async function handleJsonReply(
 	cleanedText: string,
 	rawText: string,
 	chatIdStr: string,
-	fsm: AgentStateMachine,
+	traceId: string,
 	history: MessageRow[] = [],
 	lastMsg?: MessageRow,
 	senderUserId?: number,
@@ -403,7 +402,6 @@ async function handleJsonReply(
 	try {
 		const parsed = JSON.parse(cleanedText);
 
-		fsm.transition("PERSISTING_DATA");
 		const effectiveSenderId =
 			senderUserId ??
 			(lastMsg && !lastMsg.is_bot_reply ? lastMsg.user_id : undefined);
@@ -423,13 +421,11 @@ async function handleJsonReply(
 				senderUsername,
 			).catch((err) => {
 				logger.error(
-					`[Gemini:${fsm.getTraceId()}] Error persisting extracted memories:`,
+					`[Gemini:${traceId}] Error persisting extracted memories:`,
 					err,
 				);
 			});
 		}
-
-		fsm.transition("COMPLETED");
 
 		if (parsed && typeof parsed === "object") {
 			const extracted = extractReplyFieldFromObject(
@@ -445,9 +441,8 @@ async function handleJsonReply(
 		return "";
 	} catch {
 		logger.warn(
-			`[Gemini:${fsm.getTraceId()}] Parse error on model JSON response. Using cleaned plain text. Raw text: "${rawText}"`,
+			`[Gemini:${traceId}] Parse error on model JSON response. Using cleaned plain text. Raw text: "${rawText}"`,
 		);
-		fsm.transition("COMPLETED");
 		return cleanedText;
 	}
 }
@@ -470,28 +465,22 @@ function tryExtractJsonString(text: string): string | null {
 async function parseAndProcessReply(
 	responseText: string,
 	chatIdStr: string,
-	fsm: AgentStateMachine,
+	traceId: string,
 	history: MessageRow[] = [],
 	lastMsg?: MessageRow,
 	senderUserId?: number,
 	senderFirstName?: string,
 	senderUsername?: string,
 ): Promise<string> {
-	if (fsm.isTerminal()) {
-		return responseText;
-	}
-
 	const trimmed = responseText?.trim() || "";
 	if (!trimmed) {
-		fsm.transition("COMPLETED");
 		return "";
 	}
 
 	if (isStrayBracket(trimmed)) {
 		logger.warn(
-			`[Gemini:${fsm.getTraceId()}] Model returned stray bracket/empty payload: "${trimmed}". Suppressing reply.`,
+			`[Gemini:${traceId}] Model returned stray bracket/empty payload: "${trimmed}". Suppressing reply.`,
 		);
-		fsm.transition("COMPLETED");
 		return "";
 	}
 
@@ -501,7 +490,7 @@ async function parseAndProcessReply(
 			jsonStr,
 			responseText,
 			chatIdStr,
-			fsm,
+			traceId,
 			history,
 			lastMsg,
 			senderUserId,
@@ -512,7 +501,6 @@ async function parseAndProcessReply(
 	}
 
 	// Markdown or plain text response (e.g. from tool execution or unstructured output)
-	fsm.transition("COMPLETED");
 	return trimmed;
 }
 
@@ -533,15 +521,16 @@ export const GeminiService = {
 		topicSummary: string | null,
 		options: GenerateResponseOptions,
 	): Promise<string> {
-		const fsm = new AgentStateMachine(options.traceId);
+		const traceId =
+			options.traceId ||
+			`trace_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
 		try {
 			if (history.length === 0) {
 				logger.warn(
-					`[Gemini:${fsm.getTraceId()}] _generateResponse called with empty history. Returning fallback.`,
+					`[Gemini:${traceId}] _generateResponse called with empty history. Returning fallback.`,
 				);
 				return options.fallbackEmpty;
 			}
-			fsm.transition("INITIALIZING");
 			const chatIdStr = options.chatId || history[0]?.chat_id?.toString() || "";
 			const lastMsg = history[history.length - 1];
 			const lastMessageText = resolveLastMessageText(
@@ -600,9 +589,10 @@ export const GeminiService = {
 			};
 			const genConfig = buildGenConfig(effectiveOptions, toolsConfig);
 
-			const responseText = await runAgentLoop(contents, genConfig, fsm, {
+			const responseText = await runAgentLoop(contents, genConfig, {
 				chatId: chatIdStr,
 				sessionId: chatIdStr,
+				traceId,
 				onToolCall: options.onToolCall,
 				onToolProgress: options.onToolProgress,
 				onMediaGenerated: options.onMediaGenerated,
@@ -611,7 +601,7 @@ export const GeminiService = {
 			const reply = await parseAndProcessReply(
 				responseText,
 				chatIdStr,
-				fsm,
+				traceId,
 				history,
 				lastMsg,
 				targetUserId,
@@ -621,11 +611,7 @@ export const GeminiService = {
 			// If reply is empty (e.g. suppressed due to parse error), do not send fallback message
 			return reply;
 		} catch (error) {
-			fsm.fail(error);
-			logger.error(
-				`Error in Gemini _generateResponse [${fsm.getTraceId()}]:`,
-				error,
-			);
+			logger.error(`Error in Gemini _generateResponse [${traceId}]:`, error);
 			return options.fallbackError;
 		}
 	},
@@ -821,53 +807,6 @@ export const GeminiService = {
 		}
 	},
 
-	async generateMediaReply(
-		media: { buffer: Buffer; mimeType: string },
-		history: MessageRow[],
-		topicSummary: string | null,
-		options: {
-			instruction: string;
-			replyDescription: string;
-			fallbackEmpty: string;
-			fallbackError: string;
-			mediaFallbackText: string;
-			onToolCall?: ToolCallCallback;
-			onToolProgress?: ToolProgressCallback;
-			onMediaGenerated?: MediaGeneratedCallback;
-			chatId?: string;
-			targetMessage?: TargetMessageInfo;
-		},
-	): Promise<string> {
-		return this._generateResponse(history, topicSummary, {
-			media,
-			...options,
-		});
-	},
-
-	async _dispatchMediaReply(
-		payload: { buffer: Buffer; mimeType: string },
-		history: MessageRow[],
-		topicSummary: string | null,
-		spec: {
-			instruction: string;
-			replyDescription: string;
-			fallbackEmpty: string;
-			fallbackError: string;
-			mediaFallbackText: string;
-		},
-		extra: {
-			onToolCall?: ToolCallCallback;
-			chatId?: string;
-			onToolProgress?: ToolProgressCallback;
-			targetMessage?: TargetMessageInfo;
-		},
-	): Promise<string> {
-		return this.generateMediaReply(payload, history, topicSummary, {
-			...spec,
-			...extra,
-		});
-	},
-
 	async generateImageReply(...args: MediaReplyParams): Promise<string> {
 		const [
 			imageBuffer,
@@ -879,20 +818,17 @@ export const GeminiService = {
 			onToolProgress,
 			targetMessage,
 		] = args;
-		return this._dispatchMediaReply(
-			{ buffer: imageBuffer, mimeType },
+		return this.generateReply(
 			history,
 			topicSummary,
-			{
-				instruction:
-					"Analyze the photo and respond to the user's message/question, or make a natural, fitting comment about the photo in the context of the conversation.",
-				replyDescription:
-					"The reply you will write to the photo and the flow of the conversation.",
-				fallbackEmpty: CONFIG.MESSAGES.gemini_empty_image_fallback,
-				fallbackError: CONFIG.MESSAGES.gemini_error_image_fallback,
-				mediaFallbackText: "[Photo]",
-			},
-			{ onToolCall, chatId, onToolProgress, targetMessage },
+			false,
+			onToolCall,
+			chatId,
+			{ buffer: imageBuffer, mimeType },
+			undefined,
+			onToolProgress,
+			undefined,
+			targetMessage,
 		);
 	},
 
@@ -907,21 +843,17 @@ export const GeminiService = {
 			onToolProgress,
 			targetMessage,
 		] = args;
-		return this._dispatchMediaReply(
-			{ buffer: audioBuffer, mimeType },
+		return this.generateReply(
 			history,
 			topicSummary,
-			{
-				instruction:
-					"The user sent a voice message. Listen, understand what is being said, and answer in a friendly way suitable for the conversation.",
-				replyDescription:
-					"The reply you will write to the voice message and the flow of the conversation.",
-				fallbackEmpty: "I heard the voice message but didn't know what to say.",
-				fallbackError:
-					"I got confused while listening to the voice message, can you try again?",
-				mediaFallbackText: "[Voice]",
-			},
-			{ onToolCall, chatId, onToolProgress, targetMessage },
+			false,
+			onToolCall,
+			chatId,
+			{ buffer: audioBuffer, mimeType },
+			undefined,
+			onToolProgress,
+			undefined,
+			targetMessage,
 		);
 	},
 

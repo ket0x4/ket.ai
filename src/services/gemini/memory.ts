@@ -326,47 +326,25 @@ function computeDenseAndSparseCandidates(
 	});
 }
 
+// ponytail: streamlined hybrid ranking combining cosine/recency score and FTS match without complex RRF
 function fuseRRFAndCheckThresholds(
 	candidateDetails: MemoryDiagnosticItem[],
 	threshold: number,
 ): MemoryDiagnosticItem[] {
-	const sortedByDense = [...candidateDetails].sort(
-		(a, b) => b.finalScore - a.finalScore,
-	);
-	const denseRankMap = new Map<number, number>();
-	sortedByDense.forEach((item, idx) => {
-		if (item.finalScore >= 0) {
-			denseRankMap.set(item.id, idx + 1);
-		}
-	});
-
-	const RRF_K = 60;
-	const details = candidateDetails.map((item) => {
-		const rankDense = denseRankMap.get(item.id);
-		const rankSparse = item.ftsRank;
-
-		let rrfScore = 0;
-		if (rankDense) {
-			rrfScore += 0.7 / (RRF_K + rankDense);
-		}
-		if (rankSparse) {
-			rrfScore += 0.3 / (RRF_K + rankSparse);
-		}
-
-		const passedDense = item.finalScore >= threshold;
-		const passedSparse =
-			Boolean(rankSparse) &&
-			(item.finalScore >= threshold - 0.15 || item.cosSim >= 0.4);
-
-		return {
-			...item,
-			rrfScore: Math.round(rrfScore * 100000) / 100000,
-			passedThreshold: passedDense || passedSparse,
-		};
-	});
-
-	details.sort((a, b) => (b.rrfScore || 0) - (a.rrfScore || 0));
-	return details;
+	return candidateDetails
+		.map((item) => {
+			const passedDense = item.finalScore >= threshold;
+			const passedSparse =
+				Boolean(item.ftsRank) &&
+				(item.finalScore >= threshold - 0.15 || item.cosSim >= 0.4);
+			const rrfScore = item.finalScore + (item.ftsRank ? 0.2 : 0);
+			return {
+				...item,
+				rrfScore: Math.round(rrfScore * 10000) / 10000,
+				passedThreshold: passedDense || passedSparse,
+			};
+		})
+		.sort((a, b) => (b.rrfScore || 0) - (a.rrfScore || 0));
 }
 
 function selectPersonalMemories(

@@ -249,147 +249,52 @@ export interface MemoryItem {
 	expiresAt: number | null;
 }
 
-// High-performance bounded LRU cache for parsed memory embeddings per chat
-class MemoryLRUCache {
-	private readonly maxChats: number;
-	private readonly maxTotalItems: number;
-	private readonly cache: Map<string, MemoryItem[]>;
-	private totalItems: number;
-
-	constructor(maxChats = 200, maxTotalItems = 30000) {
-		this.maxChats = maxChats;
-		this.maxTotalItems = maxTotalItems;
-		this.cache = new Map();
-		this.totalItems = 0;
-	}
-
-	get(chatId: string): MemoryItem[] | undefined {
-		const items = this.cache.get(chatId);
-		if (items) {
-			// Refresh LRU order
-			this.cache.delete(chatId);
-			this.cache.set(chatId, items);
-		}
-		return items;
-	}
-
-	has(chatId: string): boolean {
-		return this.cache.has(chatId);
-	}
-
-	set(chatId: string, items: MemoryItem[]): void {
-		const old = this.cache.get(chatId);
-		if (old) {
-			this.totalItems -= old.length;
-			this.cache.delete(chatId);
-		}
-		this.cache.set(chatId, items);
-		this.totalItems += items.length;
-		this.evictIfNeeded();
-	}
-
-	addMemory(chatId: string, item: MemoryItem): void {
-		const items = this.cache.get(chatId);
-		if (!items) return; // Not cached yet; will be populated on demand
-
-		const updated = [...items, item];
-		if (updated.length > 10000) {
-			updated.shift();
-		}
-		this.set(chatId, updated);
-	}
-
-	deleteMemories(ids: number[], chatId?: string): void {
-		const idSet = new Set(ids);
-		if (chatId) {
-			const items = this.cache.get(chatId);
-			if (items) {
-				const filtered = items.filter((m) => !idSet.has(m.id));
-				this.set(chatId, filtered);
-			}
-		} else {
-			for (const [cId, items] of this.cache.entries()) {
-				const filtered = items.filter((m) => !idSet.has(m.id));
-				this.set(cId, filtered);
-			}
-		}
-	}
-
-	updateMemory(
-		id: number,
-		text: string,
-		category: "PROFILE" | "DYNAMIC" | "TEMPORARY",
-		embedding?: Float32Array,
-		chatId?: string,
-	): void {
-		const updateItem = (m: MemoryItem): MemoryItem => {
-			if (m.id !== id) return m;
-			const newEmbedding =
-				embedding && embedding.length > 0 ? embedding : m.embedding;
-			return {
-				...m,
-				text,
-				category,
-				embedding: newEmbedding,
-				normalizedEmbedding:
-					embedding && embedding.length > 0
-						? normalizeVector(newEmbedding)
-						: m.normalizedEmbedding,
-			};
-		};
-
-		if (chatId) {
-			const items = this.cache.get(chatId);
-			if (items) {
-				this.set(chatId, items.map(updateItem));
-			}
-		} else {
-			for (const [cId, items] of this.cache.entries()) {
-				this.set(cId, items.map(updateItem));
-			}
-		}
-	}
-
-	pruneExpired(chatId: string, now: number): void {
-		const items = this.cache.get(chatId);
-		if (items) {
-			const filtered = items.filter(
-				(m) => m.expiresAt === null || m.expiresAt > now,
+// ponytail: SQLite in WAL mode executes in microseconds; queried directly without LRU cache
+function rowToMemoryItem(row: {
+	id: number;
+	memory_text: string;
+	embedding: Uint8Array | null;
+	created_at: number;
+	user_id: number | null;
+	category: string | null;
+	expires_at: number | null;
+}): MemoryItem {
+	let embeddingArray: Float32Array;
+	let normalizedArray: Float32Array;
+	if (row.embedding && row.embedding.byteLength > 0) {
+		if (row.embedding.byteOffset % 4 === 0) {
+			embeddingArray = new Float32Array(
+				row.embedding.buffer,
+				row.embedding.byteOffset,
+				row.embedding.byteLength / 4,
 			);
-			this.set(chatId, filtered);
+		} else {
+			const alignedBuffer = new ArrayBuffer(row.embedding.byteLength);
+			new Uint8Array(alignedBuffer).set(row.embedding);
+			embeddingArray = new Float32Array(
+				alignedBuffer,
+				0,
+				row.embedding.byteLength / 4,
+			);
 		}
+		normalizedArray = normalizeVector(embeddingArray);
+	} else {
+		embeddingArray = new Float32Array(0);
+		normalizedArray = new Float32Array(0);
 	}
 
-	delete(chatId: string): void {
-		const items = this.cache.get(chatId);
-		if (items) {
-			this.totalItems -= items.length;
-			this.cache.delete(chatId);
-		}
-	}
-
-	clear(): void {
-		this.cache.clear();
-		this.totalItems = 0;
-	}
-
-	private evictIfNeeded(): void {
-		while (
-			(this.cache.size > this.maxChats ||
-				this.totalItems > this.maxTotalItems) &&
-			this.cache.size > 0
-		) {
-			const oldestKey = this.cache.keys().next().value;
-			if (oldestKey) {
-				this.delete(oldestKey);
-			} else {
-				break;
-			}
-		}
-	}
+	return {
+		id: row.id,
+		text: row.memory_text,
+		embedding: embeddingArray,
+		normalizedEmbedding: normalizedArray,
+		createdAt: row.created_at,
+		userId: row.user_id,
+		category:
+			(row.category as "PROFILE" | "DYNAMIC" | "TEMPORARY") || "PROFILE",
+		expiresAt: row.expires_at,
+	};
 }
-
-const memoryCache = new MemoryLRUCache();
 
 // ponytail: In-memory Sets for instant O(1) opt-out check on every message.
 // Ceiling: multi-instance scaling; upgrade path: Redis Set or PubSub if scaled horizontally.
@@ -483,14 +388,9 @@ export const Repository = {
 	},
 	/**
 	 * Clears the in-memory memory cache for a specific chat or all chats.
+	 * Kept as no-op for API compatibility; SQLite WAL mode queries directly.
 	 */
-	clearMemoryCache(chatId?: string): void {
-		if (chatId) {
-			memoryCache.delete(chatId);
-		} else {
-			memoryCache.clear();
-		}
-	},
+	clearMemoryCache(_chatId?: string): void {},
 
 	/**
 	 * Seeds the database with a list of initially allowed chat IDs from config.
@@ -829,7 +729,7 @@ export const Repository = {
 			floatArray.byteLength,
 		);
 
-		const insertResult = stmts.insertMemory.run(
+		stmts.insertMemory.run(
 			chatId,
 			memoryText,
 			buffer,
@@ -838,86 +738,25 @@ export const Repository = {
 			category,
 			expiresAt,
 		);
-
-		const insertedId = Number(insertResult.lastInsertRowid);
-		const normalized = normalizeVector(floatArray);
-		memoryCache.addMemory(chatId, {
-			id: insertedId,
-			text: memoryText,
-			embedding: floatArray,
-			normalizedEmbedding: normalized,
-			createdAt: now,
-			userId,
-			category,
-			expiresAt,
-		});
 	},
 
 	/**
-	 * Retrieves all memory facts for a chat with their embeddings (cached in-memory).
+	 * Retrieves all memory facts for a chat with their embeddings directly from SQLite.
 	 */
 	getMemories(chatId: string, includeOptedOut: boolean = false): MemoryItem[] {
-		let parsed = memoryCache.get(chatId);
-		if (!parsed) {
-			const rows = stmts.getMemories.all(chatId) as {
-				id: number;
-				memory_text: string;
-				embedding: Uint8Array | null;
-				created_at: number;
-				user_id: number | null;
-				category: string | null;
-				expires_at: number | null;
-			}[];
+		const rows = stmts.getMemories.all(chatId) as {
+			id: number;
+			memory_text: string;
+			embedding: Uint8Array | null;
+			created_at: number;
+			user_id: number | null;
+			category: string | null;
+			expires_at: number | null;
+		}[];
 
-			parsed = rows.map((row) => {
-				let embeddingArray: Float32Array;
-				let normalizedArray: Float32Array;
-				if (row.embedding && row.embedding.byteLength > 0) {
-					if (row.embedding.byteOffset % 4 === 0) {
-						embeddingArray = new Float32Array(
-							row.embedding.buffer,
-							row.embedding.byteOffset,
-							row.embedding.byteLength / 4,
-						);
-					} else {
-						const alignedBuffer = new ArrayBuffer(row.embedding.byteLength);
-						new Uint8Array(alignedBuffer).set(row.embedding);
-						embeddingArray = new Float32Array(
-							alignedBuffer,
-							0,
-							row.embedding.byteLength / 4,
-						);
-					}
-					normalizedArray = normalizeVector(embeddingArray);
-				} else {
-					embeddingArray = new Float32Array(0);
-					normalizedArray = new Float32Array(0);
-				}
-
-				return {
-					id: row.id,
-					text: row.memory_text,
-					embedding: embeddingArray,
-					normalizedEmbedding: normalizedArray,
-					createdAt: row.created_at,
-					userId: row.user_id,
-					category:
-						(row.category as "PROFILE" | "DYNAMIC" | "TEMPORARY") || "PROFILE",
-					expiresAt: row.expires_at,
-				};
-			});
-
-			memoryCache.set(chatId, parsed);
-		}
+		const parsed = rows.map(rowToMemoryItem);
 
 		if (includeOptedOut || optedOutUserIds.size === 0) {
-			return parsed;
-		}
-
-		const hasOptedOut = parsed.some(
-			(m) => m.userId && optedOutUserIds.has(m.userId),
-		);
-		if (!hasOptedOut) {
 			return parsed;
 		}
 
@@ -934,7 +773,6 @@ export const Repository = {
 		}[];
 		const deletedCount = deletedRows.length;
 		if (deletedCount > 0) {
-			memoryCache.pruneExpired(chatId, now);
 			logger.info(
 				`[Memory] Pruned ${deletedCount} expired memories for chat ${chatId}.`,
 			);
@@ -988,9 +826,9 @@ export const Repository = {
 	},
 
 	/**
-	 * Deletes specific memories by their IDs and updates cache.
+	 * Deletes specific memories by their IDs.
 	 */
-	deleteMemoriesByIds(ids: number[], chatId?: string): void {
+	deleteMemoriesByIds(ids: number[], _chatId?: string): void {
 		if (ids.length === 0) return;
 		const deleteMany = db.transaction((memoryIds: number[]) => {
 			for (const id of memoryIds) {
@@ -998,7 +836,6 @@ export const Repository = {
 			}
 		});
 		deleteMany(ids);
-		memoryCache.deleteMemories(ids, chatId);
 	},
 
 	/**
@@ -1009,12 +846,11 @@ export const Repository = {
 		text: string,
 		category?: string,
 		embedding?: number[] | Float32Array,
-		chatId?: string,
+		_chatId?: string,
 	): void {
 		const cat = (category as "PROFILE" | "DYNAMIC" | "TEMPORARY") || "PROFILE";
-		let floatArray: Float32Array | undefined;
 		if (embedding && embedding.length > 0) {
-			floatArray =
+			const floatArray =
 				embedding instanceof Float32Array
 					? new Float32Array(embedding)
 					: new Float32Array(embedding);
@@ -1027,15 +863,13 @@ export const Repository = {
 		} else {
 			stmts.updateMemoryWithoutEmbedding.run(text, cat, id);
 		}
-		memoryCache.updateMemory(id, text, cat, floatArray, chatId);
 	},
 
 	/**
-	 * Clears all memories for a chat and invalidates cache.
+	 * Clears all memories for a chat.
 	 */
 	clearMemories(chatId: string): void {
 		stmts.deleteMemories.run(chatId);
-		memoryCache.delete(chatId);
 	},
 
 	/**
