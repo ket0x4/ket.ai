@@ -14,6 +14,5 @@
 	"max_agent_steps": 3,
 	"log_level": "info",
 	"log_dir": "logs",
-	"log_max_size_mb": 5,
-	"log_retention_days": 14
+	"log_max_size_mb": 5
 }

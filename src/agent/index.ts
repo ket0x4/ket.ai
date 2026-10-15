@@ -3,7 +3,6 @@ import {
 	type AgentEventHandler,
 	mergeAgentEventHandlers,
 } from "./events";
-import type { ToolExecutionOptions } from "./executor";
 import { executeFunctionCallsInParallel } from "./executor";
 import { extractFunctionCalls } from "./functionCalls";
 import { runAgentLoop } from "./loop";
@@ -12,12 +11,7 @@ import { sanitizeToolResultForLLM, smartTruncateText } from "./sanitizer";
 import { webSearchTool } from "./tools/webSearch";
 import type { GeneratedMediaArtifact } from "./types";
 
-export type {
-	AgentEvent,
-	AgentEventHandler,
-	GeneratedMediaArtifact,
-	ToolExecutionOptions,
-};
+export type { AgentEvent, AgentEventHandler, GeneratedMediaArtifact };
 export {
 	executeFunctionCallsInParallel,
 	extractFunctionCalls,

@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { getSafeEnv } from "./workspace";
 
-export async function streamReader(
+async function streamReader(
 	stream: ReadableStream<Uint8Array>,
 	onChunk?: (chunk: string) => void,
 ): Promise<string> {

@@ -4,6 +4,7 @@
 		".": {
 			"project": ["src/**/*.ts!"]
 		},
-		"web": {}
+		"web": {},
+		"sandbox": {}
 	}
 }

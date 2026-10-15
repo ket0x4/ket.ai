@@ -20,6 +20,7 @@ import {
 	getSystemInstruction,
 	getThinkingConfig,
 	runWithRetry,
+	stripEmoji,
 } from "./utils";
 
 export type { GeneratedMediaArtifact } from "../../agent/index";
@@ -400,11 +401,11 @@ async function parseAndProcessReply(
 			senderFirstName,
 			senderUsername,
 		);
-		if (jsonReply) return jsonReply;
+		if (jsonReply) return stripEmoji(jsonReply).trim();
 	}
 
 	// Markdown or plain text response (e.g. from tool execution or unstructured output)
-	return trimmed;
+	return stripEmoji(trimmed).trim();
 }
 
 function resolveMediaFallbacks(

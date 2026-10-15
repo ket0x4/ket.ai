@@ -5,7 +5,7 @@ import { personaMethods } from "./personas";
 import type { RepositorySelf } from "./types";
 import { userMethods } from "./users";
 
-export type { ChatRow, MemoryItem, MessageRow, PersonaRow } from "./types";
+export type { MemoryItem, MessageRow } from "./types";
 
 export const Repository: typeof userMethods &
 	typeof chatMethods &

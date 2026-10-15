@@ -3,7 +3,7 @@ import type { Context } from "grammy";
 import type { MessageRow } from "../src/db/repository";
 import { ai } from "../src/services/gemini/client";
 import { GeminiService } from "../src/services/gemini/index";
-import { getSystemInstruction } from "../src/services/gemini/utils";
+import { getSystemInstruction, stripEmoji } from "../src/services/gemini/utils";
 import {
 	balanceCodeFences,
 	balanceHtmlTags,
@@ -159,5 +159,18 @@ describe("Markdown Formatting & Message Utility Tests", () => {
 		expect(instruction).toContain("### FORMATTING RULE ###");
 		expect(instruction).toContain("Markdown code blocks");
 		expect(instruction).toContain("Never use emojis");
+	});
+
+	test("getSystemInstruction includes the current date", () => {
+		const instruction = getSystemInstruction();
+		expect(instruction).toContain("### CURRENT DATE");
+		expect(instruction).toContain(new Date().toISOString().slice(0, 10));
+	});
+
+	test("stripEmoji removes emoji but keeps text and code", () => {
+		expect(stripEmoji("hello 😀 world")).toBe("hello  world");
+		expect(stripEmoji("done ✅")).toBe("done ");
+		expect(stripEmoji("plain text")).toBe("plain text");
+		expect(stripEmoji("```py\nprint('x')\n```")).toBe("```py\nprint('x')\n```");
 	});
 });

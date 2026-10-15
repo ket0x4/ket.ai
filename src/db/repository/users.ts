@@ -4,7 +4,7 @@ import { stmts } from "./statements";
 // ponytail: In-memory Sets for instant O(1) opt-out check on every message.
 // Ceiling: multi-instance scaling; upgrade path: Redis Set or PubSub if scaled horizontally.
 export const optedOutUserIds = new Set<number>();
-export const optedOutUsernames = new Set<string>();
+const optedOutUsernames = new Set<string>();
 
 function initOptedOutCache() {
 	try {

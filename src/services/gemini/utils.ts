@@ -44,6 +44,15 @@ const WORKSPACE_FILE_RULE =
 const GROUP_CHAT_RULE =
 	"\n\n### TELEGRAM GROUP CHAT RULES ###\n- You participate in a Telegram group with multiple users. Always observe who sent which message.\n- Messages labeled 'You (ket.ai)' in recent_messages are your own previous statements. Never contradict what you wrote earlier or claim you do not remember saying it.\n- When 'current_message_to_reply' has a 'replying_to' object, the user is answering, asking about, or commenting directly on that specific message. Formulate your reply with this parent message firmly in mind.\n- Never confuse the current sender with other users in the chat or with yourself. Always direct your response to the sender of the current message.";
 
+function buildCurrentDateRule(): string {
+	const date = new Date().toISOString().slice(0, 10);
+	return (
+		"\n\n### CURRENT DATE (authoritative) ###\n" +
+		`Today's date is ${date} (UTC). ` +
+		"Use it to judge freshness for news, prices, and current events, and to interpret relative dates like 'today', 'yesterday', or 'this week'."
+	);
+}
+
 const CODE_EXECUTION_TOOLS = new Set(["execute_code", "execute_bash"]);
 const WORKSPACE_TOOLS = new Set([
 	"list_workspace_files",
@@ -79,7 +88,11 @@ export function getSystemInstruction(
 		? [...WORKSPACE_TOOLS].some((t) => toolSet.has(t))
 		: true;
 
-	const sections = [cachedSystemPrompt, FORMATTING_RULE];
+	const sections = [
+		cachedSystemPrompt,
+		buildCurrentDateRule(),
+		FORMATTING_RULE,
+	];
 	if (hasCode || hasWorkspace) {
 		sections.push(WORKSPACE_FILE_RULE);
 	}
@@ -92,7 +105,21 @@ export function getSystemInstruction(
 	if (!personaPrompt?.trim()) {
 		return base;
 	}
-	return `${base}\n\n### ACTIVE PERSONA INSTRUCTION ###\n${personaPrompt.trim()}\nStrictly adhere to this persona's tone, character, style, and rules in all replies. Never use emojis in your responses.`;
+	return `${base}\n\n### ACTIVE PERSONA INSTRUCTION ###\n${personaPrompt.trim()}\nStrictly adhere to this persona's tone, character, style, and rules in all replies.`;
+}
+
+// Matches emoji bases (\p{Extended_Pictographic}), regional-indicator flags,
+// variation selectors, skin-tone modifiers, ZWJ joins, and keycap combiners.
+const EMOJI_REGEX =
+	/(?:\p{Extended_Pictographic}|\p{Regional_Indicator}|\p{Variation_Selector}|\u{1F3FB}|\u{1F3FC}|\u{1F3FD}|\u{1F3FE}|\u{1F3FF}|\u{200D}|\u{20E3})/gu;
+
+/**
+ * Removes emoji and pictographic characters from a reply so the no-emoji rule
+ * is enforced deterministically instead of relying on the prompt alone.
+ */
+export function stripEmoji(text: string): string {
+	if (!text) return text;
+	return text.replace(EMOJI_REGEX, "");
 }
 
 /**

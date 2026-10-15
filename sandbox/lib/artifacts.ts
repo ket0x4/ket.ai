@@ -63,7 +63,7 @@ export const ARTIFACT_MIME_MAP: Record<string, { mimeType: string; type: Artifac
 	".aac": { mimeType: "audio/aac", type: "audio" },
 };
 
-export function isIntermediateArtifact(filename: string): boolean {
+function isIntermediateArtifact(filename: string): boolean {
 	const lower = filename.toLowerCase();
 	if (
 		lower.startsWith("temp_") ||
