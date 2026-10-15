@@ -1,13 +1,10 @@
 import {
 	Activity,
-	ArrowUpRight,
+	ArrowRight,
 	Brain,
-	CheckCircle2,
 	Cpu,
 	Database,
-	Layers,
 	MessageSquare,
-	Server,
 	ShieldCheck,
 	ShieldOff,
 	Sparkles,
@@ -32,7 +29,7 @@ import {
 } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { MEMORY_CATEGORY_LIST } from "@/lib/constants";
-import { formatBytes, formatUptime } from "@/lib/utils";
+import { cn, formatBytes, formatUptime } from "@/lib/utils";
 import type { StatsResponse, UserRole } from "@/types";
 
 const METRICS_BY_ROLE: Record<
@@ -41,88 +38,77 @@ const METRICS_BY_ROLE: Record<
 > = {
 	owner: (s) => [
 		{
-			title: "Registered Groups",
+			title: "Groups",
 			value: s?.totalChats ?? 0,
 			icon: Users,
-			iconColor: "text-blue-400",
-			description: "Total chat contexts",
+			description: `${s?.allowedChats ?? 0} whitelisted`,
 		},
 		{
-			title: "Whitelisted",
-			value: s?.allowedChats ?? 0,
-			icon: CheckCircle2,
-			iconColor: "text-emerald-400",
-			valueColor: "text-emerald-400",
-			description: "Active authorized groups",
-		},
-		{
-			title: "Total Memories",
+			title: "Memories",
 			value: s?.totalMemories ?? 0,
 			icon: Brain,
-			iconColor: "text-purple-400",
-			description: "Semantic fact embeddings",
+			description: "Saved facts",
 		},
 		{
 			title: "Messages",
 			value: s?.totalMessages ?? 0,
 			icon: MessageSquare,
-			iconColor: "text-amber-400",
-			description: "Processed chat turns",
+			description: "Processed turns",
+		},
+		{
+			title: "Active model",
+			value: s?.model || "gemini",
+			icon: Sparkles,
+			description: "Inference engine",
 		},
 	],
 	admin: (s) => [
 		{
-			title: "Managed Groups",
+			title: "Managed groups",
 			value: s?.managedGroupsCount ?? 0,
 			icon: Users,
-			iconColor: "text-blue-400",
 			description: "Where you are admin",
 		},
 		{
 			title: "Memories",
 			value: s?.totalMemories ?? 0,
 			icon: Brain,
-			iconColor: "text-purple-400",
-			description: "Saved in your groups",
+			description: "In your groups",
 		},
 		{
-			title: "Group Messages",
+			title: "Messages",
 			value: s?.totalMessages ?? 0,
 			icon: MessageSquare,
-			iconColor: "text-emerald-400",
-			valueColor: "text-emerald-400",
-			description: "Across managed channels",
+			description: "Across channels",
 			colSpan: 2,
 		},
 	],
 	user: (s) => [
 		{
-			title: "My Saved Facts",
+			title: "Saved facts",
 			value: s?.totalMemories ?? 0,
 			icon: Brain,
-			iconColor: "text-blue-400",
-			valueColor: "text-blue-400",
-			description: "Personal memory records",
+			description: "Personal records",
 		},
 		{
-			title: "My Groups",
+			title: "Groups",
 			value: s?.totalGroups ?? 0,
 			icon: Users,
-			iconColor: "text-purple-400",
-			description: "Active group memberships",
+			description: "Memberships",
 		},
 		{
-			title: "Recorded Messages",
+			title: "Messages",
 			value: s?.totalMessages ?? 0,
 			icon: MessageSquare,
-			iconColor: "text-amber-400",
 			description: "Recorded interactions",
 			colSpan: 2,
 		},
 	],
 };
 
-const MemoryDistributionCard: FC<{
+const SWATCHES = ["bg-primary", "bg-primary/55", "bg-primary/25"];
+
+const MemoryCard: FC<{
 	stats: StatsResponse | null;
 	role: UserRole;
 	onRefresh: () => void;
@@ -133,121 +119,78 @@ const MemoryDistributionCard: FC<{
 		TEMPORARY: 0,
 	};
 	const totalSum =
-		(catStats.PROFILE || 0) +
-			(catStats.DYNAMIC || 0) +
-			(catStats.TEMPORARY || 0) || 1;
+		(catStats.PROFILE || 0) + (catStats.DYNAMIC || 0) + (catStats.TEMPORARY || 0);
 
-	const percentages = {
-		PROFILE: Math.round(((catStats.PROFILE || 0) / totalSum) * 100),
-		DYNAMIC: Math.round(((catStats.DYNAMIC || 0) / totalSum) * 100),
-		TEMPORARY: Math.max(
-			0,
-			100 -
-				Math.round(((catStats.PROFILE || 0) / totalSum) * 100) -
-				Math.round(((catStats.DYNAMIC || 0) / totalSum) * 100),
-		),
-	};
+	const share = (n: number) =>
+		totalSum > 0 ? Math.round((n / totalSum) * 100) : 0;
 
 	const systemMetrics = [
 		{
 			icon: Activity,
-			iconColor: "text-emerald-400",
 			label: "Uptime",
 			value: formatUptime(stats?.uptimeSeconds ?? 0),
 		},
-		{
-			icon: Cpu,
-			iconColor: "text-blue-400",
-			label: "RAM Usage",
-			value: `${stats?.memoryUsageMb ?? 0} MB`,
-		},
-		{
-			icon: Database,
-			iconColor: "text-purple-400",
-			label: "DB Size",
-			value: formatBytes(stats?.dbSizeBytes ?? 0),
-		},
-		{
-			icon: Sparkles,
-			iconColor: "text-amber-400",
-			label: "Active Model",
-			value: stats?.model || "gemini",
-			title: stats?.model,
-		},
+		{ icon: Cpu, label: "RAM", value: `${stats?.memoryUsageMb ?? 0} MB` },
+		{ icon: Database, label: "DB size", value: formatBytes(stats?.dbSizeBytes ?? 0) },
 	];
 
 	return (
-		<Card className="glass-card">
-			<CardHeader className="pb-3 flex flex-row items-center justify-between">
+		<Card>
+			<CardHeader className="flex-row items-center justify-between">
 				<div>
-					<CardTitle className="text-base flex items-center gap-2">
-						<Layers className="w-4 h-4 text-primary" />
-						<span>Memory Knowledge Distribution</span>
-					</CardTitle>
-					<CardDescription>
-						Classification of active memory vectors in the vector graph.
-					</CardDescription>
+					<CardTitle>Memory</CardTitle>
+					<CardDescription>How saved facts are classified.</CardDescription>
 				</div>
-				<RefreshButton
-					variant="ghost"
-					onClick={onRefresh}
-					className="h-8 text-xs"
-				/>
+				<RefreshButton variant="ghost" size="icon" onClick={onRefresh} />
 			</CardHeader>
 			<CardContent className="space-y-4">
-				<div className="h-3 w-full rounded-full bg-zinc-800 flex overflow-hidden p-0.5 gap-0.5">
+				{/* Distribution bar */}
+				<div className="flex h-1.5 w-full overflow-hidden rounded-full bg-secondary">
 					{MEMORY_CATEGORY_LIST.map((cat, idx) => (
 						<div
 							key={cat.value}
-							style={{ width: `${percentages[cat.value]}%` }}
-							className={`h-full ${cat.barColor} transition-all duration-500 hover:brightness-110 ${
-								idx === 0
-									? "rounded-l-full"
-									: idx === MEMORY_CATEGORY_LIST.length - 1
-										? "rounded-r-full"
-										: ""
-							}`}
-							title={`${cat.label}: ${catStats[cat.value] || 0} (${percentages[cat.value]}%)`}
+							style={{ width: `${share(catStats[cat.value] || 0)}%` }}
+							className={cn("h-full transition-all", SWATCHES[idx])}
+							title={`${cat.value}: ${catStats[cat.value] || 0}`}
 						/>
 					))}
 				</div>
 
-				<div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs pt-1">
-					{MEMORY_CATEGORY_LIST.map((cat) => (
+				{/* Legend */}
+				<div className="grid grid-cols-1 gap-px overflow-hidden rounded-lg border border-border sm:grid-cols-3">
+					{MEMORY_CATEGORY_LIST.map((cat, idx) => (
 						<div
 							key={cat.value}
-							className={`flex items-center justify-between gap-2 p-2.5 rounded-lg ${cat.chipBg} border ${cat.chipBorder}`}
+							className="flex items-center justify-between gap-2 bg-card px-3 py-2.5"
 						>
-							<div className="flex items-center gap-2 min-w-0">
+							<span className="flex min-w-0 items-center gap-2">
 								<span
-									className={`w-2 h-2 rounded-full ${cat.dotColor} shrink-0`}
+									className={cn("h-1.5 w-1.5 rounded-full", SWATCHES[idx])}
 								/>
-								<span className={`font-semibold truncate ${cat.textColor}`}>
-									{cat.label}
+								<span className="truncate text-xs text-muted-foreground">
+									{cat.label.toLowerCase()}
 								</span>
-							</div>
-							<div className="shrink-0 font-mono flex items-center gap-1">
-								<span className="text-foreground font-bold">
+							</span>
+							<span className="flex items-baseline gap-1.5">
+								<span className="font-mono text-xs tnum">
 									{catStats[cat.value] || 0}
 								</span>
-								<span className="text-muted-foreground text-[10px]">
-									({percentages[cat.value]}%)
+								<span className="text-[11px] text-muted-foreground tnum">
+									{share(catStats[cat.value] || 0)}%
 								</span>
-							</div>
+							</span>
 						</div>
 					))}
 				</div>
 
 				{role === "owner" && (
-					<div className="pt-3 border-t border-border/60 grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
+					<div className="grid grid-cols-1 gap-2 pt-1 sm:grid-cols-3">
 						{systemMetrics.map((item) => (
 							<StatBox
 								key={item.label}
 								icon={item.icon}
-								iconColor={item.iconColor}
 								label={item.label}
 								value={item.value}
-								title={item.title}
 							/>
 						))}
 					</div>
@@ -261,58 +204,47 @@ const TopActiveGroupsCard: FC<{
 	topChats?: StatsResponse["topChats"];
 	onNavigateToGroups: () => void;
 }> = ({ topChats, onNavigateToGroups }) => (
-	<Card className="glass-card">
-		<CardHeader className="pb-3 flex flex-row items-center justify-between">
+	<Card>
+		<CardHeader className="flex-row items-center justify-between">
 			<div>
-				<CardTitle className="text-base flex items-center gap-2">
-					<Users className="w-4 h-4 text-primary" />
-					<span>Active Groups</span>
-				</CardTitle>
-				<CardDescription>
-					Most active Telegram groups ranked by message volume and interaction.
-				</CardDescription>
+				<CardTitle>Active groups</CardTitle>
+				<CardDescription>Ranked by message volume.</CardDescription>
 			</div>
-			<Button
-				variant="outline"
-				size="sm"
-				onClick={onNavigateToGroups}
-				className="flex items-center gap-1 text-xs h-8"
-			>
-				<span>View All</span>
-				<ArrowUpRight className="w-3.5 h-3.5" />
+			<Button variant="ghost" size="sm" onClick={onNavigateToGroups}>
+				<span>All groups</span>
+				<ArrowRight className="h-3.5 w-3.5" />
 			</Button>
 		</CardHeader>
 		<CardContent>
 			{topChats && topChats.length > 0 ? (
-				<div className="divide-y divide-border/40">
+				<div className="divide-y divide-border/60">
 					{topChats.map((c) => (
 						<div
 							key={c.chat_id}
-							className="py-2.5 flex items-center justify-between gap-3 text-xs first:pt-0 last:pb-0"
+							className="flex items-center justify-between gap-3 py-2.5 first:pt-0 last:pb-0"
 						>
 							<div className="min-w-0 flex-1">
 								<div
-									className="font-medium text-foreground truncate text-sm"
+									className="truncate text-sm font-medium text-foreground"
 									dir="auto"
 								>
-									{c.title || `Group (${c.chat_id})`}
+									{c.title || `Group ${c.chat_id}`}
 								</div>
-								<div className="text-[11px] text-muted-foreground font-mono truncate">
+								<div className="truncate font-mono text-[11px] text-muted-foreground">
 									{c.chat_id}
 								</div>
 							</div>
-							<div className="shrink-0 flex items-center gap-1 px-2.5 py-1 rounded-full bg-primary/10 border border-primary/20 text-primary font-mono font-semibold text-xs">
-								<MessageSquare className="w-3 h-3" />
-								<span>{c.message_count} messages</span>
-							</div>
+							<span className="shrink-0 font-mono text-xs text-muted-foreground tnum">
+								{c.message_count} msgs
+							</span>
 						</div>
 					))}
 				</div>
 			) : (
 				<EmptyState
-					icon={Server}
-					title="No active groups found"
-					description="No registered active groups with message history found yet."
+					icon={MessageSquare}
+					title="No activity yet"
+					description="Groups with message history will appear here."
 					bordered={false}
 					className="py-8"
 				/>
@@ -327,77 +259,41 @@ const BotPrivacyCard: FC<{
 	isUpdating?: boolean;
 }> = ({ isOptedOut = false, onToggleOptOut, isUpdating = false }) => {
 	return (
-		<Card
-			className={`glass-card transition-all duration-300 ${
-				isOptedOut
-					? "border-rose-500/40 bg-rose-500/5 shadow-lg shadow-rose-950/20"
-					: "border-border/60 hover:border-primary/40"
-			}`}
-		>
-			<CardHeader className="pb-3 flex flex-row items-center justify-between gap-4">
-				<div className="space-y-1 min-w-0">
-					<div className="flex items-center gap-2 flex-wrap">
-						{isOptedOut ? (
-							<ShieldOff className="w-5 h-5 text-rose-400 shrink-0" />
-						) : (
-							<ShieldCheck className="w-5 h-5 text-emerald-400 shrink-0" />
+		<Card>
+			<CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+				<div className="flex min-w-0 items-center gap-3">
+					<span
+						className={cn(
+							"flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border",
+							isOptedOut ? "text-rose-400" : "text-emerald-400",
 						)}
-						<CardTitle className="text-base font-semibold">
-							Bot Privacy & Opt-Out
-						</CardTitle>
-						<span
-							className={`text-[11px] font-mono font-medium px-2 py-0.5 rounded-full border ${
-								isOptedOut
-									? "bg-rose-500/15 border-rose-500/30 text-rose-300"
-									: "bg-emerald-500/15 border-emerald-500/30 text-emerald-300"
-							}`}
-						>
-							{isOptedOut ? "Opted Out (Ignored)" : "Active (Opted In)"}
-						</span>
-					</div>
-					<CardDescription className="text-xs">
-						{isOptedOut
-							? "The bot is fully ignoring you across all group and private chats. No memories, text, photos, or voice notes are processed."
-							: "The bot processes your text messages, voice, and photos, responds when mentioned or replied to, and saves profile memories."}
-					</CardDescription>
-				</div>
-				<div className="flex items-center gap-2 shrink-0">
-					<span className="text-xs text-muted-foreground hidden sm:inline">
-						{isOptedOut ? "Opted Out" : "Opt In"}
-					</span>
-					<Switch
-						checked={isOptedOut}
-						onCheckedChange={(checked) => onToggleOptOut?.(checked)}
-						disabled={isUpdating}
-						className="data-[state=checked]:bg-rose-600 data-[state=unchecked]:bg-emerald-600"
-					/>
-				</div>
-			</CardHeader>
-			<CardContent className="pt-0">
-				<div className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-xl bg-secondary/40 border border-border/40 text-xs">
-					<div className="text-muted-foreground flex items-center gap-1.5 flex-wrap">
-						<span>You can also toggle this at any time via Telegram:</span>
-						<code className="px-1.5 py-0.5 rounded bg-background border border-border text-[11px] font-mono text-primary">
-							/optout
-						</code>
-						<span>or</span>
-						<code className="px-1.5 py-0.5 rounded bg-background border border-border text-[11px] font-mono text-primary">
-							/optin
-						</code>
-					</div>
-					<Button
-						variant={isOptedOut ? "default" : "outline"}
-						size="sm"
-						disabled={isUpdating}
-						onClick={() => onToggleOptOut?.(!isOptedOut)}
-						className={`h-8 text-xs font-medium ${
-							isOptedOut
-								? "bg-emerald-600 hover:bg-emerald-500 text-white"
-								: "border-rose-500/40 text-rose-400 hover:bg-rose-500/10"
-						}`}
 					>
-						{isOptedOut ? "Opt Back In" : "Opt Out Fully"}
-					</Button>
+						{isOptedOut ? (
+							<ShieldOff className="h-4 w-4" />
+						) : (
+							<ShieldCheck className="h-4 w-4" />
+						)}
+					</span>
+					<div className="min-w-0">
+						<div className="text-sm font-medium">
+							{isOptedOut ? "Opted out" : "Bot active"}
+						</div>
+						<p className="text-xs text-muted-foreground">
+							{isOptedOut
+								? "The bot ignores your messages and saves no memories."
+								: "The bot reads, replies, and saves memories in your chats."}
+						</p>
+					</div>
+				</div>
+				<div className="flex shrink-0 items-center gap-3 self-end sm:self-auto">
+					<code className="rounded border border-border px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">
+						/optin /optout
+					</code>
+					<Switch
+						checked={!isOptedOut}
+						onCheckedChange={(checked) => onToggleOptOut?.(!checked)}
+						disabled={isUpdating}
+					/>
 				</div>
 			</CardContent>
 		</Card>
@@ -426,37 +322,27 @@ export const DashboardTab: FC<DashboardTabProps> = ({
 	isUpdatingOptOut = false,
 }) => {
 	if (isLoading && !stats) {
-		return (
-			<LoadingState
-				icon={Activity}
-				text="Loading telemetry & metrics..."
-				iconClassName="w-8 h-8 animate-spin text-primary"
-			/>
-		);
+		return <LoadingState text="Loading metrics…" />;
 	}
 
 	const metricCards = METRICS_BY_ROLE[role](stats);
 
 	return (
-		<div className="space-y-6 animate-in fade-in duration-200">
+		<div className="space-y-4 animate-in fade-in duration-200">
 			<BotPrivacyCard
 				isOptedOut={isOptedOut}
 				onToggleOptOut={onToggleOptOut}
 				isUpdating={isUpdatingOptOut}
 			/>
 
-			<div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+			<div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
 				{metricCards.map((card) => (
 					<MetricCard key={card.title} {...card} />
 				))}
 			</div>
 
 			{role !== "user" && (
-				<MemoryDistributionCard
-					stats={stats}
-					role={role}
-					onRefresh={onRefresh}
-				/>
+				<MemoryCard stats={stats} role={role} onRefresh={onRefresh} />
 			)}
 
 			<TopActiveGroupsCard

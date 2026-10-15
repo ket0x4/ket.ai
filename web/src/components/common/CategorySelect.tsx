@@ -55,14 +55,17 @@ export const CategorySelect: FC<CategorySelectProps> = ({
 					<SelectItem key={cat.value} value={cat.value} className="text-xs">
 						{showDescription ? (
 							<>
-								<span className={`font-medium ${cat.textColor}`}>
-									{cat.label}
-								</span>{" "}
-								— {cat.description}
+								<span className="font-medium text-foreground">
+									{cat.label.toLowerCase()}
+								</span>
+								<span className="text-muted-foreground">
+									{" "}
+									— {cat.description}
+								</span>
 							</>
 						) : (
-							<span className={`font-medium ${cat.textColor}`}>
-								{cat.label}
+							<span className="font-medium text-foreground">
+								{cat.label.toLowerCase()}
 							</span>
 						)}
 					</SelectItem>

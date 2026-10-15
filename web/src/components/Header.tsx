@@ -1,7 +1,7 @@
 import { Bot, ShieldCheck, ShieldOff } from "lucide-react";
 import type { FC } from "react";
-import { Badge } from "@/components/ui/badge";
 import { USER_ROLES } from "@/lib/constants";
+import { cn } from "@/lib/utils";
 import type { TelegramUser, UserRole } from "@/types";
 
 interface HeaderProps {
@@ -24,76 +24,68 @@ export const Header: FC<HeaderProps> = ({
 
 	const displayName = user
 		? user.first_name + (user.last_name ? ` ${user.last_name}` : "")
-		: "Guest User";
+		: "Guest";
 
 	return (
-		<header className="sticky top-0 z-40 w-full glass-header py-3 px-4 sm:px-6">
-			<div className="max-w-6xl mx-auto flex items-center justify-between">
+		<header className="sticky top-0 z-40 w-full border-b border-border bg-background/85 backdrop-blur-md">
+			<div className="mx-auto flex h-14 max-w-5xl items-center justify-between gap-4 px-4 sm:px-6">
 				{/* Brand */}
-				<div className="flex items-center gap-3">
-					<div className="relative flex items-center justify-center w-9 h-9 rounded-xl bg-gradient-to-br from-blue-600 via-indigo-600 to-violet-600 shadow-md shadow-blue-500/20 text-white">
-						<Bot className="w-5 h-5" />
-						<span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-background animate-pulse" />
+				<div className="flex min-w-0 items-center gap-2.5">
+					<div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+						<Bot className="h-4 w-4" />
 					</div>
-					<div>
-						<div className="flex items-center gap-2">
-							<span className="font-bold text-base tracking-tight text-white">
-								ket.ai
-							</span>
-							<span className="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">
-								v7.4
-							</span>
-						</div>
-						<div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-							<span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500" />
-							<span>{isOnline ? "Server Online" : "Connecting..."}</span>
-						</div>
-					</div>
+					<span className="text-sm font-semibold tracking-tight">ket.ai</span>
+					<span className="hidden items-center gap-1.5 text-[11px] text-muted-foreground sm:flex">
+						<span
+							className={cn(
+								"h-1.5 w-1.5 rounded-full",
+								isOnline ? "bg-emerald-500" : "bg-muted-foreground",
+							)}
+						/>
+						{isOnline ? "Online" : "Connecting"}
+					</span>
 				</div>
 
-				{/* User Profile */}
-				<div className="flex items-center gap-2 sm:gap-3 bg-white/5 border border-white/10 rounded-full pl-2.5 sm:pl-3 pr-2 py-1 backdrop-blur-md shrink-0">
-					<div className="flex flex-col items-end min-w-0">
-						<span className="text-xs font-semibold text-foreground max-w-[90px] sm:max-w-[160px] truncate">
+				{/* User */}
+				<div className="flex min-w-0 items-center gap-2.5">
+					<div className="hidden min-w-0 text-right sm:block">
+						<div className="truncate text-xs font-medium leading-tight">
 							{displayName}
-						</span>
+						</div>
 						{user?.username && (
-							<span className="text-[10px] text-muted-foreground font-mono max-w-[90px] sm:max-w-[160px] truncate">
+							<div className="truncate font-mono text-[11px] text-muted-foreground">
 								@{user.username}
-							</span>
+							</div>
 						)}
 					</div>
-					<Badge
-						variant={roleMeta.badgeVariant}
-						className="flex items-center gap-1 shrink-0 text-[10px] sm:text-xs"
-					>
-						<RoleIcon className={`w-3 h-3 ${roleMeta.iconColor}`} />
-						<span className="hidden xs:inline sm:inline">{roleMeta.label}</span>
-					</Badge>
+
+					<span className="flex items-center gap-1 rounded-md border border-border px-1.5 py-1 text-[11px] text-muted-foreground">
+						<RoleIcon className="h-3 w-3" />
+						<span className="hidden sm:inline">{roleMeta.label}</span>
+					</span>
+
 					{user && (
-						<Badge
-							variant="outline"
+						<button
+							type="button"
 							onClick={onToggleOptOut}
-							className={`flex items-center gap-1 shrink-0 text-[10px] sm:text-xs transition-colors cursor-pointer ${
+							className={cn(
+								"flex h-7 w-7 items-center justify-center rounded-md border border-border transition-colors",
 								isOptedOut
-									? "bg-rose-500/15 border-rose-500/30 text-rose-300 hover:bg-rose-500/25"
-									: "bg-emerald-500/10 border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20"
-							}`}
+									? "text-rose-400 hover:bg-rose-500/10"
+									: "text-emerald-400 hover:bg-emerald-500/10",
+							)}
 							title={
 								isOptedOut
-									? "You are opted out. Bot ignores all messages & memories. Click to opt back in."
-									: "Bot is active and processing interactions. Click to opt out."
+									? "Opted out — bot ignores your messages. Click to opt in."
+									: "Active — bot processes your messages. Click to opt out."
 							}
 						>
 							{isOptedOut ? (
-								<ShieldOff className="w-3 h-3 text-rose-400" />
+								<ShieldOff className="h-3.5 w-3.5" />
 							) : (
-								<ShieldCheck className="w-3 h-3 text-emerald-400" />
+								<ShieldCheck className="h-3.5 w-3.5" />
 							)}
-							<span className="hidden sm:inline">
-								{isOptedOut ? "Opted Out" : "Opted In"}
-							</span>
-						</Badge>
+						</button>
 					)}
 				</div>
 			</div>

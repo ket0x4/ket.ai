@@ -26,9 +26,9 @@ export const RefreshButton: FC<RefreshButtonProps> = ({
 			size={size}
 			onClick={onClick}
 			disabled={isLoading}
-			className={cn("h-8 text-xs flex items-center gap-1.5", className)}
+			className={cn("h-8 gap-1.5 text-xs", className)}
 		>
-			<RefreshCw className={cn("w-3.5 h-3.5", isLoading && "animate-spin")} />
+			<RefreshCw className={cn("h-3.5 w-3.5", isLoading && "animate-spin")} />
 			{label && <span>{label}</span>}
 		</Button>
 	);

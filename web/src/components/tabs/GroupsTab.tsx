@@ -14,18 +14,10 @@ import {
 	SectionHeader,
 	StatBox,
 } from "@/components/common";
-import {
-	Badge,
-	Card,
-	CardContent,
-	CardHeader,
-	CardTitle,
-	Slider,
-	Switch,
-} from "@/components/ui";
+import { Card, Slider, Switch } from "@/components/ui";
 import { useAsyncAction } from "@/hooks/useAsyncAction";
 import { api } from "@/lib/api";
-import { getChatDisplayName } from "@/lib/utils";
+import { cn, getChatDisplayName } from "@/lib/utils";
 import type { Chat, UserRole } from "@/types";
 
 interface GroupCardProps {
@@ -53,65 +45,50 @@ const GroupCard: FC<GroupCardProps> = ({ chat, role, onToggleAllowed }) => {
 	};
 
 	const groupStats = [
-		{
-			icon: MessageSquare,
-			label: "Messages",
-			value: chat.stats?.totalMessages ?? 0,
-		},
-		{
-			icon: Users,
-			label: "Members",
-			value: chat.stats?.uniqueUsers ?? 0,
-		},
-		{
-			icon: Brain,
-			label: "Memories",
-			value: chat.memoryCount ?? 0,
-		},
+		{ icon: MessageSquare, label: "Msgs", value: chat.stats?.totalMessages ?? 0 },
+		{ icon: Users, label: "Members", value: chat.stats?.uniqueUsers ?? 0 },
+		{ icon: Brain, label: "Memories", value: chat.memoryCount ?? 0 },
 	];
 
 	return (
-		<Card className="glass-card hover:border-primary/40 transition-all duration-200">
-			<CardHeader className="p-4 pb-2">
-				<div className="flex items-start justify-between gap-2">
-					<div className="min-w-0 flex-1">
-						<CardTitle
-							className="text-sm font-semibold truncate text-foreground"
-							dir="auto"
-						>
-							{getChatDisplayName(chat)}
-						</CardTitle>
-						<span className="text-[11px] font-mono text-muted-foreground block truncate">
-							ID: {chat.chat_id}
-						</span>
+		<Card>
+			<div className="flex items-start justify-between gap-3 p-4">
+				<div className="min-w-0">
+					<div className="truncate text-sm font-medium" dir="auto">
+						{getChatDisplayName(chat)}
 					</div>
-
-					{isOwner ? (
-						<div className="flex items-center gap-2 bg-background/50 border border-border/50 px-2.5 py-1 rounded-full shrink-0">
-							<span className="text-[11px] font-medium text-muted-foreground">
-								Allowed
-							</span>
-							<Switch
-								checked={chat.is_allowed}
-								onCheckedChange={() =>
-									onToggleAllowed(chat.chat_id, chat.is_allowed)
-								}
-							/>
-						</div>
-					) : chat.is_allowed ? (
-						<Badge variant="success" className="text-[10px]">
-							Allowed
-						</Badge>
-					) : (
-						<Badge variant="destructive" className="text-[10px]">
-							Inactive
-						</Badge>
-					)}
+					<div className="truncate font-mono text-[11px] text-muted-foreground">
+						{chat.chat_id}
+					</div>
 				</div>
-			</CardHeader>
 
-			<CardContent className="p-4 pt-2 space-y-3.5 text-xs">
-				<div className="grid grid-cols-3 gap-2 p-2 rounded-lg bg-background/50 border border-border/40 text-center">
+				{isOwner ? (
+					<div className="flex shrink-0 items-center gap-2">
+						<span className="text-[11px] text-muted-foreground">
+							{chat.is_allowed ? "Allowed" : "Blocked"}
+						</span>
+						<Switch
+							checked={chat.is_allowed}
+							onCheckedChange={() =>
+								onToggleAllowed(chat.chat_id, chat.is_allowed)
+							}
+						/>
+					</div>
+				) : (
+					<span className="flex shrink-0 items-center gap-1.5 text-[11px] text-muted-foreground">
+						<span
+							className={cn(
+								"h-1.5 w-1.5 rounded-full",
+								chat.is_allowed ? "bg-emerald-500" : "bg-muted-foreground",
+							)}
+						/>
+						{chat.is_allowed ? "Allowed" : "Inactive"}
+					</span>
+				)}
+			</div>
+
+			<div className="space-y-3 border-t border-border/60 p-4">
+				<div className="grid grid-cols-3 gap-1 rounded-lg border border-border/60 bg-background/40 py-2.5">
 					{groupStats.map((stat) => (
 						<StatBox
 							key={stat.label}
@@ -124,14 +101,14 @@ const GroupCard: FC<GroupCardProps> = ({ chat, role, onToggleAllowed }) => {
 				</div>
 
 				{isAdmin ? (
-					<div className="space-y-1.5 pt-1">
+					<div className="space-y-2">
 						<div className="flex items-center justify-between text-xs">
-							<span className="font-medium text-muted-foreground flex items-center gap-1">
-								<Percent className="w-3 h-3" />
-								<span>Random Reply Probability:</span>
+							<span className="flex items-center gap-1 text-muted-foreground">
+								<Percent className="h-3 w-3" />
+								Reply probability
 							</span>
-							<span className="font-mono font-bold text-primary">
-								%{probability}
+							<span className="font-mono font-medium text-foreground tnum">
+								{probability}%
 							</span>
 						</div>
 						<Slider
@@ -144,14 +121,14 @@ const GroupCard: FC<GroupCardProps> = ({ chat, role, onToggleAllowed }) => {
 						/>
 					</div>
 				) : (
-					<div className="text-[11px] text-muted-foreground flex items-center gap-1">
-						<span>Reply Rate: </span>
-						<span className="font-mono font-medium text-foreground">
-							%{probability}
+					<div className="flex items-center justify-between text-xs text-muted-foreground">
+						<span>Reply rate</span>
+						<span className="font-mono text-foreground tnum">
+							{probability}%
 						</span>
 					</div>
 				)}
-			</CardContent>
+			</div>
 		</Card>
 	);
 };
@@ -189,20 +166,20 @@ export const GroupsTab: FC<GroupsTabProps> = ({
 		<div className="space-y-4 animate-in fade-in duration-200">
 			<SectionHeader
 				icon={Users}
-				title="Groups & Chat Permissions"
+				title="Groups"
 				description={
 					role === "owner"
-						? "Manage all Telegram groups the bot participates in, approval status, and reply probabilities."
-						: "Review status and parameters of Telegram groups you manage."
+						? "Approval status and reply behavior per group."
+						: "Groups you manage."
 				}
 				actions={<RefreshButton onClick={onRefresh} isLoading={isLoading} />}
 			/>
 
-			<div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 pt-1">
+			<div className="grid grid-cols-1 gap-3 md:grid-cols-2">
 				{isLoading && chats.length === 0 ? (
 					<LoadingState
 						icon={RefreshCw}
-						text="Loading registered groups..."
+						text="Loading groups…"
 						className="col-span-full py-16"
 					/>
 				) : chats.length > 0 ? (
@@ -217,8 +194,8 @@ export const GroupsTab: FC<GroupsTabProps> = ({
 				) : (
 					<EmptyState
 						icon={ShieldAlert}
-						title="No registered groups found"
-						description="Bot has not been added to any Telegram groups yet or no groups are registered."
+						title="No groups yet"
+						description="Groups appear here once the bot is added to them."
 						className="col-span-full py-16"
 					/>
 				)}

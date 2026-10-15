@@ -3,11 +3,8 @@ import {
 	Edit2,
 	Inbox,
 	Plus,
-	Sparkles,
 	Trash2,
 	Upload,
-	User,
-	Users,
 } from "lucide-react";
 import { type ChangeEvent, type FC, useMemo, useRef, useState } from "react";
 import {
@@ -71,63 +68,60 @@ const MemoryCard: FC<MemoryCardProps> = ({
 	const cleanedText = cleanMemoryText(memory.memory_text);
 
 	return (
-		<Card className="glass-card hover:border-primary/40 transition-all duration-200">
-			<div className="p-3.5 sm:p-4 space-y-2.5">
-				<div className="flex items-center justify-between gap-2 flex-wrap text-xs">
-					<div className="flex items-center gap-1.5 flex-wrap min-w-0 max-w-full">
+		<Card>
+			<div className="space-y-3 p-4">
+				<div className="flex items-center justify-between gap-3">
+					<div className="flex min-w-0 items-center gap-2 text-[11px] text-muted-foreground">
 						<CategoryBadge category={memory.category} />
-						<span className="px-2 py-0.5 rounded-md bg-secondary/80 text-muted-foreground text-[11px] font-medium truncate max-w-[200px] sm:max-w-[280px] flex items-center gap-1">
-							<Users className="w-3 h-3 shrink-0" />
-							<span className="truncate" dir="auto">
-								{chatLabel}
-							</span>
+						<span className="truncate" dir="auto">
+							{chatLabel}
 						</span>
 						{userName && (
-							<span className="px-2 py-0.5 rounded-md bg-primary/10 text-primary border border-primary/20 text-[11px] font-medium truncate max-w-[160px] flex items-center gap-1">
-								<User className="w-3 h-3 shrink-0" />
+							<>
+								<span className="text-border">·</span>
 								<span className="truncate" dir="auto">
 									{userName}
 								</span>
-							</span>
+							</>
 						)}
 					</div>
-					<span className="text-[11px] text-muted-foreground font-mono shrink-0">
+					<span className="shrink-0 font-mono text-[11px] text-muted-foreground">
 						{formatDate(memory.created_at)}
 					</span>
 				</div>
 
 				<p
-					className="text-xs sm:text-sm text-foreground/90 leading-relaxed break-words font-sans"
+					className="break-words text-xs leading-relaxed text-foreground/90 sm:text-sm"
 					dir="auto"
 				>
 					{cleanedText}
 				</p>
 
-				<div className="flex items-center justify-between pt-2 border-t border-border/40 text-xs">
+				<div className="flex items-center justify-between border-t border-border/60 pt-2.5">
 					<CopyButton
 						text={cleanedText}
 						successMessage="Fact copied to clipboard!"
 					/>
 
 					{canEditDelete && (
-						<div className="flex items-center gap-1">
+						<div className="flex items-center gap-0.5">
 							<Button
 								variant="ghost"
-								size="sm"
+								size="icon"
 								onClick={() => onEdit(memory)}
-								className="h-7 px-2 text-muted-foreground hover:text-blue-400 flex items-center gap-1 text-xs"
+								className="h-7 w-7"
+								title="Edit"
 							>
-								<Edit2 className="w-3.5 h-3.5" />
-								<span>Edit</span>
+								<Edit2 className="h-3.5 w-3.5" />
 							</Button>
 							<Button
 								variant="ghost"
-								size="sm"
+								size="icon"
 								onClick={() => onDelete(memory)}
-								className="h-7 px-2 text-muted-foreground hover:text-destructive flex items-center gap-1 text-xs"
+								className="h-7 w-7 hover:text-destructive"
+								title="Delete"
 							>
-								<Trash2 className="w-3.5 h-3.5" />
-								<span>Delete</span>
+								<Trash2 className="h-3.5 w-3.5" />
 							</Button>
 						</div>
 					)}
@@ -304,7 +298,7 @@ export const MemoriesTab: FC<MemoriesTabProps> = ({
 
 	const getChatLabel = (m: Memory) => {
 		if (currentUser && m.chat_id === currentUser.id.toString()) {
-			return `Personal Profile (${currentUser.first_name || "Me"})`;
+			return `You (${currentUser.first_name || "me"})`;
 		}
 		const found = chats.find((c) => c.chat_id === m.chat_id);
 		if (found) return getChatDisplayName(found);
@@ -313,23 +307,22 @@ export const MemoriesTab: FC<MemoriesTabProps> = ({
 
 	return (
 		<div className="space-y-4 animate-in fade-in duration-200">
-			<div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
+			<div className="flex flex-col items-stretch justify-between gap-3 sm:flex-row sm:items-center">
 				<SearchInput
-					placeholder="Search facts and knowledge in memory..."
+					placeholder="Search memories…"
 					value={searchQuery}
 					onChange={setSearchQuery}
+					showClearButton
 				/>
 
 				<div className="flex items-center gap-2">
 					<Button
 						variant="outline"
-						size="sm"
+						size="icon"
 						onClick={handleExport}
-						className="text-xs h-9 gap-1.5"
-						title="Export memory graph as JSON"
+						title="Export as JSON"
 					>
-						<Download className="w-3.5 h-3.5" />
-						<span className="hidden sm:inline">Export</span>
+						<Download className="h-3.5 w-3.5" />
 					</Button>
 
 					<input
@@ -341,55 +334,47 @@ export const MemoriesTab: FC<MemoriesTabProps> = ({
 					/>
 					<Button
 						variant="outline"
-						size="sm"
+						size="icon"
 						onClick={() => fileInputRef.current?.click()}
-						className="text-xs h-9 gap-1.5"
-						title="Import memory graph from JSON"
+						title="Import from JSON"
 					>
-						<Upload className="w-3.5 h-3.5" />
-						<span className="hidden sm:inline">Import</span>
+						<Upload className="h-3.5 w-3.5" />
 					</Button>
 
 					{role !== "user" && (
 						<Button
 							variant="outline"
-							size="sm"
+							size="icon"
 							onClick={handlePrune}
 							disabled={isPruning}
-							className="text-xs h-9 gap-1.5 text-amber-400 hover:text-amber-300"
 							title="Prune expired memories"
 						>
-							<Trash2 className="w-3.5 h-3.5" />
-							<span>{isPruning ? "Pruning..." : "Prune"}</span>
+							<Trash2 className="h-3.5 w-3.5" />
 						</Button>
 					)}
 
-					<Button
-						onClick={onOpenAddModal}
-						size="sm"
-						className="text-xs h-9 gap-1.5 shadow-sm shadow-primary/20"
-					>
-						<Plus className="w-3.5 h-3.5" />
-						<span>Add Fact</span>
+					<Button onClick={onOpenAddModal} size="sm" className="gap-1.5">
+						<Plus className="h-3.5 w-3.5" />
+						<span>Add</span>
 					</Button>
 				</div>
 			</div>
 
 			{/* Filters */}
-			<div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+			<div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
 				<Select value={scopeFilter} onValueChange={setScopeFilter}>
-					<SelectTrigger className="w-full bg-card/60 text-xs h-9">
+					<SelectTrigger className="text-xs">
 						<SelectValue placeholder="Scope" />
 					</SelectTrigger>
 					<SelectContent>
 						<SelectItem value="all" className="text-xs">
-							All Scopes
+							All scopes
 						</SelectItem>
 						<SelectItem value="mine" className="text-xs">
-							My Memories
+							Mine
 						</SelectItem>
 						<SelectItem value="group" className="text-xs">
-							Group Memories
+							Group
 						</SelectItem>
 					</SelectContent>
 				</Select>
@@ -399,26 +384,22 @@ export const MemoriesTab: FC<MemoriesTabProps> = ({
 					onValueChange={setChatFilter}
 					chats={chats}
 					includeAllOption={true}
-					allOptionLabel="All Groups & Chats"
-					placeholder="All Groups"
+					allOptionLabel="All groups & chats"
+					placeholder="All groups"
 				/>
 
 				<CategorySelect
 					value={categoryFilter}
 					onValueChange={setCategoryFilter}
 					includeAllOption={true}
-					allOptionLabel="All Categories"
-					placeholder="All Categories"
+					allOptionLabel="All categories"
+					placeholder="All categories"
 				/>
 			</div>
 
-			<div className="space-y-3 pt-2">
+			<div className="space-y-2.5 pt-1">
 				{isLoading && memories.length === 0 ? (
-					<LoadingState
-						icon={Sparkles}
-						text="Loading memory records..."
-						iconClassName="w-6 h-6 animate-pulse text-primary"
-					/>
+					<LoadingState text="Loading memories…" />
 				) : filteredMemories.length > 0 ? (
 					filteredMemories.map((m) => (
 						<MemoryCard
@@ -435,12 +416,12 @@ export const MemoriesTab: FC<MemoriesTabProps> = ({
 				) : (
 					<EmptyState
 						icon={Inbox}
-						title="No memory records found"
-						description="No saved memories matched your filters. You can add a new fact to get started."
+						title="Nothing here yet"
+						description="No memories matched your filters. Add a fact to get started."
 						action={
-							<Button size="sm" onClick={onOpenAddModal} className="text-xs">
-								<Plus className="w-3.5 h-3.5 mr-1" />
-								Add First Fact
+							<Button size="sm" onClick={onOpenAddModal} className="gap-1.5">
+								<Plus className="h-3.5 w-3.5" />
+								Add fact
 							</Button>
 						}
 					/>

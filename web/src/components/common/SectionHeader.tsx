@@ -19,21 +19,21 @@ export const SectionHeader: FC<SectionHeaderProps> = ({
 	return (
 		<div
 			className={cn(
-				"flex flex-col sm:flex-row gap-2 sm:items-center justify-between",
+				"flex flex-col justify-between gap-3 sm:flex-row sm:items-center",
 				className,
 			)}
 		>
-			<div>
-				<h3 className="text-base sm:text-lg font-bold text-foreground flex items-center gap-2">
-					{Icon && <Icon className="w-5 h-5 text-primary" />}
+			<div className="min-w-0">
+				<h2 className="flex items-center gap-2 text-sm font-semibold tracking-tight text-foreground">
+					{Icon && <Icon className="h-4 w-4 text-muted-foreground" />}
 					<span>{title}</span>
-				</h3>
+				</h2>
 				{description && (
-					<p className="text-xs text-muted-foreground">{description}</p>
+					<p className="mt-0.5 text-xs text-muted-foreground">{description}</p>
 				)}
 			</div>
 			{actions && (
-				<div className="flex items-center gap-2 flex-wrap shrink-0">
+				<div className="flex shrink-0 flex-wrap items-center gap-2">
 					{actions}
 				</div>
 			)}

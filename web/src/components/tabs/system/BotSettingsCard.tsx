@@ -1,11 +1,4 @@
-import {
-	Cpu,
-	FileText,
-	Globe,
-	Settings,
-	Sliders,
-	Sparkles,
-} from "lucide-react";
+import { Cpu, FileText, Globe, Sliders } from "lucide-react";
 import {
 	type ElementType,
 	type FC,
@@ -15,13 +8,7 @@ import {
 } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import {
-	Card,
-	CardContent,
-	CardDescription,
-	CardHeader,
-	CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
 	Select,
@@ -36,12 +23,12 @@ import { useAsyncAction } from "@/hooks/useAsyncAction";
 import { api } from "@/lib/api";
 import type { BotSettings } from "@/types";
 
-const SettingGroupHeader: FC<{ icon: ElementType; title: string }> = ({
+const GroupLabel: FC<{ icon: ElementType; title: string }> = ({
 	icon: Icon,
 	title,
 }) => (
-	<div className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-		<Icon className="w-3.5 h-3.5 text-primary" />
+	<div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+		<Icon className="h-3.5 w-3.5" />
 		<span>{title}</span>
 	</div>
 );
@@ -75,7 +62,7 @@ export const BotSettingsCard: FC = () => {
 
 	const handleSaveSettings = async () => {
 		await executeSave(() => api.settings.update(settings), {
-			successMessage: "Global bot settings saved!",
+			successMessage: "Settings saved!",
 			errorMessage: "Save failed",
 		});
 	};
@@ -85,31 +72,25 @@ export const BotSettingsCard: FC = () => {
 	);
 
 	return (
-		<Card className="glass-card">
-			<CardHeader className="pb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-				<div className="min-w-0 flex-1">
-					<CardTitle className="text-base sm:text-lg flex items-center gap-2">
-						<Settings className="w-5 h-5 text-primary" />
-						<span>Bot Engine Settings</span>
-					</CardTitle>
-					<CardDescription className="text-xs text-muted-foreground mt-0.5">
-						Configure AI parameters, grounding, reasoning steps, and system
-						behavior.
-					</CardDescription>
-				</div>
+		<Card>
+			<CardHeader className="flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+				<CardTitle>Engine</CardTitle>
+				<span className="text-xs text-muted-foreground">
+					Model, reasoning, and runtime behavior.
+				</span>
 			</CardHeader>
 
-			<CardContent className="space-y-5">
+			<CardContent className="space-y-6">
 				<div className="space-y-3">
-					<SettingGroupHeader icon={Cpu} title="AI Engine & Grounding" />
+					<GroupLabel icon={Cpu} title="AI engine" />
 
-					<div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+					<div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
 						<div className="space-y-1.5">
 							<label
 								htmlFor="select-gemini-model-sys"
-								className="text-xs font-medium text-foreground"
+								className="text-xs text-muted-foreground"
 							>
-								Active Gemini Model
+								Model
 							</label>
 							<Select
 								value={settings.gemini_model || "gemini-3.8-flash"}
@@ -117,24 +98,21 @@ export const BotSettingsCard: FC = () => {
 									setSettings({ ...settings, gemini_model: val })
 								}
 							>
-								<SelectTrigger
-									id="select-gemini-model-sys"
-									className="w-full bg-background/50"
-								>
+								<SelectTrigger id="select-gemini-model-sys" className="w-full">
 									<SelectValue />
 								</SelectTrigger>
 								<SelectContent>
 									<SelectItem value="gemini-3.8-flash">
-										gemini-3.8-flash (Flagship & Agentic)
+										gemini-3.8-flash · flagship
 									</SelectItem>
 									<SelectItem value="gemini-3.7-flash">
-										gemini-3.7-flash (Balanced Multimodal)
+										gemini-3.7-flash · balanced
 									</SelectItem>
 									<SelectItem value="gemini-3.5-flash-lite">
-										gemini-3.5-flash-lite (Fast & High-Throughput)
+										gemini-3.5-flash-lite · fast
 									</SelectItem>
 									<SelectItem value="gemini-3.1-pro-preview">
-										gemini-3.1-pro-preview (Advanced Reasoning)
+										gemini-3.1-pro-preview · reasoning
 									</SelectItem>
 								</SelectContent>
 							</Select>
@@ -143,9 +121,9 @@ export const BotSettingsCard: FC = () => {
 						<div className="space-y-1.5">
 							<label
 								htmlFor="input-agent-steps-sys"
-								className="text-xs font-medium text-foreground"
+								className="text-xs text-muted-foreground"
 							>
-								Max Agent Reasoning Steps
+								Max reasoning steps
 							</label>
 							<Input
 								id="input-agent-steps-sys"
@@ -159,20 +137,18 @@ export const BotSettingsCard: FC = () => {
 										max_agent_steps: parseInt(e.target.value, 10) || 3,
 									})
 								}
-								className="bg-background/50"
 							/>
 						</div>
 					</div>
 
-					<div className="flex items-center justify-between p-3 rounded-xl bg-background/50 border border-border/50">
-						<div className="space-y-0.5">
-							<div className="text-xs font-semibold text-foreground flex items-center gap-1.5">
-								<Globe className="w-3.5 h-3.5 text-blue-400" />
-								<span>Google Web Search Grounding</span>
-							</div>
-							<div className="text-[11px] text-muted-foreground">
-								Enables dynamic search subagents to ground responses with
-								real-time web facts.
+					<div className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-background/40 p-3">
+						<div className="flex items-center gap-2.5 text-xs">
+							<Globe className="h-4 w-4 shrink-0 text-muted-foreground" />
+							<div>
+								<div className="font-medium text-foreground">Web search</div>
+								<div className="text-muted-foreground">
+									Ground replies with live web results.
+								</div>
 							</div>
 						</div>
 						<Switch
@@ -184,19 +160,16 @@ export const BotSettingsCard: FC = () => {
 					</div>
 				</div>
 
-				<div className="space-y-3 pt-2 border-t border-border/40">
-					<SettingGroupHeader
-						icon={Sliders}
-						title="Behavior & Context Parameters"
-					/>
+				<div className="space-y-3 border-t border-border/60 pt-5">
+					<GroupLabel icon={Sliders} title="Behavior" />
 
-					<div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+					<div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
 						<div className="space-y-2">
 							<div className="flex items-center justify-between text-xs">
-								<span className="font-medium text-foreground">
-									Default Random Reply Rate
+								<span className="text-muted-foreground">
+									Default reply rate
 								</span>
-								<span className="font-mono font-bold text-primary">
+								<span className="font-mono font-medium text-foreground tnum">
 									{replyProbPct}%
 								</span>
 							</div>
@@ -217,9 +190,9 @@ export const BotSettingsCard: FC = () => {
 						<div className="space-y-1.5">
 							<label
 								htmlFor="input-history-limit-sys"
-								className="text-xs font-medium text-foreground"
+								className="text-xs text-muted-foreground"
 							>
-								Chat Context Window Turns
+								Context window (turns)
 							</label>
 							<Input
 								id="input-history-limit-sys"
@@ -233,21 +206,20 @@ export const BotSettingsCard: FC = () => {
 										chat_history_limit: parseInt(e.target.value, 10) || 10,
 									})
 								}
-								className="bg-background/50"
 							/>
 						</div>
 					</div>
 				</div>
 
-				<div className="space-y-3 pt-2 border-t border-border/40">
-					<SettingGroupHeader icon={FileText} title="Diagnostic Logging" />
+				<div className="space-y-3 border-t border-border/60 pt-5">
+					<GroupLabel icon={FileText} title="Logging" />
 
-					<div className="space-y-1.5 max-w-xs">
+					<div className="max-w-xs space-y-1.5">
 						<label
 							htmlFor="select-log-level-sys"
-							className="text-xs font-medium text-foreground"
+							className="text-xs text-muted-foreground"
 						>
-							Minimum Log Level
+							Minimum log level
 						</label>
 						<Select
 							value={settings.log_level || "info"}
@@ -255,30 +227,22 @@ export const BotSettingsCard: FC = () => {
 								setSettings({ ...settings, log_level: val })
 							}
 						>
-							<SelectTrigger
-								id="select-log-level-sys"
-								className="w-full bg-background/50"
-							>
+							<SelectTrigger id="select-log-level-sys" className="w-full">
 								<SelectValue />
 							</SelectTrigger>
 							<SelectContent>
-								<SelectItem value="debug">debug (Detailed trace)</SelectItem>
-								<SelectItem value="info">info (Standard runtime)</SelectItem>
-								<SelectItem value="warn">warn (Warnings & Errors)</SelectItem>
-								<SelectItem value="error">error (Critical only)</SelectItem>
+								<SelectItem value="debug">debug</SelectItem>
+								<SelectItem value="info">info</SelectItem>
+								<SelectItem value="warn">warn</SelectItem>
+								<SelectItem value="error">error</SelectItem>
 							</SelectContent>
 						</Select>
 					</div>
 				</div>
 
-				<div className="pt-2 flex justify-end">
-					<Button
-						onClick={handleSaveSettings}
-						disabled={isSaving}
-						className="flex items-center gap-2 text-xs"
-					>
-						<Sparkles className="w-4 h-4" />
-						<span>{isSaving ? "Saving..." : "Save Settings"}</span>
+				<div className="flex justify-end border-t border-border/60 pt-5">
+					<Button onClick={handleSaveSettings} disabled={isSaving}>
+						{isSaving ? "Saving…" : "Save settings"}
 					</Button>
 				</div>
 			</CardContent>

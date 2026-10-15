@@ -176,11 +176,9 @@ export default function App() {
 
 	if (!authChecked) {
 		return (
-			<div className="min-h-screen flex flex-col items-center justify-center bg-background text-muted-foreground gap-3">
-				<Loader2 className="w-8 h-8 animate-spin text-primary" />
-				<span className="text-sm font-medium">
-					Authenticating Telegram session...
-				</span>
+			<div className="flex min-h-[100dvh] flex-col items-center justify-center gap-3 text-muted-foreground">
+				<Loader2 className="h-6 w-6 animate-spin" />
+				<span className="text-xs">Authenticating…</span>
 			</div>
 		);
 	}
@@ -215,23 +213,19 @@ export default function App() {
 			/>
 
 			{/* Main Container */}
-			<main className="flex-1 max-w-6xl w-full mx-auto px-3 sm:px-6 py-4 sm:py-6 space-y-5">
+			<main className="mx-auto w-full max-w-5xl flex-1 space-y-5 px-3 py-4 sm:px-6 sm:py-6">
 				<Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
 					{/* Navigation Bar */}
 					<div
-						className="overflow-x-auto pb-1.5 no-scrollbar -mx-1 px-1 touch-pan-x"
+						className="-mx-1 overflow-x-auto px-1 no-scrollbar touch-pan-x"
 						onWheel={handleHorizontalWheelScroll}
 					>
-						<TabsList className="inline-flex w-max sm:w-auto p-1 bg-secondary/50 border border-border/60 rounded-xl gap-1">
+						<TabsList className="w-max sm:w-auto">
 							{navTabs.map((t) => {
 								const Icon = t.icon;
 								return (
-									<TabsTrigger
-										key={t.value}
-										value={t.value}
-										className="gap-1.5 text-xs shrink-0 whitespace-nowrap"
-									>
-										<Icon className="w-3.5 h-3.5" />
+									<TabsTrigger key={t.value} value={t.value} className="shrink-0 gap-1.5">
+										<Icon className="h-3.5 w-3.5" />
 										<span>{t.label}</span>
 									</TabsTrigger>
 								);
@@ -387,7 +381,7 @@ export default function App() {
 			)}
 
 			{/* Modern Sonner Toast Notifications */}
-			<Toaster position="bottom-right" richColors />
+			<Toaster position="bottom-right" />
 		</div>
 	);
 }

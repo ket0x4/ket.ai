@@ -3,6 +3,7 @@ import { cn } from "@/lib/utils";
 
 interface StatBoxProps {
 	icon?: ElementType;
+	/** Kept for API compatibility; icons render neutrally. */
 	iconColor?: string;
 	label: string;
 	value: ReactNode;
@@ -13,7 +14,6 @@ interface StatBoxProps {
 
 export const StatBox: FC<StatBoxProps> = ({
 	icon: Icon,
-	iconColor = "text-primary",
 	label,
 	value,
 	title,
@@ -22,13 +22,13 @@ export const StatBox: FC<StatBoxProps> = ({
 }) => {
 	if (layout === "vertical") {
 		return (
-			<div className={cn("text-center", className)}>
-				<div className="text-[10px] text-muted-foreground uppercase flex items-center justify-center gap-1">
-					{Icon && <Icon className={cn("w-3 h-3", iconColor)} />}
+			<div className={cn("min-w-0 text-center", className)}>
+				<div className="flex items-center justify-center gap-1.5 text-[11px] text-muted-foreground">
+					{Icon && <Icon className="h-3.5 w-3.5 opacity-70" />}
 					<span>{label}</span>
 				</div>
 				<div
-					className="font-semibold font-mono text-foreground mt-0.5"
+					className="mt-1 font-mono text-sm font-medium text-foreground tnum"
 					title={title}
 				>
 					{value}
@@ -40,17 +40,17 @@ export const StatBox: FC<StatBoxProps> = ({
 	return (
 		<div
 			className={cn(
-				"flex items-center gap-2.5 p-2.5 rounded-lg bg-background/50 border border-border/40 min-w-0 flex-1",
+				"flex min-w-0 flex-1 items-center gap-2.5 rounded-lg border border-border/70 bg-background/40 p-2.5",
 				className,
 			)}
 		>
-			{Icon && <Icon className={cn("w-4 h-4 shrink-0", iconColor)} />}
+			{Icon && <Icon className="h-4 w-4 shrink-0 text-muted-foreground/70" />}
 			<div className="min-w-0 flex-1">
-				<div className="text-[10px] text-muted-foreground uppercase font-medium truncate">
+				<div className="truncate text-[11px] text-muted-foreground">
 					{label}
 				</div>
 				<div
-					className="font-semibold font-mono text-foreground truncate"
+					className="truncate font-mono text-sm font-medium text-foreground tnum"
 					title={title}
 				>
 					{value}

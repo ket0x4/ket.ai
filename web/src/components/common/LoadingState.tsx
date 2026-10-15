@@ -13,12 +13,12 @@ export const LoadingState: FC<LoadingStateProps> = ({
 	icon: Icon = Loader2,
 	text = "Loading...",
 	className,
-	iconClassName = "w-6 h-6 animate-spin text-primary",
+	iconClassName = "h-5 w-5 animate-spin text-muted-foreground",
 }) => {
 	return (
 		<div
 			className={cn(
-				"py-16 text-center text-muted-foreground flex flex-col items-center justify-center gap-3",
+				"flex flex-col items-center justify-center gap-3 py-16 text-muted-foreground",
 				className,
 			)}
 		>

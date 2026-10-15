@@ -2,29 +2,27 @@ import { cva, type VariantProps } from "class-variance-authority";
 import type * as React from "react";
 import { cn } from "@/lib/utils";
 
+/*
+ * Badges are intentionally quiet. Most states read as neutral; only the
+ * single accent and small semantic status colors are allowed.
+ */
 const badgeVariants = cva(
-	"inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
+	"inline-flex items-center rounded-md border px-2 py-0.5 text-[11px] font-medium leading-none whitespace-nowrap transition-colors focus:outline-none",
 	{
 		variants: {
 			variant: {
-				default:
-					"border-transparent bg-primary/20 text-primary hover:bg-primary/30 border-primary/30",
-				secondary:
-					"border-transparent bg-secondary text-secondary-foreground hover:bg-secondary/80",
-				destructive:
-					"border-transparent bg-destructive/20 text-destructive hover:bg-destructive/30 border-destructive/30",
-				outline: "text-foreground border-border",
-				success:
-					"border-emerald-500/30 bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25",
-				warning:
-					"border-amber-500/30 bg-amber-500/15 text-amber-400 hover:bg-amber-500/25",
-				profile: "border-blue-500/30 bg-blue-500/15 text-blue-400",
-				dynamic: "border-emerald-500/30 bg-emerald-500/15 text-emerald-400",
-				temporary: "border-amber-500/30 bg-amber-500/15 text-amber-400",
-				owner:
-					"border-purple-500/30 bg-purple-500/15 text-purple-300 font-bold",
-				admin: "border-blue-500/30 bg-blue-500/15 text-blue-300 font-semibold",
-				user: "border-zinc-700 bg-zinc-800 text-zinc-300",
+				default: "border-transparent bg-primary/12 text-primary",
+				secondary: "border-transparent bg-secondary text-muted-foreground",
+				destructive: "border-transparent bg-destructive/12 text-destructive",
+				outline: "text-muted-foreground border-border",
+				success: "border-transparent bg-emerald-500/12 text-emerald-400",
+				warning: "border-transparent bg-amber-500/12 text-amber-400",
+				profile: "border-transparent bg-secondary text-muted-foreground",
+				dynamic: "border-transparent bg-secondary text-muted-foreground",
+				temporary: "border-transparent bg-secondary text-muted-foreground",
+				owner: "border-transparent bg-primary/12 text-primary",
+				admin: "border-transparent bg-secondary text-foreground",
+				user: "border-transparent bg-secondary text-muted-foreground",
 			},
 		},
 		defaultVariants: {

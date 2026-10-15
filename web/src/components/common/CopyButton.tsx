@@ -38,18 +38,18 @@ export const CopyButton: FC<CopyButtonProps> = ({
 			size={size}
 			onClick={() => copy(text)}
 			className={cn(
-				"h-7 px-2 text-muted-foreground hover:text-foreground flex items-center gap-1.5 text-xs",
+				"h-7 gap-1.5 px-2 text-xs text-muted-foreground hover:text-foreground",
 				className,
 			)}
 		>
 			{copied ? (
 				<>
-					<Check className="w-3.5 h-3.5 text-emerald-400" />
+					<Check className="h-3.5 w-3.5 text-emerald-400" />
 					<span className="text-emerald-400">{copiedLabel}</span>
 				</>
 			) : (
 				<>
-					<Copy className="w-3.5 h-3.5" />
+					<Copy className="h-3.5 w-3.5" />
 					{label && <span>{label}</span>}
 				</>
 			)}

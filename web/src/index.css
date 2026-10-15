@@ -1,64 +1,71 @@
 @import "tailwindcss";
 
+/*
+ * ket.ai — "Quiet" design language
+ * A near-black monochrome system with a single restrained accent.
+ * No glass, no gradients, no glow. Surfaces are solid and quiet.
+ */
+
 @theme {
 	--font-sans:
 		"Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
 		sans-serif;
-	--font-mono: "JetBrains Mono", monospace;
+	--font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
 
-	--color-background: #09090b;
-	--color-foreground: #fafafa;
+	--color-background: #0a0a0b;
+	--color-foreground: #f2f2f3;
 
-	--color-card: #141417;
-	--color-card-foreground: #fafafa;
+	--color-card: #101012;
+	--color-card-foreground: #f2f2f3;
 
-	--color-popover: #141417;
-	--color-popover-foreground: #fafafa;
+	--color-popover: #17171a;
+	--color-popover-foreground: #f2f2f3;
 
-	--color-primary: #3b82f6;
+	/* The only accent in the system. */
+	--color-primary: #7c6cf5;
 	--color-primary-foreground: #ffffff;
 
-	--color-secondary: #27272a;
-	--color-secondary-foreground: #fafafa;
+	--color-secondary: #1a1a1d;
+	--color-secondary-foreground: #f2f2f3;
 
-	--color-muted: #1e1e24;
-	--color-muted-foreground: #a1a1aa;
+	--color-muted: #17171a;
+	--color-muted-foreground: #8b8b92;
 
-	--color-accent: #27272a;
-	--color-accent-foreground: #fafafa;
+	--color-accent: #1e1e22;
+	--color-accent-foreground: #f2f2f3;
 
-	--color-destructive: #ef4444;
+	--color-destructive: #e5484d;
 	--color-destructive-foreground: #ffffff;
 
-	--color-border: #27272a;
-	--color-input: #27272a;
-	--color-ring: #3b82f6;
+	--color-border: #232326;
+	--color-input: #232326;
+	--color-ring: #7c6cf5;
 
-	--color-profile: #3b82f6;
-	--color-dynamic: #10b981;
-	--color-temporary: #f59e0b;
+	--color-profile: #8b8b92;
+	--color-dynamic: #8b8b92;
+	--color-temporary: #8b8b92;
 }
 
 :root {
-	--background: #09090b;
-	--foreground: #fafafa;
-	--card: #141417;
-	--card-foreground: #fafafa;
-	--popover: #141417;
-	--popover-foreground: #fafafa;
-	--primary: #3b82f6;
+	--background: #0a0a0b;
+	--foreground: #f2f2f3;
+	--card: #101012;
+	--card-foreground: #f2f2f3;
+	--popover: #17171a;
+	--popover-foreground: #f2f2f3;
+	--primary: #7c6cf5;
 	--primary-foreground: #ffffff;
-	--secondary: #27272a;
-	--secondary-foreground: #fafafa;
-	--muted: #1e1e24;
-	--muted-foreground: #a1a1aa;
-	--accent: #27272a;
-	--accent-foreground: #fafafa;
-	--destructive: #ef4444;
+	--secondary: #1a1a1d;
+	--secondary-foreground: #f2f2f3;
+	--muted: #17171a;
+	--muted-foreground: #8b8b92;
+	--accent: #1e1e22;
+	--accent-foreground: #f2f2f3;
+	--destructive: #e5484d;
 	--destructive-foreground: #ffffff;
-	--border: #27272a;
-	--input: #27272a;
-	--ring: #3b82f6;
+	--border: #232326;
+	--input: #232326;
+	--ring: #7c6cf5;
 }
 
 html,
@@ -103,10 +110,10 @@ body {
 	scrollbar-width: none; /* Firefox */
 }
 
-/* Custom modern scrollbars */
+/* Quiet scrollbars */
 ::-webkit-scrollbar {
-	width: 5px;
-	height: 5px;
+	width: 6px;
+	height: 6px;
 }
 
 ::-webkit-scrollbar-track {
@@ -114,42 +121,15 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-	background: rgba(161, 161, 170, 0.2);
+	background: rgba(255, 255, 255, 0.09);
 	border-radius: 9999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-	background: rgba(161, 161, 170, 0.4);
+	background: rgba(255, 255, 255, 0.16);
 }
 
-/* Glassmorphism helpers */
-.glass-card {
-	background: rgba(20, 20, 23, 0.85);
-	backdrop-filter: blur(12px);
-	-webkit-backdrop-filter: blur(12px);
-	border: 1px solid rgba(39, 39, 42, 0.8);
-}
-
-.glass-header {
-	background: rgba(9, 9, 11, 0.88);
-	backdrop-filter: blur(16px);
-	-webkit-backdrop-filter: blur(16px);
-	border-bottom: 1px solid rgba(39, 39, 42, 0.6);
-}
-
-/* Subtle glow animations */
-@keyframes pulse-glow {
-	0%,
-	100% {
-		opacity: 0.8;
-		filter: drop-shadow(0 0 8px rgba(59, 130, 246, 0.4));
-	}
-	50% {
-		opacity: 1;
-		filter: drop-shadow(0 0 16px rgba(59, 130, 246, 0.7));
-	}
-}
-
-.animate-pulse-glow {
-	animation: pulse-glow 3s ease-in-out infinite;
+/* Numbers should line up anywhere numbers are shown. */
+.tnum {
+	font-variant-numeric: tabular-nums;
 }

@@ -2,13 +2,7 @@ import { Wrench } from "lucide-react";
 import { type FC, useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { RefreshButton } from "@/components/common";
-import {
-	Card,
-	CardContent,
-	CardDescription,
-	CardHeader,
-	CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { api } from "@/lib/api";
 import type { ToolTrace } from "@/types";
 
@@ -34,56 +28,53 @@ export const ToolTracesCard: FC = () => {
 	}, [loadTraces]);
 
 	return (
-		<Card className="glass-card">
-			<CardHeader className="pb-3 flex flex-row items-center justify-between">
-				<div>
-					<CardTitle className="text-base sm:text-lg flex items-center gap-2">
-						<Wrench className="w-5 h-5 text-purple-400" />
-						<span>Tool Execution Traces</span>
-					</CardTitle>
-					<CardDescription>
-						Recent Gemini function call invocations and subagent execution
-						results.
-					</CardDescription>
-				</div>
-				<RefreshButton onClick={loadTraces} isLoading={isLoading} />
+		<Card>
+			<CardHeader className="flex-row items-center justify-between">
+				<CardTitle className="flex items-center gap-2">
+					<Wrench className="h-4 w-4 text-muted-foreground" />
+					Tool traces
+				</CardTitle>
+				<RefreshButton
+					onClick={loadTraces}
+					isLoading={isLoading}
+					size="icon"
+					label=""
+				/>
 			</CardHeader>
 
 			<CardContent>
-				<div className="rounded-xl border border-zinc-800 bg-black/90 p-3 sm:p-3.5 font-mono text-[11px] max-h-72 overflow-y-auto overflow-x-auto space-y-2.5">
+				<div className="max-h-72 space-y-2 overflow-y-auto overflow-x-auto rounded-lg border border-border bg-black/40 p-3 font-mono text-[11px]">
 					{isLoading && traces.length === 0 ? (
-						<div className="text-zinc-500 py-4 text-center">
-							Loading traces...
+						<div className="py-4 text-center text-muted-foreground">
+							Loading…
 						</div>
 					) : traces.length > 0 ? (
 						traces.map((t) => (
 							<div
 								key={`${t.toolName}-${t.timestamp}`}
-								className="p-2 rounded-lg bg-zinc-900/80 border border-zinc-800/80 space-y-1"
+								className="space-y-1 rounded-lg border border-border/60 p-2.5"
 							>
-								<div className="flex items-center justify-between text-xs">
-									<span className="text-purple-400 font-bold font-mono">
-										[{t.toolName}]
-									</span>
-									<span className="text-[10px] text-zinc-500">
+								<div className="flex items-center justify-between gap-2">
+									<span className="font-bold text-primary">{t.toolName}</span>
+									<span className="text-[10px] text-muted-foreground">
 										{new Date(t.timestamp).toLocaleTimeString()}
 									</span>
 								</div>
-								<div className="text-zinc-300 text-[11px] break-words">
-									<span className="text-zinc-500">Args: </span>
+								<div className="break-words text-foreground/70">
+									<span className="text-muted-foreground">args </span>
 									{JSON.stringify(t.args)}
 								</div>
 								{t.result !== undefined && (
-									<div className="text-emerald-400 text-[11px] break-words">
-										<span className="text-zinc-500">Result: </span>
+									<div className="break-words text-emerald-400/90">
+										<span className="text-muted-foreground">result </span>
 										{JSON.stringify(t.result)}
 									</div>
 								)}
 							</div>
 						))
 					) : (
-						<div className="text-zinc-500 py-4 text-center">
-							No tool calls recorded in active session.
+						<div className="py-4 text-center text-muted-foreground">
+							No tool calls recorded.
 						</div>
 					)}
 				</div>

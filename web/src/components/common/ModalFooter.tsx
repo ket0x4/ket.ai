@@ -1,4 +1,4 @@
-import { Sparkles } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import type { ElementType, FC, ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { DialogFooter } from "@/components/ui/dialog";
@@ -20,13 +20,13 @@ export const ModalFooter: FC<ModalFooterProps> = ({
 	isSubmitting,
 	submitText,
 	submittingText,
-	submitIcon: SubmitIcon = Sparkles,
+	submitIcon: SubmitIcon,
 	cancelText = "Cancel",
 	children,
 	className,
 }) => {
 	return (
-		<DialogFooter className={cn("gap-2 sm:gap-0 pt-3", className)}>
+		<DialogFooter className={cn("gap-2 pt-2 sm:gap-2", className)}>
 			{children}
 			<Button
 				type="button"
@@ -36,15 +36,11 @@ export const ModalFooter: FC<ModalFooterProps> = ({
 			>
 				{cancelText}
 			</Button>
-			<Button
-				type="submit"
-				disabled={isSubmitting}
-				className="gap-1.5 shadow-md shadow-primary/20"
-			>
+			<Button type="submit" disabled={isSubmitting} className="gap-1.5">
 				{isSubmitting ? (
-					<Sparkles className="w-4 h-4 animate-spin" />
+					<Loader2 className="h-4 w-4 animate-spin" />
 				) : (
-					<SubmitIcon className="w-4 h-4" />
+					SubmitIcon && <SubmitIcon className="h-4 w-4" />
 				)}
 				<span>
 					{isSubmitting ? (submittingText ?? submitText) : submitText}

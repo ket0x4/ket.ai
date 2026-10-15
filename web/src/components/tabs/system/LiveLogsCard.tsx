@@ -2,13 +2,7 @@ import { Terminal } from "lucide-react";
 import { type FC, useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { RefreshButton, SearchInput } from "@/components/common";
-import {
-	Card,
-	CardContent,
-	CardDescription,
-	CardHeader,
-	CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
 	Select,
 	SelectContent,
@@ -17,6 +11,7 @@ import {
 	SelectValue,
 } from "@/components/ui/select";
 import { api } from "@/lib/api";
+import { cn } from "@/lib/utils";
 import type { LogEntry } from "@/types";
 
 const LOG_LEVELS = ["ALL", "INFO", "WARN", "ERROR"] as const;
@@ -50,33 +45,34 @@ export const LiveLogsCard: FC = () => {
 	}, [loadLogs]);
 
 	return (
-		<Card className="glass-card">
-			<CardHeader className="pb-3 flex flex-row items-center justify-between">
-				<div>
-					<CardTitle className="text-base sm:text-lg flex items-center gap-2">
-						<Terminal className="w-5 h-5 text-emerald-400" />
-						<span>Logs</span>
-					</CardTitle>
-					<CardDescription>
-						Real-time structured logs from application and error handlers.
-					</CardDescription>
-				</div>
-				<RefreshButton onClick={loadLogs} isLoading={isLoading} />
+		<Card>
+			<CardHeader className="flex-row items-center justify-between">
+				<CardTitle className="flex items-center gap-2">
+					<Terminal className="h-4 w-4 text-muted-foreground" />
+					Logs
+				</CardTitle>
+				<RefreshButton
+					onClick={loadLogs}
+					isLoading={isLoading}
+					size="icon"
+					label=""
+				/>
 			</CardHeader>
 
 			<CardContent className="space-y-3">
-				<div className="flex flex-col sm:flex-row gap-2.5 items-stretch sm:items-center justify-between text-xs">
-					<div className="flex items-center gap-1 bg-background/50 p-1 rounded-lg border border-border/50">
+				<div className="flex flex-col items-stretch justify-between gap-2.5 text-xs sm:flex-row sm:items-center">
+					<div className="flex items-center gap-0.5 rounded-lg border border-border p-0.5">
 						{LOG_LEVELS.map((lvl) => (
 							<button
 								type="button"
 								key={lvl}
 								onClick={() => setLogLevelFilter(lvl)}
-								className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all ${
+								className={cn(
+									"rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
 									logLevelFilter === lvl
-										? "bg-primary text-primary-foreground shadow"
-										: "text-muted-foreground hover:text-foreground"
-								}`}
+										? "bg-accent text-foreground"
+										: "text-muted-foreground hover:text-foreground",
+								)}
 							>
 								{lvl}
 							</button>
@@ -88,7 +84,7 @@ export const LiveLogsCard: FC = () => {
 							value={logType}
 							onValueChange={(val) => setLogType(val as "app" | "error")}
 						>
-							<SelectTrigger className="w-32 bg-background/50 h-8 text-xs">
+							<SelectTrigger className="h-8 w-32 text-xs">
 								<SelectValue />
 							</SelectTrigger>
 							<SelectContent>
@@ -98,49 +94,47 @@ export const LiveLogsCard: FC = () => {
 						</Select>
 
 						<SearchInput
-							placeholder="Filter log text..."
+							placeholder="Filter…"
 							value={logSearch}
 							onChange={setLogSearch}
-							containerClassName="sm:w-48"
-							className="h-8 text-xs bg-background/50"
+							containerClassName="sm:w-44"
+							className="h-8 text-xs"
 						/>
 					</div>
 				</div>
 
-				<div className="rounded-xl border border-zinc-800 bg-black/90 p-3 sm:p-3.5 font-mono text-[11px] leading-relaxed max-h-80 overflow-y-auto overflow-x-auto space-y-1 text-zinc-300">
+				<div className="max-h-80 space-y-0.5 overflow-y-auto overflow-x-auto rounded-lg border border-border bg-black/40 p-3 font-mono text-[11px] leading-relaxed">
 					{isLoading && logs.length === 0 ? (
-						<div className="text-zinc-500 py-4 text-center">
-							Loading log lines...
+						<div className="py-4 text-center text-muted-foreground">
+							Loading…
 						</div>
 					) : logs.length > 0 ? (
 						logs.map((l) => {
 							const lvl = (l.level || "INFO").toUpperCase();
 							const lvlColor =
 								lvl === "ERROR"
-									? "text-rose-400 bg-rose-500/10 border-rose-500/30"
+									? "text-rose-400"
 									: lvl === "WARN"
-										? "text-amber-400 bg-amber-500/10 border-amber-500/30"
-										: "text-cyan-400 bg-cyan-500/10 border-cyan-500/30";
+										? "text-amber-400"
+										: "text-cyan-400";
 
 							return (
 								<div
 									key={`${l.timestamp}-${l.message}`}
-									className="flex items-start gap-2 break-all hover:bg-white/5 p-1 rounded"
+									className="flex items-start gap-2 rounded p-1 hover:bg-white/[0.03]"
 								>
-									<span
-										className={`px-1.5 py-0.5 rounded border text-[9px] sm:text-[10px] font-bold shrink-0 ${lvlColor}`}
-									>
+									<span className={cn("shrink-0 font-bold", lvlColor)}>
 										{lvl}
 									</span>
-									<span className="text-zinc-200 break-words whitespace-pre-wrap flex-1">
+									<span className="flex-1 whitespace-pre-wrap break-words text-foreground/80">
 										{l.message}
 									</span>
 								</div>
 							);
 						})
 					) : (
-						<div className="text-zinc-500 py-4 text-center">
-							No matching log entries found.
+						<div className="py-4 text-center text-muted-foreground">
+							No matching entries.
 						</div>
 					)}
 				</div>

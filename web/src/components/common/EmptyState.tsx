@@ -21,18 +21,18 @@ export const EmptyState: FC<EmptyStateProps> = ({
 	return (
 		<div
 			className={cn(
-				"py-16 text-center text-muted-foreground flex flex-col items-center justify-center gap-3",
+				"flex flex-col items-center justify-center gap-2 py-14 text-center",
 				bordered &&
-					"border border-dashed border-border/60 rounded-2xl bg-card/30 p-6",
+					"rounded-xl border border-dashed border-border bg-card/40 p-6",
 				className,
 			)}
 		>
-			<Icon className="w-8 h-8 opacity-40 text-muted-foreground" />
+			<Icon className="h-6 w-6 text-muted-foreground/50" />
 			<div className="text-sm font-medium text-foreground">{title}</div>
-			<p className="text-xs text-muted-foreground max-w-sm leading-relaxed">
+			<p className="max-w-xs text-xs leading-relaxed text-muted-foreground">
 				{description}
 			</p>
-			{action && <div className="mt-1">{action}</div>}
+			{action && <div className="mt-2">{action}</div>}
 		</div>
 	);
 };

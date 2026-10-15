@@ -25,22 +25,22 @@ interface PersonaModalProps {
 
 const INSPIRATION_TEMPLATES = [
 	{
-		title: "Educator / Tutor",
-		desc: "Patient, pedagogical approach teaching step-by-step",
+		title: "Tutor",
+		desc: "Patient, step-by-step teaching",
 		prompt:
-			"You are a patient, pedagogical, and instructive tutor. Simplify complex topics, provide real-world examples, and explain concepts step-by-step. Never use emojis in your responses.",
+			"You are a patient, pedagogical tutor. Simplify complex topics, use real-world examples, and explain step-by-step. Never use emojis.",
 	},
 	{
-		title: "Senior Software Architect",
-		desc: "System architecture and best practices specialist",
+		title: "Architect",
+		desc: "Systems and best practices",
 		prompt:
-			"You are a meticulous software architect designing high-scale systems. Emphasize Clean Code, SOLID principles, and performance optimizations. Never use emojis in your responses.",
+			"You are a meticulous software architect. Emphasize clean code, SOLID principles, and performance. Never use emojis.",
 	},
 	{
-		title: "Philosopher & Analyst",
-		desc: "Wise, analytical, and deeply reflective tone",
+		title: "Analyst",
+		desc: "Reflective, analytical tone",
 		prompt:
-			"You are a thinker analyzing situations with depth, rationality, logic, and philosophical nuance. Keep insights clear, coherent, and well-grounded. Never use emojis in your responses.",
+			"You analyze situations with depth, logic, and nuance. Keep insights clear and well-grounded. Never use emojis.",
 	},
 ];
 
@@ -121,112 +121,104 @@ export const PersonaModal: FC<PersonaModalProps> = ({
 
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
-			<DialogContent className="max-w-lg w-[95vw] sm:w-full bg-card border-border shadow-2xl p-5 sm:p-6 rounded-2xl max-h-[85dvh] overflow-y-auto">
-				<DialogHeader className="space-y-1.5 text-left">
-					<div className="flex items-center gap-2">
-						<div className="p-2 rounded-xl bg-primary/10 text-primary">
-							{isEdit ? (
-								<Edit3 className="w-5 h-5" />
-							) : (
-								<Bot className="w-5 h-5" />
-							)}
-						</div>
-						<DialogTitle className="text-lg sm:text-xl font-bold tracking-tight">
-							{isEdit ? "Edit Persona" : "Create New Persona"}
-						</DialogTitle>
-					</div>
-					<DialogDescription className="text-xs text-muted-foreground">
+			<DialogContent className="max-h-[85dvh] w-[95vw] max-w-lg overflow-y-auto sm:w-full">
+				<DialogHeader>
+					<DialogTitle className="flex items-center gap-2">
+						{isEdit ? (
+							<Edit3 className="h-4 w-4 text-muted-foreground" />
+						) : (
+							<Bot className="h-4 w-4 text-muted-foreground" />
+						)}
+						<span>{isEdit ? "Edit persona" : "New persona"}</span>
+					</DialogTitle>
+					<DialogDescription>
 						{isEdit
-							? "Update how the bot behaves and speaks when this persona is active."
-							: "Define a custom personality to guide how the bot behaves in chats."}
+							? "Update how the bot behaves with this persona."
+							: "Define how the bot speaks and behaves."}
 					</DialogDescription>
 				</DialogHeader>
 
-				<form onSubmit={handleSubmit} className="space-y-4 pt-2">
-					{/* Name */}
+				<form onSubmit={handleSubmit} className="space-y-4">
 					<div className="space-y-1.5">
 						<label
 							htmlFor="persona-name"
-							className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block"
+							className="text-xs text-muted-foreground"
 						>
-							Persona Name *
+							Name
 						</label>
 						<Input
 							id="persona-name"
-							placeholder="e.g. Senior Architect, Analyst..."
+							placeholder="e.g. Architect, Analyst…"
 							value={name}
 							onChange={(e) => setName(e.target.value)}
 							disabled={isSubmitting}
-							className="bg-muted/40 border-border/80 focus:border-primary text-xs sm:text-sm"
+							className="text-xs sm:text-sm"
 							maxLength={60}
 							required
 						/>
 					</div>
 
-					{/* Short Description */}
 					<div className="space-y-1.5">
 						<label
 							htmlFor="persona-description"
-							className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block"
+							className="text-xs text-muted-foreground"
 						>
-							Short Description (Optional)
+							Description{" "}
+							<span className="text-muted-foreground/60">(optional)</span>
 						</label>
 						<Input
 							id="persona-description"
-							placeholder="e.g. Solution-oriented technical developer"
+							placeholder="e.g. Solution-oriented engineer"
 							value={description}
 							onChange={(e) => setDescription(e.target.value)}
 							disabled={isSubmitting}
-							className="bg-muted/40 border-border/80 focus:border-primary text-xs sm:text-sm"
+							className="text-xs sm:text-sm"
 							maxLength={120}
 						/>
 					</div>
 
-					{/* Prompt / System Instruction */}
 					<div className="space-y-1.5">
 						<div className="flex items-center justify-between">
 							<label
 								htmlFor="persona-prompt"
-								className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block"
+								className="text-xs text-muted-foreground"
 							>
-								System Prompt Instruction *
+								System prompt
 							</label>
-							<span className="text-[10px] text-muted-foreground font-mono">
-								{prompt.length} characters
+							<span className="font-mono text-[10px] text-muted-foreground/60 tnum">
+								{prompt.length}
 							</span>
 						</div>
 						<Textarea
 							id="persona-prompt"
-							placeholder="Write the personality, tone, jargon, and rules the bot should follow when this persona is active..."
+							placeholder="Tone, rules, and jargon the bot should follow…"
 							value={prompt}
 							onChange={(e) => setPrompt(e.target.value)}
 							disabled={isSubmitting}
 							rows={5}
-							className="bg-muted/40 border-border/80 focus:border-primary font-mono text-xs leading-relaxed resize-none"
+							className="resize-none font-mono text-xs leading-relaxed"
 							required
 						/>
 					</div>
 
-					{/* Templates Inspiration (for add mode) */}
 					{!isEdit && (
-						<div className="space-y-2 pt-1">
-							<div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-								<Wand2 className="w-3.5 h-3.5 text-primary" />
-								<span>Quick Inspiration Templates:</span>
+						<div className="space-y-2">
+							<div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+								<Wand2 className="h-3.5 w-3.5" />
+								<span>Templates</span>
 							</div>
-							<div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+							<div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
 								{INSPIRATION_TEMPLATES.map((tpl) => (
 									<button
 										key={tpl.title}
 										type="button"
 										onClick={() => applyTemplate(tpl)}
-										className="p-2.5 text-left rounded-xl border border-border/60 bg-muted/20 hover:bg-muted/60 hover:border-primary/40 transition-all group"
+										className="rounded-lg border border-border/60 bg-background/40 p-2.5 text-left transition-colors hover:border-border hover:bg-accent"
 									>
-										<div className="flex items-center gap-1.5 text-xs font-medium text-foreground group-hover:text-primary">
-											<Bot className="w-3.5 h-3.5 text-primary" />
-											<span className="truncate">{tpl.title}</span>
+										<div className="truncate text-xs font-medium text-foreground">
+											{tpl.title}
 										</div>
-										<p className="text-[10px] text-muted-foreground line-clamp-2 mt-1 leading-normal">
+										<p className="mt-1 line-clamp-2 text-[10px] leading-normal text-muted-foreground">
 											{tpl.desc}
 										</p>
 									</button>
@@ -238,7 +230,7 @@ export const PersonaModal: FC<PersonaModalProps> = ({
 					<ModalFooter
 						onCancel={() => onOpenChange(false)}
 						isSubmitting={isSubmitting}
-						submitText={isEdit ? "Save Changes" : "Create Persona"}
+						submitText={isEdit ? "Save" : "Create persona"}
 						submitIcon={isEdit ? Edit3 : PlusCircle}
 					/>
 				</form>

@@ -112,37 +112,32 @@ export const MemoryModal: FC<MemoryModalProps> = ({
 
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
-			<DialogContent className="max-w-md w-[95vw] sm:w-full bg-card border-border shadow-2xl p-5 sm:p-6 rounded-2xl max-h-[85dvh] overflow-y-auto">
+			<DialogContent className="max-h-[85dvh] w-[95vw] max-w-md overflow-y-auto sm:w-full">
 				<form onSubmit={handleSubmit} className="space-y-4">
 					<DialogHeader>
-						<DialogTitle className="flex items-center gap-2 text-lg font-bold">
+						<DialogTitle className="flex items-center gap-2">
 							{isEdit ? (
-								<>
-									<Edit3 className="w-5 h-5 text-primary" />
-									<span>Edit Memory Record</span>
-								</>
+								<Edit3 className="h-4 w-4 text-muted-foreground" />
 							) : (
-								<>
-									<PlusCircle className="w-5 h-5 text-primary" />
-									<span>Add New Memory Fact</span>
-								</>
+								<PlusCircle className="h-4 w-4 text-muted-foreground" />
 							)}
+							<span>{isEdit ? "Edit memory" : "Add memory fact"}</span>
 						</DialogTitle>
-						<DialogDescription className="text-xs text-muted-foreground">
+						<DialogDescription>
 							{isEdit
-								? "Update the memory fact. Vector embeddings will be recomputed automatically."
-								: "Add persistent contextual knowledge to the Gemini memory graph."}
+								? "Update the fact. Embeddings recompute automatically."
+								: "Add persistent knowledge to the memory graph."}
 						</DialogDescription>
 					</DialogHeader>
 
-					<div className="space-y-3 py-1">
+					<div className="space-y-3">
 						{!isEdit && (
 							<div className="space-y-1.5">
 								<label
 									htmlFor="target-chat-select"
-									className="text-xs font-semibold text-foreground"
+									className="text-xs text-muted-foreground"
 								>
-									Target Chat / Group
+									Target chat
 								</label>
 								<ChatSelect
 									id="target-chat-select"
@@ -151,7 +146,7 @@ export const MemoryModal: FC<MemoryModalProps> = ({
 									chats={availableChats}
 									currentUser={currentUser}
 									includePersonalOption={true}
-									placeholder="Select destination..."
+									placeholder="Select destination…"
 								/>
 							</div>
 						)}
@@ -159,7 +154,7 @@ export const MemoryModal: FC<MemoryModalProps> = ({
 						<div className="space-y-1.5">
 							<label
 								htmlFor="memory-category-select"
-								className="text-xs font-semibold text-foreground"
+								className="text-xs text-muted-foreground"
 							>
 								Category
 							</label>
@@ -174,13 +169,13 @@ export const MemoryModal: FC<MemoryModalProps> = ({
 						<div className="space-y-1.5">
 							<label
 								htmlFor="memory-text-input"
-								className="text-xs font-semibold text-foreground"
+								className="text-xs text-muted-foreground"
 							>
-								{isEdit ? "Memory Content" : "Fact Details"}
+								{isEdit ? "Content" : "Fact"}
 							</label>
 							<Textarea
 								id="memory-text-input"
-								placeholder="e.g. User is a senior engineer working with Python and React..."
+								placeholder="e.g. Works as a senior engineer using Python and React…"
 								value={memoryText}
 								onChange={(e) => setMemoryText(e.target.value)}
 								rows={4}
@@ -192,8 +187,8 @@ export const MemoryModal: FC<MemoryModalProps> = ({
 					<ModalFooter
 						onCancel={() => onOpenChange(false)}
 						isSubmitting={isSubmitting}
-						submitText={isEdit ? "Update Record" : "Save Fact"}
-						submittingText={isEdit ? "Updating..." : "Saving..."}
+						submitText={isEdit ? "Save" : "Add fact"}
+						submittingText={isEdit ? "Saving…" : "Adding…"}
 					/>
 				</form>
 			</DialogContent>
