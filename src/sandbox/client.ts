@@ -42,7 +42,8 @@ function resolveClientTimeoutMs(body: unknown): number {
 		typeof record.timeoutMs === "number" && record.timeoutMs > 0
 			? record.timeoutMs
 			: CONFIG.SANDBOX_TIMEOUT_MS || 45_000;
-	const hasPackages = Array.isArray(record.packages) && record.packages.length > 0;
+	const hasPackages =
+		Array.isArray(record.packages) && record.packages.length > 0;
 	const installBudget = hasPackages ? PACKAGE_INSTALL_BUDGET_MS : 0;
 	return Math.min(
 		requested + installBudget + CLIENT_TIMEOUT_SLACK_MS,

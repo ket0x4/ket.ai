@@ -24,11 +24,16 @@ interface CodeExecutionArgs {
 	sessionId?: string;
 	filename?: string;
 	target_files?: string[];
+	timeoutMs?: number;
 	stream?: boolean;
 	onProgress?: (event: CodeExecutionProgressEvent) => void;
 }
 
 type ArtifactType = "image" | "document" | "video" | "audio";
+
+// Mirrors the sandbox server's MAX_TIMEOUT_MS so the model cannot request more
+// than the container will allow.
+const MAX_EXECUTION_TIMEOUT_MS = 120_000;
 
 interface CodeExecutionArtifact {
 	filename: string;
@@ -54,6 +59,7 @@ interface CodeExecutionResult {
 	error_hint?: string;
 	truncated?: boolean;
 	error?: string;
+	notes?: string[];
 	system_note?: string;
 }
 
@@ -62,6 +68,7 @@ function buildSystemNote(data: {
 	artifacts?: CodeExecutionArtifact[];
 	images?: CodeExecutionImage[];
 	errorHint?: string;
+	notes?: string[];
 }): string {
 	let systemNote = data.success
 		? "Code execution succeeded. Format code snippets, stdout/text outputs, calculation results, or data tables cleanly using Markdown code blocks (```language ... ```) or inline code (`...`) in your reply to the user. Do not pretend you did not run the code."
@@ -77,6 +84,9 @@ function buildSystemNote(data: {
 
 	if (data.errorHint) {
 		systemNote = `${data.errorHint} | ${systemNote}`;
+	}
+	if (data.notes && data.notes.length > 0) {
+		systemNote += ` Notes: ${data.notes.join(" ")}`;
 	}
 	return systemNote;
 }
@@ -133,7 +143,44 @@ function formatSandboxResult(
 		error_hint: data.errorHint,
 		truncated: data.truncated,
 		error: data.error,
+		notes: data.notes,
 		system_note: buildSystemNote({ ...data, artifacts, images }),
+	};
+}
+
+/**
+ * Builds a failure result for the sandbox tool, distinguishing provider-side
+ * connection failures from client-side request timeouts.
+ */
+function buildSandboxFailureResult(
+	err: unknown,
+	targetUrl: string,
+	timeoutMs: number,
+): CodeExecutionResult {
+	const errorMessage = err instanceof Error ? err.message : String(err);
+	const isTimeoutError = isSandboxTimeoutError(err);
+	const isConnectionError = !isTimeoutError && isSandboxConnectionError(err);
+
+	const error = isTimeoutError
+		? `Sandbox request timed out at the client after ${timeoutMs}ms (the job may still be running in the background). Try splitting the work or increasing timeoutMs.`
+		: isConnectionError
+			? `Sandbox container is unreachable at ${targetUrl}. Please ensure the ket-sandbox container is running.`
+			: `Sandbox execution error: ${errorMessage}`;
+
+	const systemNote = isTimeoutError
+		? "The sandbox request timed out before returning a result. Tell the user the job took too long, and consider breaking it into smaller steps."
+		: isConnectionError
+			? "Execution environment was unreachable. Explain politely to the user that code execution is temporarily unavailable."
+			: undefined;
+
+	return {
+		success: false,
+		stdout: "",
+		stderr: errorMessage,
+		exit_code: isTimeoutError ? 124 : 1,
+		execution_time_ms: 0,
+		error,
+		system_note: systemNote,
 	};
 }
 
@@ -152,6 +199,12 @@ export async function executeInSandbox(
 		? args.target_files
 		: undefined;
 	const useStreaming = Boolean(args.onProgress || args.stream);
+
+	const requestedTimeout = Number(args.timeoutMs);
+	const timeoutMs =
+		Number.isFinite(requestedTimeout) && requestedTimeout > 0
+			? Math.min(requestedTimeout, MAX_EXECUTION_TIMEOUT_MS)
+			: CONFIG.SANDBOX_TIMEOUT_MS;
 
 	if (!code.trim()) {
 		return {
@@ -181,7 +234,7 @@ export async function executeInSandbox(
 				filename,
 				targetFiles,
 				stream: useStreaming,
-				timeoutMs: CONFIG.SANDBOX_TIMEOUT_MS,
+				timeoutMs,
 			},
 			useStreaming,
 			args.onProgress,
@@ -189,22 +242,8 @@ export async function executeInSandbox(
 
 		return formatSandboxResult(data);
 	} catch (err: unknown) {
-		const errorMessage = err instanceof Error ? err.message : String(err);
 		logger.error("[CodeExecutionTool] Failed to connect to sandbox:", err);
-
-		const isConnectionError = isSandboxConnectionError(err);
-		return {
-			success: false,
-			stdout: "",
-			stderr: errorMessage,
-			exit_code: 1,
-			execution_time_ms: 0,
-			error: isConnectionError
-				? `Sandbox container is unreachable at ${targetUrl}. Please ensure the ket-sandbox container is running.`
-				: `Sandbox execution error: ${errorMessage}`,
-			system_note:
-				"Execution environment was unreachable. Explain politely to the user that code execution is temporarily unavailable.",
-		};
+		return buildSandboxFailureResult(err, targetUrl, timeoutMs);
 	}
 }
 
@@ -249,6 +288,11 @@ export const codeExecutionTool: AgentTool<
 					type: "STRING",
 				},
 			},
+			timeoutMs: {
+				type: "INTEGER",
+				description:
+					"Optional execution timeout in milliseconds (1000-120000). Increase it for long web scraping, Playwright, or heavy data jobs. Defaults to the server configuration.",
+			},
 		},
 		required: ["language", "code"],
 	},
@@ -280,6 +324,7 @@ export const codeExecutionTool: AgentTool<
 interface BashExecutionArgs {
 	command: string;
 	sessionId?: string;
+	timeoutMs?: number;
 }
 
 export const bashExecutionTool: AgentTool<
@@ -297,13 +342,23 @@ export const bashExecutionTool: AgentTool<
 				description:
 					"The exact Bash command line string to execute in the container workspace.",
 			},
+			timeoutMs: {
+				type: "INTEGER",
+				description:
+					"Optional execution timeout in milliseconds (1000-120000). Increase it for long-running commands. Defaults to the server configuration.",
+			},
 		},
 		required: ["command"],
 	},
 	isEnabled: () => Boolean(CONFIG.ENABLE_CODE_EXECUTION),
 	execute: async (args: BashExecutionArgs, context?: ToolExecutionContext) => {
 		return codeExecutionTool.execute(
-			{ language: "bash", code: args.command, sessionId: args.sessionId },
+			{
+				language: "bash",
+				code: args.command,
+				sessionId: args.sessionId,
+				timeoutMs: args.timeoutMs,
+			},
 			context,
 		);
 	},

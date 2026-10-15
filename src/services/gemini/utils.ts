@@ -44,8 +44,51 @@ const WORKSPACE_FILE_RULE =
 const GROUP_CHAT_RULE =
 	"\n\n### TELEGRAM GROUP CHAT RULES ###\n- You participate in a Telegram group with multiple users. Always observe who sent which message.\n- Messages labeled 'You (ket.ai)' in recent_messages are your own previous statements. Never contradict what you wrote earlier or claim you do not remember saying it.\n- When 'current_message_to_reply' has a 'replying_to' object, the user is answering, asking about, or commenting directly on that specific message. Formulate your reply with this parent message firmly in mind.\n- Never confuse the current sender with other users in the chat or with yourself. Always direct your response to the sender of the current message.";
 
-export function getSystemInstruction(personaPrompt?: string): string {
-	const base = `${cachedSystemPrompt}${FORMATTING_RULE}${WORKSPACE_FILE_RULE}${GROUP_CHAT_RULE}`;
+const CODE_EXECUTION_TOOLS = new Set(["execute_code", "execute_bash"]);
+const WORKSPACE_TOOLS = new Set([
+	"list_workspace_files",
+	"read_workspace_file",
+	"write_workspace_file",
+	"send_workspace_file",
+	"reset_workspace",
+]);
+
+function buildToolAvailabilityRule(enabledTools: Iterable<string>): string {
+	const list = [...new Set(enabledTools)];
+	const available = list.length
+		? list.map((t) => `\`${t}\``).join(", ")
+		: "none";
+	return (
+		"\n\n### TOOL AVAILABILITY (authoritative) ###\n" +
+		`The only tools you can actually call right now are: ${available}. ` +
+		"Ignore any earlier mention of tools that are not in this list. " +
+		"Never claim to have run code, searched the web, or generated a file when the corresponding tool is unavailable. " +
+		"If the user asks for something that requires a disabled tool, briefly tell them it is temporarily unavailable."
+	);
+}
+
+export function getSystemInstruction(
+	personaPrompt?: string,
+	enabledTools?: Iterable<string>,
+): string {
+	const toolSet = enabledTools ? new Set(enabledTools) : null;
+	const hasCode = toolSet
+		? [...CODE_EXECUTION_TOOLS].some((t) => toolSet.has(t))
+		: true;
+	const hasWorkspace = toolSet
+		? [...WORKSPACE_TOOLS].some((t) => toolSet.has(t))
+		: true;
+
+	const sections = [cachedSystemPrompt, FORMATTING_RULE];
+	if (hasCode || hasWorkspace) {
+		sections.push(WORKSPACE_FILE_RULE);
+	}
+	sections.push(GROUP_CHAT_RULE);
+	if (toolSet) {
+		sections.push(buildToolAvailabilityRule(toolSet));
+	}
+	const base = sections.join("");
+
 	if (!personaPrompt?.trim()) {
 		return base;
 	}

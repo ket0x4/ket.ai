@@ -35,6 +35,7 @@ export interface SandboxExecuteResponse {
 	errorHint?: string;
 	truncated?: boolean;
 	error?: string;
+	notes?: string[];
 }
 
 export interface SandboxStreamEvent {

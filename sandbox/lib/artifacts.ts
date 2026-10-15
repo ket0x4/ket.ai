@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { readdirSync, readFileSync, statSync, type Stats } from "node:fs";
 import { extname, join } from "node:path";
 import { MAX_ARTIFACTS_COUNT, MAX_ARTIFACT_SIZE_BYTES } from "./config";
 import type { ArtifactType, GeneratedArtifact } from "./types";
@@ -84,12 +84,15 @@ export function isIntermediateArtifact(filename: string): boolean {
 
 /**
  * Scans the workspace directory for generated artifacts using delta snapshotting and intent filtering.
+ * Oversized files that were skipped are appended to `notesOut` (when provided) so the agent can be
+ * told to compress or split them instead of silently losing the deliverable.
  */
 export function detectGeneratedArtifacts(
 	workspaceDir: string,
 	ignoredFileNames: string[] = [],
 	beforeSnapshot?: Map<string, { size: number; mtimeMs: number }>,
 	targetFiles?: string[],
+	notesOut?: string[],
 ): GeneratedArtifact[] {
 	const artifacts: GeneratedArtifact[] = [];
 	const targetSet =
@@ -105,7 +108,7 @@ export function detectGeneratedArtifacts(
 		const entries = readdirSync(workspaceDir);
 		const candidateFiles: Array<{
 			file: string;
-			stats: ReturnType<typeof statSync>;
+			stats: Stats;
 			ext: string;
 			entry: { mimeType: string; type: ArtifactType };
 			isExplicit: boolean;
@@ -135,9 +138,16 @@ export function detectGeneratedArtifacts(
 
 				const ext = extname(file).toLowerCase();
 				const entry = ARTIFACT_MIME_MAP[ext];
-				if (entry && stats.size > 0 && stats.size <= MAX_ARTIFACT_SIZE_BYTES) {
-					candidateFiles.push({ file, stats, ext, entry, isExplicit });
+				if (!entry || stats.size <= 0) continue;
+
+				if (stats.size > MAX_ARTIFACT_SIZE_BYTES) {
+					notesOut?.push(
+						`Skipped '${file}' (${(stats.size / (1024 * 1024)).toFixed(1)}MB): it exceeds the ${MAX_ARTIFACT_SIZE_BYTES / (1024 * 1024)}MB artifact limit, so it was NOT delivered. Compress or split it (e.g. lower video resolution/bitrate) and send it with send_workspace_file.`,
+					);
+					continue;
 				}
+
+				candidateFiles.push({ file, stats, ext, entry, isExplicit });
 			} catch (err) {
 				console.warn(`[Sandbox] Failed to read potential artifact ${file}:`, err);
 			}

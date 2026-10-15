@@ -48,6 +48,22 @@ export async function runCommand(
 	});
 	let settled = false;
 	let cancelled = false;
+	// Buffer output as it streams so a timeout or cancel can still return the
+	// partial stdout/stderr produced before the process was killed.
+	let stdoutBuffer = "";
+	let stderrBuffer = "";
+	const emitStdout = (chunk: string) => {
+		stdoutBuffer += chunk;
+		try {
+			onStdoutChunk?.(chunk);
+		} catch {}
+	};
+	const emitStderr = (chunk: string) => {
+		stderrBuffer += chunk;
+		try {
+			onStderrChunk?.(chunk);
+		} catch {}
+	};
 	const cancel = () => {
 		if (settled) return;
 		cancelled = true;
@@ -72,9 +88,10 @@ export async function runCommand(
 		timer = setTimeout(() => {
 			cancel();
 			settled = true;
+			const note = `Execution timed out after ${timeoutMs}ms.`;
 			resolve({
-				stdout: "",
-				stderr: `Execution timed out after ${timeoutMs}ms.`,
+				stdout: stdoutBuffer,
+				stderr: stderrBuffer ? `${stderrBuffer}\n${note}` : note,
 				exitCode: 124,
 			});
 		}, timeoutMs);
@@ -82,24 +99,25 @@ export async function runCommand(
 
 	const executionPromise = (async () => {
 		try {
-			const [stdoutText, stderrText] = await Promise.all([
-				streamReader(proc.stdout, onStdoutChunk),
-				streamReader(proc.stderr, onStderrChunk),
+			await Promise.all([
+				streamReader(proc.stdout, emitStdout),
+				streamReader(proc.stderr, emitStderr),
 			]);
 			const exitCode = await proc.exited;
 			settled = true;
 			if (timer) clearTimeout(timer);
 
 			return {
-				stdout: stdoutText,
-				stderr: stderrText,
+				stdout: stdoutBuffer,
+				stderr: stderrBuffer,
 				exitCode: cancelled ? 130 : exitCode,
 			};
 		} catch (err) {
 			if (timer) clearTimeout(timer);
+			const message = `Process error: ${err instanceof Error ? err.message : String(err)}`;
 			return {
-				stdout: "",
-				stderr: `Process error: ${err instanceof Error ? err.message : String(err)}`,
+				stdout: stdoutBuffer,
+				stderr: stderrBuffer ? `${stderrBuffer}\n${message}` : message,
 				exitCode: 1,
 			};
 		}

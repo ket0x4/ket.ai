@@ -34,6 +34,7 @@ export interface ExecuteResponse {
 	artifacts?: GeneratedArtifact[];
 	images?: GeneratedArtifact[];
 	truncated?: boolean;
+	notes?: string[];
 }
 
 export interface WorkspaceFileEntry {

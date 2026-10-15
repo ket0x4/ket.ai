@@ -239,7 +239,10 @@ function buildGenConfig(
 ): Record<string, unknown> {
 	const isAgentic = Boolean(toolsConfig && toolsConfig.length > 0);
 	const genConfig: Record<string, unknown> = {
-		systemInstruction: getSystemInstruction(options.personaPrompt),
+		systemInstruction: getSystemInstruction(
+			options.personaPrompt,
+			toolRegistry.getAllTools().map((t) => t.name),
+		),
 		maxOutputTokens: isAgentic
 			? CONFIG.MAX_TOOL_OUTPUT_TOKENS && CONFIG.MAX_TOOL_OUTPUT_TOKENS > 0
 				? CONFIG.MAX_TOOL_OUTPUT_TOKENS

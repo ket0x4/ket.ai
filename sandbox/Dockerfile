@@ -52,15 +52,17 @@ RUN pip install --no-cache-dir \
     tabulate \
     yfinance \
     duckdb \
-    playwright
+    playwright \
+    uv
 
 # Install Playwright Chromium headless browser with minimal dependencies
 RUN playwright install --with-deps chromium
 
 # Create unprivileged sandbox user and cache directories
 RUN useradd -m -u 1000 -s /bin/bash sandboxuser && \
-    mkdir -p /tmp/sandboxes /home/sandboxuser/app /home/sandboxuser/.cache/pip /home/sandboxuser/.bun /ms-playwright && \
-    chown -R sandboxuser:sandboxuser /tmp/sandboxes /home/sandboxuser /ms-playwright
+    mkdir -p /tmp/sandboxes /home/sandboxuser/app /home/sandboxuser/.cache/pip /home/sandboxuser/.cache/uv /home/sandboxuser/.bun /ms-playwright && \
+    chown -R sandboxuser:sandboxuser /tmp/sandboxes /home/sandboxuser /ms-playwright && \
+    chown -R sandboxuser:sandboxuser /usr/local/lib/python3.12/site-packages /usr/local/bin
 
 WORKDIR /home/sandboxuser/app
 

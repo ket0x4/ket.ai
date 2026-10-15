@@ -230,11 +230,13 @@ export async function handleExecute(req: Request): Promise<Response> {
 					});
 
 					// Detect any artifacts generated specifically by this script execution
+					const notes: string[] = [];
 					const generatedArtifacts = detectGeneratedArtifacts(
 						workspaceDir,
 						[scriptFileName, "package.json", "bun.lock", ".session_meta.json"],
 						beforeSnapshot,
 						targetFiles,
+						notes,
 					);
 					const generatedImages = generatedArtifacts.filter(
 						(a) => a.type === "image",
@@ -289,6 +291,7 @@ export async function handleExecute(req: Request): Promise<Response> {
 							generatedImages.length > 0 ? generatedImages : undefined,
 						errorHint,
 						truncated: stdoutTruncated.truncated || stderrTruncated.truncated,
+						notes: notes.length > 0 ? notes : undefined,
 					};
 
 					sendEvent("result", responsePayload);
@@ -425,11 +428,13 @@ export async function handleExecute(req: Request): Promise<Response> {
 			: result.stderr;
 
 		// Detect any artifacts generated specifically by this script execution
+		const notes: string[] = [];
 		const generatedArtifacts = detectGeneratedArtifacts(
 			workspaceDir,
 			[scriptFileName, "package.json", "bun.lock", ".session_meta.json"],
 			beforeSnapshot,
 			targetFiles,
+			notes,
 		);
 		const generatedImages = generatedArtifacts.filter((a) => a.type === "image");
 
@@ -480,6 +485,7 @@ export async function handleExecute(req: Request): Promise<Response> {
 			images: generatedImages.length > 0 ? generatedImages : undefined,
 			errorHint,
 			truncated: stdoutTruncated.truncated || stderrTruncated.truncated,
+			notes: notes.length > 0 ? notes : undefined,
 		};
 
 		return Response.json(responsePayload);
