@@ -1,4 +1,5 @@
 import { extname } from "node:path";
+import { CONFIG } from "../../config";
 import { requestJson } from "../../sandbox/client";
 import logger from "../../utils/logger";
 import { inferArtifactType } from "../sanitizer";
@@ -364,6 +365,7 @@ export const listWorkspaceFilesTool: AgentTool<
 		type: "OBJECT",
 		properties: {},
 	},
+	isEnabled: () => Boolean(CONFIG.ENABLE_CODE_EXECUTION),
 	execute: async (
 		args: ListWorkspaceFilesArgs,
 		context?: ToolExecutionContext,
@@ -390,6 +392,7 @@ export const readWorkspaceFileTool: AgentTool<
 		},
 		required: ["filename"],
 	},
+	isEnabled: () => Boolean(CONFIG.ENABLE_CODE_EXECUTION),
 	execute: async (
 		args: ReadWorkspaceFileArgs,
 		context?: ToolExecutionContext,
@@ -425,6 +428,7 @@ export const writeWorkspaceFileTool: AgentTool<
 		},
 		required: ["filename", "content"],
 	},
+	isEnabled: () => Boolean(CONFIG.ENABLE_CODE_EXECUTION),
 	execute: async (
 		args: WriteWorkspaceFileArgs,
 		context?: ToolExecutionContext,
@@ -451,6 +455,7 @@ export const sendWorkspaceFileTool: AgentTool<
 		},
 		required: ["filename"],
 	},
+	isEnabled: () => Boolean(CONFIG.ENABLE_CODE_EXECUTION),
 	execute: async (
 		args: SendWorkspaceFileArgs,
 		context?: ToolExecutionContext,
@@ -470,6 +475,7 @@ export const resetWorkspaceTool: AgentTool<
 		type: "OBJECT",
 		properties: {},
 	},
+	isEnabled: () => Boolean(CONFIG.ENABLE_CODE_EXECUTION),
 	execute: async (args: ResetWorkspaceArgs, context?: ToolExecutionContext) => {
 		return resetWorkspace(args, context);
 	},

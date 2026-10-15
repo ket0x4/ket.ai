@@ -110,20 +110,18 @@ describe("Agent Execution Robustness", () => {
 		};
 
 		try {
-			const reply = await GeminiService.generateReply(
-				createMockHistory("generate a chart"),
-				null,
-				false,
-				undefined,
-				"12345",
-				undefined,
-				async (media) => {
+			const reply = await GeminiService.generateReply({
+				history: createMockHistory("generate a chart"),
+				topicSummary: null,
+				chatId: "12345",
+				onEvent: (event) => {
+					if (event.type !== "media-generated") return;
 					onMediaCalled = true;
-					expect(media.length).toBe(1);
-					expect(media[0].filename).toBe("large_chart.png");
-					expect(media[0].buffer.length).toBeGreaterThan(0);
+					expect(event.media.length).toBe(1);
+					expect(event.media[0].filename).toBe("large_chart.png");
+					expect(event.media[0].buffer.length).toBeGreaterThan(0);
 				},
-			);
+			});
 
 			expect(reply).toBe("Here is your generated chart!");
 			expect(onMediaCalled).toBeTrue();
@@ -187,13 +185,11 @@ describe("Agent Execution Robustness", () => {
 					text: JSON.stringify(tc.json),
 				});
 
-				const reply = await GeminiService.generateReply(
-					createMockHistory(),
-					null,
-					false,
-					undefined,
-					"12345",
-				);
+				const reply = await GeminiService.generateReply({
+					history: createMockHistory(),
+					topicSummary: null,
+					chatId: "12345",
+				});
 				expect(reply).toBe(tc.expected);
 			}
 		} finally {
@@ -214,13 +210,11 @@ describe("Agent Execution Robustness", () => {
 		});
 
 		try {
-			const reply = await GeminiService.generateReply(
-				createMockHistory(),
-				null,
-				false,
-				undefined,
-				"12345",
-			);
+			const reply = await GeminiService.generateReply({
+				history: createMockHistory(),
+				topicSummary: null,
+				chatId: "12345",
+			});
 			// Cleaned text should be returned, NOT empty string
 			expect(reply.length).toBeGreaterThan(0);
 			expect(reply).toContain("unquoted_key");

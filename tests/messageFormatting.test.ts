@@ -133,8 +133,8 @@ describe("Markdown Formatting & Message Utility Tests", () => {
 		});
 
 		try {
-			const reply = await GeminiService.generateReply(
-				[
+			const reply = await GeminiService.generateReply({
+				history: [
 					{
 						id: 1,
 						chat_id: "test_chat_formatting",
@@ -143,8 +143,8 @@ describe("Markdown Formatting & Message Utility Tests", () => {
 						sent_at: Math.floor(Date.now() / 1000),
 					} as unknown as MessageRow,
 				],
-				null,
-			);
+				topicSummary: null,
+			});
 
 			expect(reply).toBe(markdownResponse);
 			expect(reply).toContain("```console");

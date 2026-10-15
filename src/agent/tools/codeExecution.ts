@@ -1,5 +1,9 @@
 import { CONFIG } from "../../config";
-import { isSandboxConnectionError, sandboxClient } from "../../sandbox/client";
+import {
+	isSandboxConnectionError,
+	isSandboxTimeoutError,
+	sandboxClient,
+} from "../../sandbox/client";
 import type {
 	SandboxExecuteRequest,
 	SandboxExecuteResponse,
@@ -248,6 +252,7 @@ export const codeExecutionTool: AgentTool<
 		},
 		required: ["language", "code"],
 	},
+	isEnabled: () => Boolean(CONFIG.ENABLE_CODE_EXECUTION),
 	execute: async (args: CodeExecutionArgs, context?: ToolExecutionContext) => {
 		const mergedArgs: CodeExecutionArgs = { ...args };
 
@@ -295,6 +300,7 @@ export const bashExecutionTool: AgentTool<
 		},
 		required: ["command"],
 	},
+	isEnabled: () => Boolean(CONFIG.ENABLE_CODE_EXECUTION),
 	execute: async (args: BashExecutionArgs, context?: ToolExecutionContext) => {
 		return codeExecutionTool.execute(
 			{ language: "bash", code: args.command, sessionId: args.sessionId },

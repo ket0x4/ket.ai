@@ -50,6 +50,12 @@ export interface AgentTool<TArgs = any, TResult = any> {
 		properties: Record<string, ToolParameterSchema>;
 		required?: string[];
 	};
+	/**
+	 * Optional runtime gate. When it returns false the tool is hidden from the
+	 * model and rejected by the registry, allowing tools to be enabled/disabled
+	 * from config without the registry hardcoding tool names.
+	 */
+	isEnabled?: () => boolean;
 	execute: (args: TArgs, context?: ToolExecutionContext) => Promise<TResult>;
 }
 

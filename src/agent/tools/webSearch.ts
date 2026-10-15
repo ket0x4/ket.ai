@@ -178,6 +178,7 @@ export const webSearchTool: AgentTool<{ query: string }, WebSearchOutput> = {
 		},
 		required: ["query"],
 	},
+	isEnabled: () => Boolean(CONFIG.ENABLE_WEB_SEARCH),
 	execute: async (args: { query: string }, _context?: ToolExecutionContext) => {
 		return performWebSearch(args.query || "");
 	},

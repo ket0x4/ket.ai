@@ -344,13 +344,11 @@ describe("ThinkingConfig and Reply Parsing", () => {
 		});
 
 		try {
-			const reply = await GeminiService.generateReply(
-				createSingleMessageHistory(),
-				null,
-				false,
-				undefined,
-				"12345",
-			);
+			const reply = await GeminiService.generateReply({
+				history: createSingleMessageHistory(),
+				topicSummary: null,
+				chatId: "12345",
+			});
 			// Should return empty string and suppress sending message
 			expect(reply).toBe("");
 		} finally {
@@ -369,13 +367,11 @@ describe("ThinkingConfig and Reply Parsing", () => {
 		});
 
 		try {
-			const reply = await GeminiService.generateReply(
-				createSingleMessageHistory(),
-				null,
-				false,
-				undefined,
-				"12345",
-			);
+			const reply = await GeminiService.generateReply({
+				history: createSingleMessageHistory(),
+				topicSummary: null,
+				chatId: "12345",
+			});
 			expect(reply).toBe("Aleykum selam, nasılsın?");
 		} finally {
 			ai.models.generateContent = originalGenerateContent;
@@ -403,15 +399,13 @@ describe("ThinkingConfig and Reply Parsing", () => {
 		};
 
 		try {
-			const reply = await GeminiService.generateReply(
+			const reply = await GeminiService.generateReply({
 				// biome-ignore lint/suspicious/noExplicitAny: Dummy test history rows
-				createImageReplyHistory(promptText) as any,
-				null,
-				false,
-				undefined,
-				"12345",
-				dummyMediaPayload,
-			);
+				history: createImageReplyHistory(promptText) as any,
+				topicSummary: null,
+				chatId: "12345",
+				media: dummyMediaPayload,
+			});
 			return { reply, capturedContents };
 		} finally {
 			ai.models.generateContent = originalGenerateContent;

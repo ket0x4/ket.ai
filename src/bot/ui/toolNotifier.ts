@@ -1,19 +1,11 @@
 import type { Context } from "grammy";
+import type { AgentEventHandler } from "../../agent/events";
 import type { ToolProgressUpdate } from "../../agent/types";
 import { CONFIG } from "../../config";
 import logger from "../../utils/logger";
 
 interface ToolNotifier {
-	onToolCall: (
-		toolName: string,
-		args?: Record<string, unknown>,
-		step?: number,
-	) => Promise<void>;
-	onToolProgress: (
-		toolName: string,
-		progress: ToolProgressUpdate,
-		step?: number,
-	) => Promise<void>;
+	onEvent: AgentEventHandler;
 	cleanup: () => Promise<void>;
 }
 
@@ -136,67 +128,74 @@ export function createToolNotifier(
 		}
 	};
 
-	return {
-		onToolCall: async (
-			toolName: string,
-			args: Record<string, unknown> = {},
-			step?: number,
-		) => {
-			if (isCleanedUp) return;
-			const baseMsg = resolveToolStatusMessage(toolName, args);
-			const stepPrefix =
-				typeof step === "number" && step > 0 ? `[Step ${step}] ` : "";
-			currentBaseStatus = `${stepPrefix}${baseMsg}`;
-			currentStdout = "";
+	const handleToolCall = async (
+		toolName: string,
+		args: Record<string, unknown>,
+		step: number,
+	): Promise<void> => {
+		if (isCleanedUp) return;
+		const baseMsg = resolveToolStatusMessage(toolName, args);
+		const stepPrefix = step > 0 ? `[Step ${step}] ` : "";
+		currentBaseStatus = `${stepPrefix}${baseMsg}`;
+		currentStdout = "";
 
-			if (statusMessageId && ctx.chat) {
-				logger.info(
-					`${logPrefix} Updating tool status notification: "${currentBaseStatus}"`,
-				);
-				queueUpdate(currentBaseStatus);
-				return;
-			}
-
+		if (statusMessageId && ctx.chat) {
 			logger.info(
-				`${logPrefix} Sending tool status notification: "${currentBaseStatus}"`,
+				`${logPrefix} Updating tool status notification: "${currentBaseStatus}"`,
 			);
+			queueUpdate(currentBaseStatus);
+			return;
+		}
 
-			const sentMsg = await ctx
-				.reply(
-					currentBaseStatus,
-					replyToMessageId
-						? { reply_to_message_id: replyToMessageId }
-						: undefined,
-				)
-				.catch((e) => {
-					logger.warn(`${logPrefix} Failed to send status message:`, e);
-					return null;
-				});
+		logger.info(
+			`${logPrefix} Sending tool status notification: "${currentBaseStatus}"`,
+		);
 
-			if (sentMsg) {
-				statusMessageId = sentMsg.message_id;
-				lastEditTime = Date.now();
+		const sentMsg = await ctx
+			.reply(
+				currentBaseStatus,
+				replyToMessageId
+					? { reply_to_message_id: replyToMessageId }
+					: undefined,
+			)
+			.catch((e) => {
+				logger.warn(`${logPrefix} Failed to send status message:`, e);
+				return null;
+			});
+
+		if (sentMsg) {
+			statusMessageId = sentMsg.message_id;
+			lastEditTime = Date.now();
+		}
+	};
+
+	const handleToolProgress = async (
+		progress: ToolProgressUpdate,
+	): Promise<void> => {
+		if (isCleanedUp) return;
+		if (progress.statusText) {
+			currentBaseStatus = `⚡ ${progress.statusText}`;
+		}
+		if (progress.fullStdout) {
+			currentStdout = progress.fullStdout;
+		}
+
+		const snippet = extractRecentStdoutSnippet(currentStdout);
+		const fullMessage = snippet
+			? `${currentBaseStatus}\n────────────────────────\n${snippet}`
+			: currentBaseStatus;
+
+		queueUpdate(fullMessage);
+	};
+
+	return {
+		onEvent: async (event) => {
+			if (event.type === "tool-call") {
+				await handleToolCall(event.toolName, event.args, event.step);
+			} else if (event.type === "tool-progress") {
+				await handleToolProgress(event.progress);
 			}
-		},
-		onToolProgress: async (
-			_toolName: string,
-			progress: ToolProgressUpdate,
-			_step?: number,
-		) => {
-			if (isCleanedUp) return;
-			if (progress.statusText) {
-				currentBaseStatus = `⚡ ${progress.statusText}`;
-			}
-			if (progress.fullStdout) {
-				currentStdout = progress.fullStdout;
-			}
-
-			const snippet = extractRecentStdoutSnippet(currentStdout);
-			const fullMessage = snippet
-				? `${currentBaseStatus}\n────────────────────────\n${snippet}`
-				: currentBaseStatus;
-
-			queueUpdate(fullMessage);
+			// "media-generated" events are handled by the caller (artifact delivery).
 		},
 		cleanup: async () => {
 			isCleanedUp = true;

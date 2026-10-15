@@ -1,8 +1,6 @@
 import {
-	type MediaGeneratedCallback,
+	type AgentEventHandler,
 	runAgentLoop,
-	type ToolCallCallback,
-	type ToolProgressCallback,
 	toolRegistry,
 } from "../../agent/index";
 import { CONFIG } from "../../config";
@@ -60,10 +58,21 @@ interface GenerateResponseOptions {
 	fallbackError: string;
 	mediaFallbackText: string;
 	traceId?: string;
-	onToolCall?: ToolCallCallback;
-	onToolProgress?: ToolProgressCallback;
-	onMediaGenerated?: MediaGeneratedCallback;
+	onEvent?: AgentEventHandler;
+	signal?: AbortSignal;
 	targetMessage?: TargetMessageInfo;
+}
+
+interface GenerateReplyOptions {
+	history: MessageRow[];
+	topicSummary: string | null;
+	isSpontaneous?: boolean;
+	chatId?: string;
+	media?: { buffer: Buffer; mimeType: string };
+	document?: PreparedDocumentContext;
+	targetMessage?: TargetMessageInfo;
+	onEvent?: AgentEventHandler;
+	signal?: AbortSignal;
 }
 
 function resolveLastMessageText(
@@ -529,9 +538,8 @@ export const GeminiService = {
 				chatId: chatIdStr,
 				sessionId: chatIdStr,
 				traceId,
-				onToolCall: options.onToolCall,
-				onToolProgress: options.onToolProgress,
-				onMediaGenerated: options.onMediaGenerated,
+				onEvent: options.onEvent,
+				signal: options.signal,
 			});
 
 			const reply = await parseAndProcessReply(
@@ -584,18 +592,18 @@ export const GeminiService = {
 		return currentTopic || "";
 	},
 
-	async generateReply(
-		history: MessageRow[],
-		topicSummary: string | null,
-		isSpontaneous: boolean = false,
-		onToolCall?: ToolCallCallback,
-		chatId?: string,
-		media?: { buffer: Buffer; mimeType: string },
-		onMediaGenerated?: MediaGeneratedCallback,
-		onToolProgress?: ToolProgressCallback,
-		document?: PreparedDocumentContext,
-		targetMessage?: TargetMessageInfo,
-	): Promise<string> {
+	async generateReply(options: GenerateReplyOptions): Promise<string> {
+		const {
+			history,
+			topicSummary,
+			isSpontaneous = false,
+			chatId,
+			media,
+			document,
+			targetMessage,
+			onEvent,
+			signal,
+		} = options;
 		const effectiveMedia = media || document?.mediaPayload;
 		const fallbacks = resolveMediaFallbacks(document, effectiveMedia);
 
@@ -609,9 +617,8 @@ export const GeminiService = {
 			fallbackEmpty: fallbacks.fallbackEmpty,
 			fallbackError: fallbacks.fallbackError,
 			mediaFallbackText: fallbacks.mediaFallbackText,
-			onToolCall,
-			onToolProgress,
-			onMediaGenerated,
+			onEvent,
+			signal,
 			targetMessage,
 		});
 	},

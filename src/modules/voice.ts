@@ -51,18 +51,12 @@ export function registerVoiceHandlers(bot: Bot) {
 					? { ...targetMessage, text: formattedText }
 					: undefined;
 
-				return GeminiService.generateReply(
+				return GeminiService.generateReply({
 					history,
-					activeTopic,
-					false,
-					undefined,
-					chatIdStr,
-					undefined,
-					undefined,
-					undefined,
-					undefined,
-					updatedTargetMessage,
-				);
+					topicSummary: activeTopic,
+					chatId: chatIdStr,
+					targetMessage: updatedTargetMessage,
+				});
 			},
 			fallbackErrorMessage:
 				"Failed to process your voice message. Please try again later.",

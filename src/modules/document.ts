@@ -1,4 +1,5 @@
 import type { Bot, Context } from "grammy";
+import { mergeAgentEventHandlers } from "../agent/index";
 import { createToolNotifier, sendSingleArtifact } from "../bot/ui/index";
 import { CONFIG } from "../config";
 import { Repository } from "../db/repository";
@@ -78,20 +79,19 @@ async function executeDocumentReplyWorkflow(
 			sentAt: msg.date,
 		};
 
-		const reply = await GeminiService.generateReply(
+		const reply = await GeminiService.generateReply({
 			history,
-			activeTopic,
-			false,
-			notifier.onToolCall,
-			chatIdStr,
-			docContext.mediaPayload,
-			async (media) => {
-				generatedArtifacts.push(...media);
-			},
-			notifier.onToolProgress,
-			docContext,
+			topicSummary: activeTopic,
+			chatId: chatIdStr,
+			media: docContext.mediaPayload,
+			document: docContext,
 			targetMessage,
-		);
+			onEvent: mergeAgentEventHandlers(notifier.onEvent, (event) => {
+				if (event.type === "media-generated") {
+					generatedArtifacts.push(...event.media);
+				}
+			}),
+		});
 
 		// Send generated media artifacts (plots, edited files, audio, video)
 		for (const art of generatedArtifacts) {

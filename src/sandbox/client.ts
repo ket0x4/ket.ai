@@ -16,6 +16,40 @@ class SandboxClientError extends Error {
 	}
 }
 
+class SandboxTimeoutError extends Error {
+	readonly budgetMs: number;
+
+	constructor(budgetMs: number) {
+		super(`Sandbox request exceeded the ${budgetMs}ms client timeout.`);
+		this.name = "SandboxTimeoutError";
+		this.budgetMs = budgetMs;
+	}
+}
+
+// A sandbox request can spend time installing packages before it even starts
+// executing, and streaming runs keep the connection open for the whole job.
+// Budget the client-side abort for the *total* request, not just execution.
+const CLIENT_TIMEOUT_SLACK_MS = 5000;
+const PACKAGE_INSTALL_BUDGET_MS = 60_000;
+const MAX_CLIENT_TIMEOUT_MS = 10 * 60_000;
+
+function resolveClientTimeoutMs(body: unknown): number {
+	const record = (body && typeof body === "object" ? body : {}) as {
+		timeoutMs?: unknown;
+		packages?: unknown;
+	};
+	const requested =
+		typeof record.timeoutMs === "number" && record.timeoutMs > 0
+			? record.timeoutMs
+			: CONFIG.SANDBOX_TIMEOUT_MS || 45_000;
+	const hasPackages = Array.isArray(record.packages) && record.packages.length > 0;
+	const installBudget = hasPackages ? PACKAGE_INSTALL_BUDGET_MS : 0;
+	return Math.min(
+		requested + installBudget + CLIENT_TIMEOUT_SLACK_MS,
+		MAX_CLIENT_TIMEOUT_MS,
+	);
+}
+
 function getUrl(endpoint: string): string {
 	return `${CONFIG.SANDBOX_URL.replace(/\/+$/, "")}${endpoint}`;
 }
@@ -26,10 +60,12 @@ async function fetchSandbox(
 	accept?: string,
 ): Promise<{ response: Response; cleanup: () => void }> {
 	const controller = new AbortController();
-	const timeoutId = setTimeout(
-		() => controller.abort(),
-		(CONFIG.SANDBOX_TIMEOUT_MS || 45000) + 5000,
-	);
+	const budgetMs = resolveClientTimeoutMs(body);
+	let timedOut = false;
+	const timeoutId = setTimeout(() => {
+		timedOut = true;
+		controller.abort();
+	}, budgetMs);
 	const headers: Record<string, string> = {
 		"Content-Type": "application/json",
 	};
@@ -52,6 +88,7 @@ async function fetchSandbox(
 		return { response, cleanup: () => clearTimeout(timeoutId) };
 	} catch (err) {
 		clearTimeout(timeoutId);
+		if (timedOut) throw new SandboxTimeoutError(budgetMs);
 		throw err;
 	}
 }
@@ -117,6 +154,7 @@ export const sandboxClient = {
 };
 
 export function isSandboxConnectionError(error: unknown): boolean {
+	if (isSandboxTimeoutError(error)) return false;
 	const message = error instanceof Error ? error.message : String(error);
 	const lower = message.toLowerCase();
 	return (
@@ -126,5 +164,12 @@ export function isSandboxConnectionError(error: unknown): boolean {
 		lower.includes("unable to connect") ||
 		lower.includes("connection refused") ||
 		lower.includes("failed to connect")
+	);
+}
+
+export function isSandboxTimeoutError(error: unknown): boolean {
+	return (
+		error instanceof SandboxTimeoutError ||
+		(error instanceof Error && error.name === "SandboxTimeoutError")
 	);
 }

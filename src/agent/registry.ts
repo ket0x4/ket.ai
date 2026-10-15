@@ -1,4 +1,3 @@
-import { CONFIG } from "../config/index";
 import logger from "../utils/logger";
 import { bashExecutionTool, codeExecutionTool } from "./tools/codeExecution";
 import { webSearchTool } from "./tools/webSearch";
@@ -49,29 +48,29 @@ export class ToolRegistry {
 		return removed;
 	}
 
+	/**
+	 * A tool is available when it is registered and its own `isEnabled` gate
+	 * (if any) allows it. Enablement lives on each tool so the registry never
+	 * hardcodes tool names.
+	 */
+	public isEnabled(name: string): boolean {
+		const tool = this.tools.get(name);
+		if (!tool) return false;
+		return tool.isEnabled ? Boolean(tool.isEnabled()) : true;
+	}
+
 	public hasTool(name: string): boolean {
-		if (!this.tools.has(name)) return false;
-		if (name === "web_search") return Boolean(CONFIG.ENABLE_WEB_SEARCH);
-		if (
-			name === "execute_code" ||
-			name === "execute_bash" ||
-			name === "read_workspace_file" ||
-			name === "write_workspace_file" ||
-			name === "list_workspace_files" ||
-			name === "send_workspace_file" ||
-			name === "reset_workspace"
-		) {
-			return Boolean(CONFIG.ENABLE_CODE_EXECUTION);
-		}
-		return true;
+		return this.isEnabled(name);
 	}
 
 	public getTool(name: string): AgentTool | undefined {
-		return this.hasTool(name) ? this.tools.get(name) : undefined;
+		return this.isEnabled(name) ? this.tools.get(name) : undefined;
 	}
 
 	public getAllTools(): AgentTool[] {
-		return Array.from(this.tools.values()).filter((t) => this.hasTool(t.name));
+		return Array.from(this.tools.values()).filter((t) =>
+			this.isEnabled(t.name),
+		);
 	}
 
 	public get count(): number {
@@ -93,8 +92,8 @@ export class ToolRegistry {
 	): Promise<unknown> {
 		const tool = this.getTool(name);
 		if (!tool) {
-			logger.error(`[ToolRegistry] Tool '${name}' requested but not found`);
-			return { error: `Tool '${name}' is not registered.` };
+			logger.error(`[ToolRegistry] Tool '${name}' requested but not available`);
+			return { error: `Tool '${name}' is not registered or is disabled.` };
 		}
 		try {
 			logger.info(

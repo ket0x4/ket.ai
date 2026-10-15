@@ -117,18 +117,13 @@ export async function processMediaInteraction(
 							activeTopic,
 							targetMessage,
 						)
-					: await GeminiService.generateReply(
+					: await GeminiService.generateReply({
 							history,
-							activeTopic,
-							false,
-							undefined,
-							chatIdStr,
-							{ buffer: downloadResult.buffer, mimeType },
-							undefined,
-							undefined,
-							undefined,
+							topicSummary: activeTopic,
+							chatId: chatIdStr,
+							media: { buffer: downloadResult.buffer, mimeType },
 							targetMessage,
-						);
+						});
 
 				await sendLongMessage(ctx, reply, {
 					reply_to_message_id: msg.message_id,
