@@ -233,7 +233,7 @@ describe("SmartRetry", () => {
 				async () => {
 					throw new Error("Task failed");
 				},
-				{ priority: "high", customIntervalMs: 5 },
+				{ customIntervalMs: 5 },
 			)
 			.catch((e) => {
 				results.push(`Caught: ${e.message}`);
@@ -244,7 +244,7 @@ describe("SmartRetry", () => {
 				results.push("Task 2 success");
 				return "ok";
 			},
-			{ priority: "high", customIntervalMs: 5 },
+			{ customIntervalMs: 5 },
 		);
 
 		await Promise.all([p1, p2]);

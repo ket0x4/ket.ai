@@ -66,6 +66,8 @@ WORKDIR /home/sandboxuser/app
 
 # Copy sandbox server code
 COPY package.json server.ts ./
+COPY lib/ ./lib/
+COPY handlers/ ./handlers/
 RUN chown -R sandboxuser:sandboxuser /home/sandboxuser/app
 
 USER sandboxuser

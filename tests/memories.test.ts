@@ -295,7 +295,6 @@ test("Exact text duplicate and Float32Array embedding storage", async () => {
 		"Alice: Senior software engineer",
 		"PROFILE",
 		new Float32Array([0.6, 0.6]),
-		testChatId,
 	);
 	const updated = Repository.getMemories(testChatId);
 	expect(updated[0].text).toBe("Alice: Senior software engineer");
@@ -394,14 +393,13 @@ test("Memory LRU cache incremental updates and memory bounds", () => {
 		"Updated Fact 1",
 		"DYNAMIC",
 		new Float32Array([0.5, 0.5]),
-		testChatId,
 	);
 	const cached3 = Repository.getMemories(testChatId);
 	expect(cached3[0].text).toBe("Updated Fact 1");
 	expect(cached3[0].category).toBe("DYNAMIC");
 
 	// Delete memory 2
-	Repository.deleteMemoriesByIds([cached2[1].id], testChatId);
+	Repository.deleteMemoriesByIds([cached2[1].id]);
 	const cached4 = Repository.getMemories(testChatId);
 	expect(cached4.length).toBe(1);
 	expect(cached4[0].text).toBe("Updated Fact 1");
@@ -441,7 +439,6 @@ test("FTS5 Full-Text Search and trigger synchronization", () => {
 		"Ahmet Moda sahilinde espresso icmeyi cok seviyor",
 		"PROFILE",
 		new Float32Array([0.5, 0.5]),
-		testChatId,
 	);
 
 	const ftsUpdated = Repository.searchMemoriesFTS(testChatId, "Moda espresso");
@@ -452,7 +449,7 @@ test("FTS5 Full-Text Search and trigger synchronization", () => {
 	expect(ftsOld.length).toBe(0);
 
 	// Delete and check FTS sync
-	Repository.deleteMemoriesByIds([mems[0].id], testChatId);
+	Repository.deleteMemoriesByIds([mems[0].id]);
 	const ftsAfterDel = Repository.searchMemoriesFTS(testChatId, "Moda espresso");
 	expect(ftsAfterDel.length).toBe(0);
 
@@ -515,26 +512,23 @@ test("Tiered capacity eviction prioritizes expired and temporary before profile"
 	// 1st eviction must be Expired Temporary
 	const evict1 = getOldestStmt.get(testChatId) as { memory_text: string };
 	expect(evict1.memory_text).toBe("Temporary expired fact");
-	Repository.deleteMemoriesByIds(
-		[(getOldestStmt.get(testChatId) as { id: number }).id],
-		testChatId,
-	);
+	Repository.deleteMemoriesByIds([
+		(getOldestStmt.get(testChatId) as { id: number }).id,
+	]);
 
 	// 2nd eviction must be Temporary recent event
 	const evict2 = getOldestStmt.get(testChatId) as { memory_text: string };
 	expect(evict2.memory_text).toBe("Temporary recent event");
-	Repository.deleteMemoriesByIds(
-		[(getOldestStmt.get(testChatId) as { id: number }).id],
-		testChatId,
-	);
+	Repository.deleteMemoriesByIds([
+		(getOldestStmt.get(testChatId) as { id: number }).id,
+	]);
 
 	// 3rd eviction must be Dynamic medium fact
 	const evict3 = getOldestStmt.get(testChatId) as { memory_text: string };
 	expect(evict3.memory_text).toBe("Dynamic medium fact");
-	Repository.deleteMemoriesByIds(
-		[(getOldestStmt.get(testChatId) as { id: number }).id],
-		testChatId,
-	);
+	Repository.deleteMemoriesByIds([
+		(getOldestStmt.get(testChatId) as { id: number }).id,
+	]);
 
 	// 4th eviction is the Profile fact
 	const evict4 = getOldestStmt.get(testChatId) as { memory_text: string };

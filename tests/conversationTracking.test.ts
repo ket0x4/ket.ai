@@ -14,7 +14,7 @@ import { isConversationFollowUp } from "../src/utils/conversation";
 
 describe("Outgoing Message Interceptor & Storage", () => {
 	const testChatId = `test_outbound_${Date.now()}`;
-	Repository.createChat(testChatId, "Test Outbound Group", 1);
+	Repository.createChat(testChatId, "Test Outbound Group", true);
 
 	it("should correctly extract payload from sendMessage with grammY ApiResponse structure", () => {
 		const payload = {
@@ -115,7 +115,7 @@ describe("Outgoing Message Interceptor & Storage", () => {
 		const userId = 778899;
 		const now = Math.floor(Date.now() / 1000);
 
-		Repository.createChat(followUpChat, "FollowUp Chat", 1);
+		Repository.createChat(followUpChat, "FollowUp Chat", true);
 
 		// 1. User sends prompt
 		Repository.saveMessage({
@@ -270,7 +270,7 @@ describe("Safe Memory Target User Resolution", () => {
 	];
 
 	// Save another user into database who is NOT in recent 1 message
-	Repository.createChat("chat_mem", "Chat Mem", 1);
+	Repository.createChat("chat_mem", "Chat Mem", true);
 	Repository.saveMessage({
 		chatId: "chat_mem",
 		messageId: 100,

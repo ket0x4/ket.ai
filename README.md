@@ -8,7 +8,6 @@ It doesn't just reply to direct messages; it understands the flow of the convers
 
 - **Advanced LLM Responses:** Utilizing Google Gemini (`gemini-3.8-flash` / `gemini-3.5-flash-lite`), Ket delivers highly intelligent and entertaining chats while maintaining the context of previous messages.
 - **Advanced Hybrid Vector Memory (RAG):** Features a group-specific memory capacity of up to **10,000 facts** using `gemini-embedding-2` multimodal vector embeddings.
-  - **In-Memory Vector Cache:** High-performance caching mechanism eliminates SQLite JSON deserialization overhead during RAG lookups.
   - **User Indexing (`user_id`):** Facts are indexed per user while remaining shared within the group memory pool.
   - **Recency Decay Scoring:** Hybrid RAG ranking combines Cosine Similarity with exponential time-decay ($85\% \text{Cosine} + 15\% \text{Recency Boost}$) so fresh facts take priority.
   - **TTL & Expiration:** Supports `PROFILE` (permanent), `DYNAMIC` (medium-term), and `TEMPORARY` (short-lived) categories with automatic expiration pruning.
@@ -28,7 +27,7 @@ It doesn't just reply to direct messages; it understands the flow of the convers
 - **Language:** TypeScript
 - **Database:** `bun:sqlite` (Built-in, ultra-fast SQLite solution)
 - **AI API:** `@google/genai` (Google Gemini API)
-- **Telegram Integration:** Telegram Bot API (Custom webhook/polling integration similar to node-telegram-bot-api)
+- **Telegram Integration:** [grammY](https://grammy.dev/) (Telegram Bot API framework, long polling)
 - **Containerization:** Docker (with Alpine/Debian distroless architecture)
 
 ## Setup & Running
@@ -38,13 +37,15 @@ Create a `config.json` file in the root directory of the project:
 
 ```json
 {
-  "BOT_TOKEN": "YOUR_TELEGRAM_BOT_TOKEN",
-  "GEMINI_API_KEY": "YOUR_GEMINI_API_KEY",
-  "ADMIN_IDS": [123456789],
-  "GEMINI_MODEL": "gemini-3.8-flash",
-  "POLLING_INTERVAL": 1000
+  "telegram_bot_token": "YOUR_TELEGRAM_BOT_TOKEN",
+  "gemini_api_key": "YOUR_GEMINI_API_KEY",
+  "gemini_model": "gemini-3.8-flash",
+  "bot_owner_id": 123456789,
+  "chat_history_limit": 8,
+  "default_reply_probability": 0.05
 }
 ```
+See `config.example.json` for the full list of supported options.
 You also need a `system.txt` file in the root directory that defines the bot's persona and instructions.
 
 ### 2. Running Locally (with Bun)

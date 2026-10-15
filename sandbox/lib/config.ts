@@ -1,0 +1,9 @@
+export const PORT = Number(process.env.SANDBOX_PORT || 8080);
+export const MAX_TIMEOUT_MS = 120_000;
+export const DEFAULT_TIMEOUT_MS = 45_000;
+export const MAX_OUTPUT_BYTES = 256 * 1024; // 256 KB
+export const MAX_ARTIFACT_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB per artifact
+export const MAX_ARTIFACTS_COUNT = 5; // Standardized to max 5 artifacts
+export const MAX_SESSION_DIR_BYTES = 50 * 1024 * 1024; // 50 MB
+export const SANDBOX_BASE_DIR = process.env.SANDBOX_BASE_DIR || "/tmp/sandboxes";
+export const SAFE_SESSION_ID_REGEX = /^[a-zA-Z0-9_-]{1,64}$/;
