@@ -1,48 +1,46 @@
 # Ket AI - Telegram Bot
 
-Ket is a highly capable AI bot designed to participate in Telegram groups. Powered by **Google Gemini AI**, Ket acts more like a fun buddy in your chat group rather than a standard, boring "How can I help you?" assistant.
-
-It doesn't just reply to direct messages; it understands the flow of the conversation, keeps track of the context, and can spontaneously jump in with its own comments!
+Ket is an AI bot that joins Telegram groups and chats like a fun, opinionated
+buddy rather than a formal assistant. It is powered by Google Gemini, follows
+the conversation, remembers context, and can jump in on its own.
 
 ## Features
 
-- **Advanced LLM Responses:** Utilizing Google Gemini (`gemini-3.8-flash` / `gemini-3.5-flash-lite`), Ket delivers highly intelligent and entertaining chats while maintaining the context of previous messages.
-- **Advanced Hybrid Vector Memory (RAG):** Features a group-specific memory capacity of up to **10,000 facts** using `gemini-embedding-2` multimodal vector embeddings.
-  - **User Indexing (`user_id`):** Facts are indexed per user while remaining shared within the group memory pool.
-  - **Recency Decay Scoring:** Hybrid RAG ranking combines Cosine Similarity with exponential time-decay ($85\% \text{Cosine} + 15\% \text{Recency Boost}$) so fresh facts take priority.
-  - **TTL & Expiration:** Supports `PROFILE` (permanent), `DYNAMIC` (medium-term), and `TEMPORARY` (short-lived) categories with automatic expiration pruning.
-  - **Contradiction Auto-Replacement:** Automatically replaces outdated user facts when a new conflicting statement is detected.
-- **Async Background Memory Worker:** Automatically analyzes group conversation history in the background every 15 messages to capture user facts even when the bot hasn't directly responded to the message.
-- **Unified Memory Commands & Intent Triggers:**
-  - `/remember <fact>` — Explicitly store a fact into memory (or reply to any message with `/remember`).
-  - **Telegram Mini App Dashboard:** Manage, search, export/import, and prune group memories via `/app` or `/admin`.
-  - **Natural Intent Triggers:** Automatic priority extraction when users say *"remember this"*, *"keep in mind"*, *"note this"*, or *"save this"*.
-- **Image and Audio Recognition:** It can view photos and listen to voice messages shared in the group, and reply with fitting, humorous, "shitposter buddy" style responses.
-- **Document & File Operations (Code Execution, Editing & Summarization):** Send any code, document, or data file (.py, .js, .ts, .csv, .xlsx, .pdf, .txt, etc.) directly or reply to one. Ket stages the file into an isolated session sandbox workspace where it can execute scripts, analyze and plot data, fix bugs, summarize contents, and export edited files back to Telegram.
-- **Spontaneous Mode:** Ket can spontaneously jump into the chat flow with a certain probability (e.g., 5%) to drop a funny or sarcastic comment, making the group chat feel alive.
-- **Agentic Tool Use & Loop Hardening:** Ket runs a bounded multi-turn agent loop with a curated toolset and self-correcting safeguards:
-  - **Tools:** `web_search`, `fetch_url` (lightweight page/JSON reads), `execute_code`/`execute_bash` (sandbox), `list_workspace_files`, `search_workspace` (grep across files), `read_workspace_file`, `edit_workspace_file` (targeted snippet edits), `write_workspace_file`, `send_workspace_file`, `reset_workspace`, and `update_plan` (explicit working plan).
-  - **Run budget & planning:** Each step carries the remaining step budget plus the current plan, so the model plans and converges instead of looping.
-  - **Loop guards:** Identical repeat tool calls are suppressed (`max_identical_tool_calls`) and a tool that keeps failing triggers an escalation notice (`max_tool_failures_per_tool`).
-  - **Context budgeting:** Long tool transcripts are compacted (`agent_context_max_chars`) to stay within the model window.
-  - **Tracing:** Step-level agent events and a bounded in-memory transcript aid debugging and eval replay.
-- **Concurrent Processing & Cancellation:** Updates are handled concurrently (via the grammY runner), so a slow generation never blocks other chats. Use `/stop` to cancel an in-progress reply; long runs are automatically bounded by `agent_timeout_ms`.
-- **Abuse & Cost Protection:** Per-user message limits, per-chat generation limits, and per-IP API rate limits (all configurable) guard against runaway Gemini/sandbox usage. Telegram Mini App `initData` is validated for signature **and** freshness.
-- **Batched Logging with Rotation:** Logs are written asynchronously and rotated automatically at `log_max_size_mb` (`app.log` → `app.log.1`).
+- Gemini-backed replies (`gemini-3.8-flash` / `gemini-3.5-flash-lite`) with
+  conversation context.
+- Hybrid vector memory (RAG) per group: up to 10,000 facts, indexed by user,
+  ranked by similarity plus recency, with TTL categories and automatic
+  replacement of outdated facts.
+- Background memory worker that extracts user facts from group history.
+- Memory commands: `/remember <fact>`, a Telegram Mini App dashboard
+  (`/app` or `/admin`), and natural triggers like "remember this".
+- Image and voice message understanding.
+- Document and file handling: stage files into a sandbox, run code, analyze
+  data, edit, and send results back to Telegram.
+- Spontaneous mode: occasionally joins the chat on its own (configurable
+  probability).
+- Agentic tool use with safeguards: `web_search`, `fetch_url`,
+  `execute_code` / `execute_bash`, workspace tools (`list`, `search`, `read`,
+  `edit`, `write`, `send`, `reset`), and `update_plan`. The loop tracks a run
+  budget, suppresses repeated identical tool calls, escalates on repeated tool
+  failures, and compacts long context.
+- Concurrent processing with `/stop` cancellation and an agent timeout.
+- Abuse and cost protection: per-user, per-chat, and per-IP rate limits, plus
+  signed and freshness-checked Mini App `initData`.
+- Asynchronous logging with automatic rotation.
 
 ## Technology Stack
 
-- **Runtime:** [Bun](https://bun.sh/) (Blazing fast JavaScript/TypeScript runtime)
-- **Language:** TypeScript
-- **Database:** `bun:sqlite` (Built-in, ultra-fast SQLite solution)
-- **AI API:** `@google/genai` (Google Gemini API)
-- **Telegram Integration:** [grammY](https://grammy.dev/) (Telegram Bot API framework, long polling)
-- **Containerization:** Docker (with Alpine/Debian distroless architecture)
+- Runtime: Bun
+- Language: TypeScript
+- Database: `bun:sqlite`
+- AI: `@google/genai` (Google Gemini)
+- Telegram: grammY (long polling)
+- Containerization: Docker (distroless binary)
 
-## Setup & Running
+## Setup
 
-### 1. Environment Variables (Config)
-Create a `config.json` file in the root directory of the project:
+Create a `config.json` in the project root:
 
 ```json
 {
@@ -54,40 +52,38 @@ Create a `config.json` file in the root directory of the project:
   "default_reply_probability": 0.05
 }
 ```
-See `config.example.json` for the full list of supported options.
-You also need a `system.txt` file in the root directory that defines the bot's persona and instructions.
 
-### 2. Running Locally (with Bun)
+See `config.example.json` for all options. You also need a `system.txt` file in
+the project root that defines the bot's persona and instructions.
 
-If you have **Bun** installed on your machine:
+### Run locally (Bun)
 
-Install dependencies:
 ```bash
 bun install
-```
-
-Run in development mode:
-```bash
 bun run dev
 ```
 
-Build with bun:
+Build a standalone binary:
+
 ```bash
 bun build --compile --minify src/index.ts --outfile ket
 ```
 
-### 3. Running with Docker (Recommended)
-
-To run it on any server or device with Docker installed:
+### Run with Docker (recommended)
 
 ```bash
 docker compose up --build -d
 ```
-*Note: The system compiles the app into a standalone distroless binary via the Dockerfile to maximize performance and security.*
 
-## How to Test?
-- You can get a direct reply by sending a message to the bot privately or in a group.
-- Teach the bot a specific fact about yourself (e.g., "Ket, my birthday is July 15th"). Talk about completely different topics for a while to clear the recent context. Later, ask "When was my birthday?". Thanks to its vector memory, it will instantly fetch the exact right answer for you!
+The Dockerfile compiles the app into a standalone distroless binary.
+
+## Testing
+
+- Message the bot directly or mention it in a group to get a reply.
+- Teach it a fact about yourself, talk about other topics to clear recent
+  context, then ask about that fact. Vector memory should recall it.
 
 ## License
-This project was developed for private purposes. Please adhere to the Telegram API and Google API Terms of Service when using it.
+
+Developed for private use. Follow the Telegram API and Google API terms of
+service when using it.
