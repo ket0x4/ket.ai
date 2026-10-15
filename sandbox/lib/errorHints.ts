@@ -29,21 +29,23 @@ export function generateErrorHint(
 		return `Hint: Python SyntaxError detected (${syntaxMatch[1]}). Please verify your script syntax and indentation.`;
 	}
 
-	// 4. Timeout & Playwright Timeout
+	// 4. Timeout & Patchright/Playwright Timeout
 	if (
 		exitCode === 124 ||
 		stderr.includes("timed out") ||
 		stderr.includes("TimeoutError: Page.goto") ||
 		stderr.includes("TimeoutError: Locator") ||
-		stderr.includes("playwright._impl._errors.TimeoutError")
+		stderr.includes("playwright._impl._errors.TimeoutError") ||
+		stderr.includes("patchright._impl._errors.TimeoutError")
 	) {
 		if (
 			stderr.includes("playwright") ||
+			stderr.includes("patchright") ||
 			stderr.includes("Locator") ||
 			stderr.includes("Page.goto") ||
 			stderr.includes("waiting for locator")
 		) {
-			return "Hint: Playwright page navigation or selector wait timed out. Consider using wait_until='domcontentloaded', increasing timeout, or checking if target selectors are present.";
+			return "Hint: Patchright page navigation or selector wait timed out. Consider using wait_until='domcontentloaded', increasing timeout, or checking if target selectors are present.";
 		}
 		return "Hint: Script execution timed out. If performing web scraping or heavy computation, consider reducing loops or queries.";
 	}
@@ -57,7 +59,7 @@ export function generateErrorHint(
 		stderr.includes("Just a moment...") ||
 		stderr.includes("Enable JavaScript and cookies to continue")
 	) {
-		return "Hint: Target website blocked the request (403/429/Cloudflare Bot Protection). Try using 'curl_cffi' (with impersonate='chrome') or 'playwright' with stealth mode and realistic browser headers instead of standard requests.";
+		return "Hint: Target website blocked the request (403/429/Cloudflare Bot Protection). Try using 'curl_cffi' (with impersonate='chrome') or 'patchright' (stealth Chromium/Chrome) with realistic browser headers instead of standard requests.";
 	}
 
 	// 6. JSON / Data Parsing / KeyError / IndexError

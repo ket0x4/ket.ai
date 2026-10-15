@@ -265,7 +265,7 @@ print("Top Seller Books:\n1. Atomic Habits\n2. The Psychology of Money")
 						stdout: "",
 						stderr: "requests.exceptions.HTTPError: 403 Forbidden\nCloudflare",
 						errorHint:
-							"Hint: Target website blocked the request (403/429/Cloudflare Bot Protection). Try using 'curl_cffi' (with impersonate='chrome') or 'playwright' with stealth mode and realistic browser headers instead of standard requests.",
+							"Hint: Target website blocked the request (403/429/Cloudflare Bot Protection). Try using 'curl_cffi' (with impersonate='chrome') or 'patchright' (stealth Chromium/Chrome) with realistic browser headers instead of standard requests.",
 						exitCode: 1,
 						executionTimeMs: 120,
 						truncated: false,

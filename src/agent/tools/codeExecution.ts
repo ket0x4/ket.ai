@@ -253,7 +253,7 @@ export const codeExecutionTool: AgentTool<
 > = {
 	name: "execute_code",
 	description:
-		"Executes Python, JavaScript, TypeScript, or Bash scripts in a sandboxed Linux container with web access, persistent workspace files across turns, pre-loaded data science, scraping, media, and reporting packages (numpy, pandas, polars, matplotlib, seaborn, pillow, openpyxl, xlsxwriter, reportlab, tabulate, curl_cffi, beautifulsoup4, requests, ffmpeg, playwright, playwright-stealth). You can generate Excel spreadsheets (.xlsx), PDF documents (.pdf), CSV files (.csv), charts/plots (.png/.jpg), animations/videos (.mp4), or screenshots, and they will automatically be delivered directly to the user as appropriate Telegram photos/documents/videos.",
+		"Executes Python, JavaScript, TypeScript, or Bash scripts in a sandboxed Linux container with web access, persistent workspace files across turns, pre-loaded data science, scraping, media, and reporting packages (numpy, pandas, polars, matplotlib, seaborn, pillow, openpyxl, xlsxwriter, reportlab, tabulate, curl_cffi, beautifulsoup4, requests, ffmpeg, aria2c, patchright). You can generate Excel spreadsheets (.xlsx), PDF documents (.pdf), CSV files (.csv), charts/plots (.png/.jpg), animations/videos (.mp4), or screenshots, and they will automatically be delivered directly to the user as appropriate Telegram photos/documents/videos.",
 	parameters: {
 		type: "OBJECT",
 		properties: {
@@ -291,7 +291,7 @@ export const codeExecutionTool: AgentTool<
 			timeoutMs: {
 				type: "INTEGER",
 				description:
-					"Optional execution timeout in milliseconds (1000-120000). Increase it for long web scraping, Playwright, or heavy data jobs. Defaults to the server configuration.",
+					"Optional execution timeout in milliseconds (1000-120000). Increase it for long web scraping, Patchright, or heavy data jobs. Defaults to the server configuration.",
 			},
 		},
 		required: ["language", "code"],
@@ -333,7 +333,7 @@ export const bashExecutionTool: AgentTool<
 > = {
 	name: "execute_bash",
 	description:
-		"Executes a Bash terminal command or pipeline (curl, jq, grep, awk, sed, ffmpeg, git, tar, unzip, ls, etc.) in the sandbox container. Ideal for quick terminal tasks, CLI inspection, and media processing.",
+		"Executes a Bash terminal command or pipeline (curl, wget, aria2c, jq, grep, awk, sed, ffmpeg, git, tar, unzip, ls, etc.) in the sandbox container. Ideal for quick terminal tasks, CLI inspection, and media processing.",
 	parameters: {
 		type: "OBJECT",
 		properties: {

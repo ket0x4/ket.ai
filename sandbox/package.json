@@ -8,7 +8,7 @@
 		"start": "bun run server.ts"
 	},
 	"dependencies": {
-		"playwright": "^1.49.0"
+		"patchright": "^1.49.0"
 	},
 	"devDependencies": {
 		"bun-types": "^1.4.0"

@@ -1,4 +1,4 @@
-# Lightweight Pre-warmed Sandbox Container for Ket AI (Python 3.12 Slim + Bun + Playwright)
+# Lightweight Pre-warmed Sandbox Container for Ket AI (Python 3.12 Slim + Bun + Patchright)
 # Base: Debian-based Python 3.12 slim with full glibc compatibility
 
 FROM oven/bun:debian AS bun-source
@@ -14,10 +14,11 @@ ENV SANDBOX_PORT=8080
 ENV MPLBACKEND=Agg
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
-# Install essential CLI utilities, ffmpeg, and fonts for plotting
+# Install essential CLI utilities, ffmpeg, aria2 (aria2c), and fonts for plotting
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     wget \
+    aria2 \
     jq \
     ca-certificates \
     git \
@@ -37,7 +38,7 @@ RUN pip install --no-cache-dir \
     beautifulsoup4 \
     lxml \
     curl_cffi \
-    playwright-stealth \
+    patchright \
     numpy \
     pandas \
     polars \
@@ -52,11 +53,10 @@ RUN pip install --no-cache-dir \
     tabulate \
     yfinance \
     duckdb \
-    playwright \
     uv
 
-# Install Playwright Chromium headless browser with minimal dependencies
-RUN playwright install --with-deps chromium
+# Install Patchright Chromium headless browser with minimal dependencies
+RUN patchright install --with-deps chromium
 
 # Create unprivileged sandbox user and cache directories
 RUN useradd -m -u 1000 -s /bin/bash sandboxuser && \
