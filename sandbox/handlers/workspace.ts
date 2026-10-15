@@ -7,7 +7,7 @@ import {
 	statSync,
 	writeFileSync,
 } from "node:fs";
-import { extname, join } from "node:path";
+import { extname, join, relative } from "node:path";
 import { ARTIFACT_MIME_MAP } from "../lib/artifacts";
 import type { WorkspaceFileEntry } from "../lib/types";
 import { resolveSafePath, resolveWorkspace } from "../lib/workspace";
@@ -186,6 +186,162 @@ export async function handleWorkspaceReset(req: Request): Promise<Response> {
 			success: true,
 			sessionId,
 			message: "Workspace reset successfully.",
+		});
+	} catch (err) {
+		return Response.json(
+			{ success: false, error: err instanceof Error ? err.message : String(err) },
+			{ status: 500 },
+		);
+	}
+}
+
+const BINARY_EXTENSIONS = new Set([
+	".png",
+	".jpg",
+	".jpeg",
+	".gif",
+	".webp",
+	".bmp",
+	".ico",
+	".pdf",
+	".zip",
+	".gz",
+	".tar",
+	".xlsx",
+	".xls",
+	".docx",
+	".doc",
+	".pptx",
+	".mp3",
+	".mp4",
+	".wav",
+	".ogg",
+	".webm",
+	".mov",
+	".avi",
+	".woff",
+	".woff2",
+	".ttf",
+	".otf",
+	".so",
+	".dylib",
+	".dll",
+	".exe",
+	".bin",
+	".wasm",
+]);
+
+function listWorkspaceFilesRecursive(
+	dir: string,
+	base = dir,
+	acc: string[] = [],
+): string[] {
+	if (!existsSync(dir)) return acc;
+	for (const entry of readdirSync(dir)) {
+		if (entry.startsWith(".") || entry === "node_modules") continue;
+		const fullPath = join(dir, entry);
+		let stats: ReturnType<typeof statSync>;
+		try {
+			stats = statSync(fullPath);
+		} catch {
+			continue;
+		}
+		if (stats.isDirectory()) {
+			listWorkspaceFilesRecursive(fullPath, base, acc);
+		} else if (stats.isFile()) {
+			acc.push(relative(base, fullPath));
+		}
+	}
+	return acc;
+}
+
+function matchesFilePattern(filename: string, pattern?: string): boolean {
+	if (!pattern?.trim()) return true;
+	const regex = new RegExp(
+		`^${pattern
+			.trim()
+			.replace(/[.+^${}()|[\]\\]/g, "\\$&")
+			.replace(/\*/g, ".*")
+			.replace(/\?/g, ".")}$`,
+		"i",
+	);
+	return regex.test(filename);
+}
+
+export async function handleWorkspaceSearch(req: Request): Promise<Response> {
+	try {
+		const body = (await req.json()) as {
+			sessionId?: string;
+			query?: string;
+			filePattern?: string;
+			maxResults?: number;
+			caseSensitive?: boolean;
+		};
+		const { sessionId, query, filePattern, caseSensitive } = body;
+		if (!sessionId || !query?.trim()) {
+			return Response.json(
+				{ success: false, error: "Missing 'sessionId' or 'query'" },
+				{ status: 400 },
+			);
+		}
+
+		const maxResults =
+			typeof body.maxResults === "number" && body.maxResults > 0
+				? Math.min(body.maxResults, 200)
+				: 50;
+
+		const { workspaceDir } = resolveWorkspace(sessionId);
+		const needle = caseSensitive ? query : query.toLowerCase();
+		const matches: Array<{
+			filename: string;
+			line: number;
+			text: string;
+		}> = [];
+		let totalMatches = 0;
+		let filesSearched = 0;
+		let truncated = false;
+
+		for (const relativePath of listWorkspaceFilesRecursive(workspaceDir)) {
+			if (!matchesFilePattern(relativePath, filePattern)) continue;
+			if (BINARY_EXTENSIONS.has(extname(relativePath).toLowerCase())) continue;
+
+			let content: string;
+			try {
+				const fullPath = resolveSafePath(workspaceDir, relativePath);
+				const buffer = readFileSync(fullPath);
+				if (buffer.includes(0)) continue; // crude binary guard
+				content = buffer.toString("utf-8");
+			} catch {
+				continue;
+			}
+			filesSearched++;
+
+			const lines = content.split("\n");
+			for (let i = 0; i < lines.length; i++) {
+				const haystack = caseSensitive ? lines[i] : lines[i].toLowerCase();
+				if (haystack.includes(needle)) {
+					totalMatches++;
+					if (matches.length < maxResults) {
+						matches.push({
+							filename: relativePath,
+							line: i + 1,
+							text: lines[i].slice(0, 300),
+						});
+					} else {
+						truncated = true;
+					}
+				}
+			}
+		}
+
+		return Response.json({
+			success: true,
+			sessionId,
+			query,
+			matches,
+			totalMatches,
+			filesSearched,
+			truncated,
 		});
 	} catch (err) {
 		return Response.json(

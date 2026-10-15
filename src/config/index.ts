@@ -17,6 +17,10 @@ interface ConfigJson {
 	max_agent_steps?: number;
 	max_tool_output_tokens?: number;
 	enable_agent_thinking?: boolean;
+	max_identical_tool_calls?: number;
+	max_tool_failures_per_tool?: number;
+	agent_context_max_chars?: number;
+	enable_fetch_url?: boolean;
 	gemini_min_request_interval_ms?: number;
 	agent_timeout_ms?: number;
 	rate_limit_messages_per_minute?: number;
@@ -107,6 +111,28 @@ export const CONFIG = {
 		typeof configJson.enable_agent_thinking === "boolean"
 			? configJson.enable_agent_thinking
 			: process.env.ENABLE_AGENT_THINKING !== "false",
+	MAX_IDENTICAL_TOOL_CALLS:
+		typeof configJson.max_identical_tool_calls === "number"
+			? configJson.max_identical_tool_calls
+			: process.env.MAX_IDENTICAL_TOOL_CALLS
+				? parseInt(process.env.MAX_IDENTICAL_TOOL_CALLS, 10)
+				: 2,
+	MAX_TOOL_FAILURES_PER_TOOL:
+		typeof configJson.max_tool_failures_per_tool === "number"
+			? configJson.max_tool_failures_per_tool
+			: process.env.MAX_TOOL_FAILURES_PER_TOOL
+				? parseInt(process.env.MAX_TOOL_FAILURES_PER_TOOL, 10)
+				: 3,
+	AGENT_CONTEXT_MAX_CHARS:
+		typeof configJson.agent_context_max_chars === "number"
+			? configJson.agent_context_max_chars
+			: process.env.AGENT_CONTEXT_MAX_CHARS
+				? parseInt(process.env.AGENT_CONTEXT_MAX_CHARS, 10)
+				: 80000,
+	ENABLE_FETCH_URL:
+		typeof configJson.enable_fetch_url === "boolean"
+			? configJson.enable_fetch_url
+			: process.env.ENABLE_FETCH_URL !== "false",
 	GEMINI_MIN_REQUEST_INTERVAL_MS:
 		typeof configJson.gemini_min_request_interval_ms === "number"
 			? configJson.gemini_min_request_interval_ms

@@ -2,11 +2,14 @@ import { CONFIG } from "../config";
 import { ai } from "../services/gemini/client";
 import { runWithRetry } from "../services/gemini/utils";
 import logger from "../utils/logger";
+import type { AgentEvent, AgentEventHandler } from "./events";
 import {
 	executeFunctionCallsInParallel,
 	type ToolExecutionOptions,
 } from "./executor";
-import { extractFunctionCalls } from "./functionCalls";
+import { extractFunctionCalls, type RawFunctionCall } from "./functionCalls";
+import { getPlan } from "./tools/plan";
+import { AgentTraceLogger } from "./trace";
 
 export type AgentLoopOptions = ToolExecutionOptions;
 
@@ -21,7 +24,13 @@ const BLOCKING_FINISH_REASONS = new Set([
 	"IMAGE_SAFETY",
 ]);
 
-function generateTraceId(): string {
+// Compaction thresholds: individual text parts and tool results older than the
+// most recent steps are shrunk to keep the running context bounded.
+const COMPACT_TEXT_PART_LIMIT = 2500;
+const COMPACT_TOOL_RESULT_LIMIT = 1500;
+const COMPACT_KEEP_RECENT_TURNS = 6;
+
+export function generateTraceId(): string {
 	return `trace_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
 }
 
@@ -66,6 +75,168 @@ function inspectNoToolCallResponse(
 	}
 
 	return { text, blocked };
+}
+
+/**
+ * Stable identity for a tool call: name plus a canonicalized argument payload,
+ * so re-issued identical calls can be detected and suppressed.
+ */
+export function fingerprintToolCall(fc: RawFunctionCall): string {
+	const args = fc.args ?? {};
+	let serialized: string;
+	try {
+		serialized = JSON.stringify(sortedKeys(args));
+	} catch {
+		serialized = JSON.stringify(args);
+	}
+	return `${fc.name}::${serialized}`;
+}
+
+function sortedKeys(value: unknown): unknown {
+	if (Array.isArray(value)) return value.map(sortedKeys);
+	if (value && typeof value === "object") {
+		const out: Record<string, unknown> = {};
+		for (const key of Object.keys(value as Record<string, unknown>).sort()) {
+			out[key] = sortedKeys((value as Record<string, unknown>)[key]);
+		}
+		return out;
+	}
+	return value;
+}
+
+/**
+ * Shrinks older tool results and oversized text parts so a long tool-running
+ * conversation does not blow past the model's context window. The most recent
+ * turns are always preserved intact; only the first (task payload) entry and
+ * the newest turns are guaranteed to survive untouched.
+ */
+export function compactContents(
+	contents: Array<Record<string, unknown>>,
+	maxChars: number,
+	keepRecentTurns: number = COMPACT_KEEP_RECENT_TURNS,
+): Array<Record<string, unknown>> {
+	if (contents.length <= keepRecentTurns + 1) return contents;
+
+	let size = 0;
+	try {
+		size = JSON.stringify(contents).length;
+	} catch {
+		return contents;
+	}
+	if (size <= maxChars) return contents;
+
+	const cutoff = Math.max(1, contents.length - keepRecentTurns);
+	for (let i = 1; i < cutoff; i++) {
+		contents[i] = compactEntry(contents[i]);
+	}
+	logger.info(
+		`[Agent] Compacted context from ~${size} chars (kept last ${keepRecentTurns} turns).`,
+	);
+	return contents;
+}
+
+function compactEntry(entry: Record<string, unknown>): Record<string, unknown> {
+	const parts = Array.isArray(entry.parts)
+		? (entry.parts as Array<Record<string, unknown>>)
+		: null;
+	if (!parts) return entry;
+
+	const compactedParts = parts.map((part) => {
+		if (!part || typeof part !== "object") return part;
+		if (
+			typeof part.text === "string" &&
+			part.text.length > COMPACT_TEXT_PART_LIMIT
+		) {
+			return {
+				...part,
+				text: `${part.text.slice(0, COMPACT_TEXT_PART_LIMIT)}\n[... earlier text compacted ...]`,
+			};
+		}
+		const functionResponse = part.functionResponse as
+			| { response?: unknown }
+			| undefined;
+		if (functionResponse) {
+			let serialized = "";
+			try {
+				serialized = JSON.stringify(functionResponse.response ?? {});
+			} catch {
+				serialized = "";
+			}
+			if (serialized.length > COMPACT_TOOL_RESULT_LIMIT) {
+				return {
+					...part,
+					functionResponse: {
+						...functionResponse,
+						response: {
+							result: {
+								note: "Earlier tool result compacted to save context.",
+								original_size: serialized.length,
+							},
+						},
+					},
+				};
+			}
+		}
+		return part;
+	});
+
+	return { ...entry, parts: compactedParts };
+}
+
+/**
+ * Per-step guidance appended to the system instruction: run budget plus the
+ * current working plan, so the model knows how much room it has and stays on
+ * track on long tasks.
+ */
+export function buildStepGuidance(
+	step: number,
+	maxSteps: number,
+	plan: string[] = [],
+): string {
+	const remaining = Math.max(0, maxSteps - step);
+	let guidance = `\n\n### RUN BUDGET ###\nThis is step ${step} of ${maxSteps}. `;
+	guidance +=
+		remaining <= 1
+			? "This is your final step: stop calling tools and answer the user with what you have."
+			: `You have ${remaining} step(s) left. Do not repeat identical tool calls; combine work and converge on a final answer.`;
+	if (plan.length > 0) {
+		guidance += `\nCurrent plan:\n${plan.map((p, i) => `${i + 1}. ${p}`).join("\n")}`;
+	}
+	return guidance;
+}
+
+function buildSuppressedResponse(
+	fc: RawFunctionCall,
+	note: string,
+): Record<string, unknown> {
+	const functionResponse: Record<string, unknown> = {
+		name: fc.name,
+		response: {
+			result: {
+				error: "duplicate_tool_call_suppressed",
+				system_note: note,
+			},
+		},
+	};
+	if (fc.id) functionResponse.id = fc.id;
+	return { functionResponse };
+}
+
+function resultIsFailure(part: Record<string, unknown>): boolean {
+	const functionResponse = part.functionResponse as
+		| { response?: { result?: unknown } }
+		| undefined;
+	const result = functionResponse?.response?.result;
+	if (!result || typeof result !== "object") return false;
+	const record = result as { error?: unknown; success?: unknown };
+	return Boolean(record.error) || record.success === false;
+}
+
+function toolNameOf(part: Record<string, unknown>): string | undefined {
+	const functionResponse = part.functionResponse as
+		| { name?: string }
+		| undefined;
+	return functionResponse?.name;
 }
 
 /**
@@ -124,9 +295,283 @@ async function finalizeAfterToolExecution(
 	}
 }
 
+interface PartitionedToolCalls {
+	toRun: RawFunctionCall[];
+	responses: Map<RawFunctionCall, Record<string, unknown>>;
+	suppressed: Array<{ toolName: string; reason: string }>;
+}
+
+/**
+ * Splits requested tool calls into those that should run and repeated identical
+ * calls that must be suppressed, while tracking occurrence counts.
+ */
+function partitionToolCalls(
+	functionCalls: RawFunctionCall[],
+	callCounts: Map<string, number>,
+): PartitionedToolCalls {
+	const toRun: RawFunctionCall[] = [];
+	const responses = new Map<RawFunctionCall, Record<string, unknown>>();
+	const suppressed: Array<{ toolName: string; reason: string }> = [];
+
+	for (const fc of functionCalls) {
+		const fingerprint = fingerprintToolCall(fc);
+		const count = (callCounts.get(fingerprint) || 0) + 1;
+		callCounts.set(fingerprint, count);
+
+		if (count > CONFIG.MAX_IDENTICAL_TOOL_CALLS) {
+			suppressed.push({
+				toolName: fc.name,
+				reason: `Identical call repeated ${count} times; suppressed.`,
+			});
+			responses.set(
+				fc,
+				buildSuppressedResponse(
+					fc,
+					"You already called this tool with identical arguments. Do not repeat it; use the result you already have or give your final answer now.",
+				),
+			);
+		} else {
+			toRun.push(fc);
+		}
+	}
+
+	return { toRun, responses, suppressed };
+}
+
+interface FailureEscalation {
+	toolName: string;
+	count: number;
+	note: string;
+}
+
+/**
+ * Tracks consecutive failures per tool and returns an escalation notice once a
+ * tool has failed `MAX_TOOL_FAILURES_PER_TOOL` times in a row.
+ */
+function trackFailures(
+	ranParts: Array<Record<string, unknown>>,
+	toRun: RawFunctionCall[],
+	failureCounts: Map<string, number>,
+): FailureEscalation[] {
+	const escalations: FailureEscalation[] = [];
+
+	ranParts.forEach((part, index) => {
+		const name = toolNameOf(part) || toRun[index]?.name || "unknown";
+		if (!resultIsFailure(part)) {
+			failureCounts.set(name, 0);
+			return;
+		}
+		const failures = (failureCounts.get(name) || 0) + 1;
+		failureCounts.set(name, failures);
+		if (failures === CONFIG.MAX_TOOL_FAILURES_PER_TOOL) {
+			escalations.push({
+				toolName: name,
+				count: failures,
+				note: `Tool '${name}' has now failed ${failures} times in a row. Stop retrying it with the same approach: try a fundamentally different method, or explain the blocker and give your best answer with the information you already have.`,
+			});
+		}
+	});
+
+	return escalations;
+}
+
+interface ToolStepInput {
+	contents: Array<Record<string, unknown>>;
+	functionCalls: RawFunctionCall[];
+	response: { candidates?: Array<{ content?: unknown }> };
+	stepOptions: AgentLoopOptions;
+	step: number;
+	traceId: string;
+	callCounts: Map<string, number>;
+	failureCounts: Map<string, number>;
+	dispatch: (event: AgentEvent) => Promise<void>;
+}
+
+/**
+ * Executes one tool step: records the model turn, suppresses duplicate calls,
+ * runs the rest in parallel, tracks failures, and appends the tool responses
+ * (plus any escalation notice) back into `contents`.
+ */
+async function processToolStep(
+	input: ToolStepInput,
+): Promise<{ aborted: boolean; ranAny: boolean }> {
+	const {
+		contents,
+		functionCalls,
+		response,
+		stepOptions,
+		step,
+		traceId,
+		callCounts,
+		failureCounts,
+		dispatch,
+	} = input;
+
+	const modelContent = response.candidates?.[0]?.content as
+		| Record<string, unknown>
+		| undefined;
+	contents.push(
+		modelContent ?? {
+			role: "model",
+			parts: functionCalls.map((fc) => ({ functionCall: fc })),
+		},
+	);
+
+	const { toRun, responses, suppressed } = partitionToolCalls(
+		functionCalls,
+		callCounts,
+	);
+	for (const entry of suppressed) {
+		logger.warn(
+			`[Agent:${traceId}] Suppressed duplicate tool call '${entry.toolName}'.`,
+		);
+		await dispatch({
+			type: "loop-detected",
+			toolName: entry.toolName,
+			step,
+			reason: entry.reason,
+		});
+		AgentTraceLogger.add({
+			traceId,
+			kind: "loop-detected",
+			step,
+			detail: `duplicate call suppressed: ${entry.toolName}`,
+		});
+	}
+
+	const ranParts =
+		toRun.length > 0
+			? await executeFunctionCallsInParallel(toRun, stepOptions, step)
+			: [];
+	toRun.forEach((fc, index) => {
+		responses.set(fc, ranParts[index]);
+	});
+
+	const escalations = trackFailures(ranParts, toRun, failureCounts);
+	for (const escalation of escalations) {
+		AgentTraceLogger.add({
+			traceId,
+			kind: "loop-detected",
+			step,
+			detail: `repeated failures: ${escalation.toolName} x${escalation.count}`,
+		});
+	}
+
+	const orderedParts = functionCalls
+		.map((fc) => responses.get(fc))
+		.filter((part): part is Record<string, unknown> => Boolean(part));
+	if (escalations.length > 0) {
+		orderedParts.push({
+			text: `### AGENT NOTICE ###\n${escalations.map((e) => e.note).join("\n")}`,
+		});
+	}
+	contents.push({ role: "user", parts: orderedParts });
+
+	AgentTraceLogger.add({
+		traceId,
+		kind: "step-complete",
+		step,
+		toolCount: toRun.length,
+		suppressedCount: suppressed.length,
+	});
+	await dispatch({
+		type: "step-complete",
+		step,
+		toolCount: toRun.length,
+		suppressedCount: suppressed.length,
+	});
+
+	return {
+		aborted: Boolean(stepOptions.signal?.aborted),
+		ranAny: toRun.length > 0,
+	};
+}
+
+function makeEventDispatcher(
+	onEvent: AgentEventHandler | undefined,
+	traceId: string,
+): (event: AgentEvent) => Promise<void> {
+	return async (event: AgentEvent) => {
+		if (!onEvent) return;
+		try {
+			await onEvent(event);
+		} catch (err) {
+			logger.warn(`[Agent:${traceId}] Event handler error:`, err);
+		}
+	};
+}
+
+function buildStepConfig(
+	genConfig: Record<string, unknown>,
+	step: number,
+	maxSteps: number,
+	plan: string[],
+): Record<string, unknown> {
+	const base =
+		typeof genConfig.systemInstruction === "string"
+			? genConfig.systemInstruction
+			: "";
+	return {
+		...genConfig,
+		systemInstruction: `${base}${buildStepGuidance(step, maxSteps, plan)}`,
+	};
+}
+
+interface NoToolCallTurn {
+	action: "retry" | "break";
+	text: string;
+}
+
+function resolveNoToolCallTurn(
+	response: {
+		text?: string;
+		candidates?: Array<{ finishReason?: unknown }>;
+		promptFeedback?: { blockReason?: unknown };
+	},
+	traceId: string,
+	step: number,
+	alreadyRetried: boolean,
+): NoToolCallTurn {
+	const outcome = inspectNoToolCallResponse(response, traceId, step);
+	if (!outcome.text && outcome.blocked && !alreadyRetried) {
+		return { action: "retry", text: outcome.text };
+	}
+	return { action: "break", text: outcome.text };
+}
+
+interface LoopContext {
+	traceId: string;
+	sessionId: string;
+	stepOptions: AgentLoopOptions;
+}
+
+function resolveLoopContext(options: AgentLoopOptions): LoopContext {
+	const traceId = options.traceId || generateTraceId();
+	const sessionId = options.sessionId || options.chatId || "default";
+	return { traceId, sessionId, stepOptions: { ...options, traceId } };
+}
+
+/**
+ * Advances the duplicate-stall counter. A run that produced no fresh tool
+ * executions twice in a row is treated as stuck and should end.
+ */
+function nextStallCount(
+	stallCount: number,
+	ranAny: boolean,
+): { count: number; end: boolean } {
+	if (ranAny) return { count: 0, end: false };
+	const count = stallCount + 1;
+	return { count, end: count >= 2 };
+}
+
 /**
  * Drives the multi-turn agent loop: invoking the model, executing requested
  * tools in parallel, feeding results back, and honoring cancellation.
+ *
+ * Guards against two classic agent failure modes:
+ *  - repeated identical tool calls (suppressed after `MAX_IDENTICAL_TOOL_CALLS`)
+ *  - a tool failing over and over (`MAX_TOOL_FAILURES_PER_TOOL`)
+ * and keeps the running context bounded via `compactContents`.
  */
 export async function runAgentLoop(
 	contents: Array<Record<string, unknown>>,
@@ -134,13 +579,24 @@ export async function runAgentLoop(
 	options: AgentLoopOptions = {},
 ): Promise<string> {
 	const { signal } = options;
-	const traceId = options.traceId || generateTraceId();
-	const stepOptions: AgentLoopOptions = { ...options, traceId };
+	const { traceId, sessionId, stepOptions } = resolveLoopContext(options);
 	const maxSteps = CONFIG.MAX_AGENT_STEPS;
+	const dispatch = makeEventDispatcher(options.onEvent, traceId);
 
 	let responseText = "";
 	let executedTools = false;
 	let retriedBlockedResponse = false;
+	let stallCount = 0;
+
+	const callCounts = new Map<string, number>();
+	const failureCounts = new Map<string, number>();
+
+	AgentTraceLogger.add({
+		traceId,
+		kind: "step-start",
+		step: 0,
+		detail: "loop began",
+	});
 
 	for (let step = 1; step <= maxSteps; step++) {
 		if (signal?.aborted) {
@@ -148,21 +604,40 @@ export async function runAgentLoop(
 			return responseText;
 		}
 
+		await dispatch({ type: "step-start", step, maxSteps });
+		AgentTraceLogger.add({ traceId, kind: "step-start", step });
+
+		const stepConfig = buildStepConfig(
+			genConfig,
+			step,
+			maxSteps,
+			getPlan(sessionId),
+		);
+
+		const compactedContents = compactContents(
+			contents,
+			CONFIG.AGENT_CONTEXT_MAX_CHARS,
+		);
 		const response = await runWithRetry(() =>
 			ai.models.generateContent({
 				model: CONFIG.GEMINI_MODEL,
 				// biome-ignore lint/suspicious/noExplicitAny: SDK expects content structure
-				contents: contents as any,
+				contents: compactedContents as any,
 				// biome-ignore lint/suspicious/noExplicitAny: SDK expects config structure
-				config: { ...genConfig, abortSignal: signal } as any,
+				config: { ...stepConfig, abortSignal: signal } as any,
 			}),
 		);
 
 		const functionCalls = extractFunctionCalls(response);
 		if (functionCalls.length === 0) {
-			const outcome = inspectNoToolCallResponse(response, traceId, step);
-			responseText = outcome.text;
-			if (!responseText && outcome.blocked && !retriedBlockedResponse) {
+			const turn = resolveNoToolCallTurn(
+				response,
+				traceId,
+				step,
+				retriedBlockedResponse,
+			);
+			responseText = turn.text;
+			if (turn.action === "retry") {
 				retriedBlockedResponse = true;
 				continue;
 			}
@@ -175,28 +650,45 @@ export async function runAgentLoop(
 			`[Agent:${traceId}] Gemini requested ${functionCalls.length} tool call(s) at step ${step}`,
 		);
 
-		const modelContent = response.candidates?.[0]?.content;
-		contents.push(
-			modelContent
-				? (modelContent as Record<string, unknown>)
-				: {
-						role: "model",
-						parts: functionCalls.map((fc) => ({ functionCall: fc })),
-					},
-		);
-
-		const toolParts = await executeFunctionCallsInParallel(
+		const { aborted, ranAny } = await processToolStep({
+			contents,
 			functionCalls,
+			response,
 			stepOptions,
 			step,
-		);
-		contents.push({ role: "user", parts: toolParts });
+			traceId,
+			callCounts,
+			failureCounts,
+			dispatch,
+		});
 
-		if (signal?.aborted) {
+		if (aborted) {
 			logger.info(`[Agent:${traceId}] Aborted after step ${step}.`);
 			return responseText;
 		}
+
+		const stall = nextStallCount(stallCount, ranAny);
+		stallCount = stall.count;
+		if (stall.end) {
+			logger.warn(
+				`[Agent:${traceId}] Model stalled on duplicate tool calls; ending loop early.`,
+			);
+			AgentTraceLogger.add({
+				traceId,
+				kind: "loop-detected",
+				step,
+				detail: "stalled on duplicates; ending loop",
+			});
+			break;
+		}
 	}
+
+	AgentTraceLogger.add({
+		traceId,
+		kind: "final",
+		step: 0,
+		detail: responseText ? "text produced" : "summarizing",
+	});
 
 	// If the loop terminated after tool execution without a final text response,
 	// invoke the model one final time without tools to summarize and answer the user.

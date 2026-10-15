@@ -20,6 +20,12 @@ It doesn't just reply to direct messages; it understands the flow of the convers
 - **Image and Audio Recognition:** It can view photos and listen to voice messages shared in the group, and reply with fitting, humorous, "shitposter buddy" style responses.
 - **Document & File Operations (Code Execution, Editing & Summarization):** Send any code, document, or data file (.py, .js, .ts, .csv, .xlsx, .pdf, .txt, etc.) directly or reply to one. Ket stages the file into an isolated session sandbox workspace where it can execute scripts, analyze and plot data, fix bugs, summarize contents, and export edited files back to Telegram.
 - **Spontaneous Mode:** Ket can spontaneously jump into the chat flow with a certain probability (e.g., 5%) to drop a funny or sarcastic comment, making the group chat feel alive.
+- **Agentic Tool Use & Loop Hardening:** Ket runs a bounded multi-turn agent loop with a curated toolset and self-correcting safeguards:
+  - **Tools:** `web_search`, `fetch_url` (lightweight page/JSON reads), `execute_code`/`execute_bash` (sandbox), `list_workspace_files`, `search_workspace` (grep across files), `read_workspace_file`, `edit_workspace_file` (targeted snippet edits), `write_workspace_file`, `send_workspace_file`, `reset_workspace`, and `update_plan` (explicit working plan).
+  - **Run budget & planning:** Each step carries the remaining step budget plus the current plan, so the model plans and converges instead of looping.
+  - **Loop guards:** Identical repeat tool calls are suppressed (`max_identical_tool_calls`) and a tool that keeps failing triggers an escalation notice (`max_tool_failures_per_tool`).
+  - **Context budgeting:** Long tool transcripts are compacted (`agent_context_max_chars`) to stay within the model window.
+  - **Tracing:** Step-level agent events and a bounded in-memory transcript aid debugging and eval replay.
 - **Concurrent Processing & Cancellation:** Updates are handled concurrently (via the grammY runner), so a slow generation never blocks other chats. Use `/stop` to cancel an in-progress reply; long runs are automatically bounded by `agent_timeout_ms`.
 - **Abuse & Cost Protection:** Per-user message limits, per-chat generation limits, and per-IP API rate limits (all configurable) guard against runaway Gemini/sandbox usage. Telegram Mini App `initData` is validated for signature **and** freshness.
 - **Batched Logging with Rotation:** Logs are written asynchronously and rotated automatically at `log_max_size_mb` (`app.log` → `app.log.1`).

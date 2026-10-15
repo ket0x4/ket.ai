@@ -81,7 +81,10 @@ function buildSearchResults(
 /**
  * Performs a web search using Gemini API with Google Search Grounding and in-memory caching.
  */
-async function performWebSearch(query: string): Promise<WebSearchOutput> {
+async function performWebSearch(
+	query: string,
+	signal?: AbortSignal,
+): Promise<WebSearchOutput> {
 	const trimmedQuery = query.trim();
 	if (!trimmedQuery) {
 		return {
@@ -115,6 +118,7 @@ async function performWebSearch(query: string): Promise<WebSearchOutput> {
 					tools: [{ googleSearch: {} }],
 					maxOutputTokens: 2048,
 					thinkingConfig: getThinkingConfig(CONFIG.GEMINI_MODEL),
+					abortSignal: signal,
 				},
 			}),
 		);
@@ -179,7 +183,7 @@ export const webSearchTool: AgentTool<{ query: string }, WebSearchOutput> = {
 		required: ["query"],
 	},
 	isEnabled: () => Boolean(CONFIG.ENABLE_WEB_SEARCH),
-	execute: async (args: { query: string }, _context?: ToolExecutionContext) => {
-		return performWebSearch(args.query || "");
+	execute: async (args: { query: string }, context?: ToolExecutionContext) => {
+		return performWebSearch(args.query || "", context?.signal);
 	},
 };

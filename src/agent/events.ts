@@ -22,6 +22,23 @@ export type AgentEvent =
 	| {
 			type: "media-generated";
 			media: GeneratedMediaArtifact[];
+	  }
+	| {
+			type: "step-start";
+			step: number;
+			maxSteps: number;
+	  }
+	| {
+			type: "step-complete";
+			step: number;
+			toolCount: number;
+			suppressedCount: number;
+	  }
+	| {
+			type: "loop-detected";
+			toolName: string;
+			step: number;
+			reason: string;
 	  };
 
 export type AgentEventHandler = (event: AgentEvent) => void | Promise<void>;

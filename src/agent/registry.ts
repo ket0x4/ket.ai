@@ -1,10 +1,14 @@
 import logger from "../utils/logger";
 import { bashExecutionTool, codeExecutionTool } from "./tools/codeExecution";
+import { fetchUrlTool } from "./tools/fetchUrl";
+import { updatePlanTool } from "./tools/plan";
 import { webSearchTool } from "./tools/webSearch";
 import {
+	editWorkspaceFileTool,
 	listWorkspaceFilesTool,
 	readWorkspaceFileTool,
 	resetWorkspaceTool,
+	searchWorkspaceTool,
 	sendWorkspaceFileTool,
 	writeWorkspaceFileTool,
 } from "./tools/workspaceTools";
@@ -20,13 +24,17 @@ export class ToolRegistry {
 	constructor(preloadDefaults = false) {
 		if (preloadDefaults) {
 			this.tools.set("web_search", webSearchTool);
+			this.tools.set("fetch_url", fetchUrlTool);
 			this.tools.set("execute_code", codeExecutionTool);
 			this.tools.set("execute_bash", bashExecutionTool);
 			this.tools.set("list_workspace_files", listWorkspaceFilesTool);
+			this.tools.set("search_workspace", searchWorkspaceTool);
 			this.tools.set("read_workspace_file", readWorkspaceFileTool);
 			this.tools.set("write_workspace_file", writeWorkspaceFileTool);
+			this.tools.set("edit_workspace_file", editWorkspaceFileTool);
 			this.tools.set("send_workspace_file", sendWorkspaceFileTool);
 			this.tools.set("reset_workspace", resetWorkspaceTool);
+			this.tools.set("update_plan", updatePlanTool);
 		}
 	}
 

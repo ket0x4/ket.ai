@@ -4,6 +4,7 @@ import {
 	handleWorkspaceList,
 	handleWorkspaceRead,
 	handleWorkspaceReset,
+	handleWorkspaceSearch,
 	handleWorkspaceWrite,
 } from "./handlers/workspace";
 import { PORT } from "./lib/config";
@@ -44,6 +45,10 @@ Bun.serve({
 
 		if (req.method === "POST" && url.pathname === "/workspace/list") {
 			return handleWorkspaceList(req);
+		}
+
+		if (req.method === "POST" && url.pathname === "/workspace/search") {
+			return handleWorkspaceSearch(req);
 		}
 
 		if (req.method === "POST" && url.pathname === "/workspace/reset") {

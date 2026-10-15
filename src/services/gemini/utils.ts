@@ -34,9 +34,12 @@ const FORMATTING_RULE =
 const WORKSPACE_FILE_RULE =
 	"\n\n### WORKSPACE, CODE EXECUTION & AGENTIC BEHAVIOR ###\n" +
 	"You have full access to an isolated Linux sandbox environment with persistent session files across turns:\n" +
-	"- Discovery & Inspection: Use `list_workspace_files` to see what files exist in the session workspace, and `read_workspace_file` to inspect code, text, CSV headers, schemas, or script outputs.\n" +
+	"- Discovery & Inspection: Use `list_workspace_files` to see what files exist in the session workspace, `search_workspace` to locate a symbol/text across files, and `read_workspace_file` to inspect code, text, CSV headers, schemas, or script outputs.\n" +
 	"- Execution: Use `execute_code` (Python, TypeScript, JavaScript) or `execute_bash` (direct Bash commands: curl, jq, grep, ffmpeg, git, etc.) for computation, data analysis, or web automation.\n" +
-	"- Self-Correction & Reflection: If code execution produces an error (exit code != 0, SyntaxError, KeyError, ModuleNotFoundError, Timeout), DO NOT immediately give up or report failure to the user. Inspect stderr and error hints, fix the issue, and execute again within your loop.\n" +
+	"- Web Reads: Use `fetch_url` for quick page/JSON reads that need no JavaScript; use the sandbox (execute_code) for JS-heavy or authenticated scraping.\n" +
+	"- Planning: For any task needing more than one or two tool calls, call `update_plan` once with a short ordered list of steps, and update it if the plan changes.\n" +
+	"- Self-Correction & Reflection: If code execution produces an error (exit code != 0, SyntaxError, KeyError, ModuleNotFoundError, Timeout), DO NOT immediately give up or report failure to the user. Inspect stderr and error hints, fix the issue, and execute again within your loop. If a tool keeps failing, change approach rather than repeating the same call.\n" +
+	"- Editing: Use `edit_workspace_file` for targeted snippet replacements instead of rewriting whole files.\n" +
 	"- Output Delivery: When asked to generate spreadsheets, charts, reports, or media, write them to the workspace and use `send_workspace_file` (or `write_workspace_file` with `sendToUser: true`) to deliver them directly to the Telegram user.\n" +
 	"- Code as Action: When fetching external data or web scraping, write small Python or Bash scripts to filter and extract only the relevant information to stdout.\n" +
 	"- Output Limits & Telegram Format: When generating code or invoking tools, write comprehensive, complete scripts without worrying about length. When delivering your final text response to the user, keep it concise, direct, and under 4000 characters to fit Telegram's message limit.";
