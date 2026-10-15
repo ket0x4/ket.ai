@@ -4,6 +4,8 @@ import { createToolNotifier, sendSingleArtifact } from "../bot/ui/index";
 import { CONFIG } from "../config";
 import { Repository } from "../db/repository";
 import { botUsername, withChatLock, withTyping } from "../services/bot";
+import { startGeneration } from "../services/bot/generation";
+import { checkRateLimit } from "../services/bot/rateLimit";
 import {
 	type PreparedDocumentContext,
 	prepareDocumentContext,
@@ -282,6 +284,14 @@ async function generateAndSendReply(
 	const chatSettings = Repository.getChat(chatIdStr);
 	if (!chatSettings) return;
 
+	const genLimit = CONFIG.RATE_LIMIT_GENERATIONS_PER_MINUTE;
+	if (!checkRateLimit(`gen:${chatIdStr}`, genLimit)) {
+		logger.warn(
+			`[RateLimit] Skipping generation for chat ${chatIdStr}: exceeded ${genLimit} generations/min`,
+		);
+		return;
+	}
+
 	// Concurrency: fetch active topic, history, replied photo, and replied document in parallel
 	const [activeTopic, history, mediaPayload, documentPayload] =
 		await Promise.all([
@@ -297,20 +307,27 @@ async function generateAndSendReply(
 	const notifier = createToolNotifier(ctx, replyToMessageId, logPrefix);
 	const generatedArtifacts: GeneratedMediaArtifact[] = [];
 
-	const reply = await GeminiService.generateReply({
-		history,
-		topicSummary: activeTopic,
-		isSpontaneous,
-		chatId: chatIdStr,
-		media: mediaPayload,
-		document: documentPayload,
-		targetMessage,
-		onEvent: mergeAgentEventHandlers(notifier.onEvent, (event) => {
-			if (event.type === "media-generated") {
-				generatedArtifacts.push(...event.media);
-			}
-		}),
-	});
+	const generation = startGeneration(chatIdStr);
+	let reply = "";
+	try {
+		reply = await GeminiService.generateReply({
+			history,
+			topicSummary: activeTopic,
+			isSpontaneous,
+			chatId: chatIdStr,
+			media: mediaPayload,
+			document: documentPayload,
+			targetMessage,
+			signal: generation.signal,
+			onEvent: mergeAgentEventHandlers(notifier.onEvent, (event) => {
+				if (event.type === "media-generated") {
+					generatedArtifacts.push(...event.media);
+				}
+			}),
+		});
+	} finally {
+		generation.finish();
+	}
 
 	// Send generated artifacts (Photos, Spreadsheets, PDF reports, Videos, Audio)
 	for (const art of generatedArtifacts) {

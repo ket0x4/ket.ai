@@ -1,4 +1,5 @@
 import logger from "../../utils/logger";
+import { invalidateMemoryCaches } from "./cache";
 import { stmts } from "./statements";
 
 // ponytail: In-memory Sets for instant O(1) opt-out check on every message.
@@ -73,6 +74,8 @@ export const userMethods = {
 				optedOutUsernames.delete(details.username.toLowerCase());
 			}
 		}
+		// Cached memory rows are filtered by opt-out status, so they must be rebuilt.
+		invalidateMemoryCaches();
 	},
 
 	/**

@@ -1,8 +1,32 @@
 import logger from "../../utils/logger";
 import { db } from "../index";
+import {
+	invalidateMemoryCaches,
+	readThroughChatMemories,
+	readThroughUserMemories,
+} from "./cache";
 import { stmts } from "./statements";
 import type { MemoryItem, RepositorySelf } from "./types";
 import { optedOutUserIds } from "./users";
+
+/**
+ * Decodes a stored embedding BLOB into an owned Float32Array. An owned copy is
+ * required because the cache keeps these vectors alive across queries, so they
+ * must not alias a SQLite-provided buffer that could be reused.
+ */
+function decodeEmbedding(bytes: Uint8Array): Float32Array {
+	if (bytes.byteLength === 0) return new Float32Array(0);
+	if (bytes.byteOffset % 4 === 0) {
+		return new Float32Array(
+			bytes.buffer,
+			bytes.byteOffset,
+			bytes.byteLength / 4,
+		).slice();
+	}
+	return new Float32Array(
+		bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
+	);
+}
 
 function rowToMemoryItem(row: {
 	id: number;
@@ -13,21 +37,9 @@ function rowToMemoryItem(row: {
 	category: string | null;
 	expires_at: number | null;
 }): MemoryItem {
-	const emb =
-		row.embedding && row.embedding.byteLength > 0
-			? row.embedding.byteOffset % 4 === 0
-				? new Float32Array(
-						row.embedding.buffer,
-						row.embedding.byteOffset,
-						row.embedding.byteLength / 4,
-					)
-				: new Float32Array(
-						row.embedding.buffer.slice(
-							row.embedding.byteOffset,
-							row.embedding.byteOffset + row.embedding.byteLength,
-						),
-					)
-			: new Float32Array(0);
+	const emb = row.embedding
+		? decodeEmbedding(row.embedding)
+		: new Float32Array(0);
 
 	return {
 		id: row.id,
@@ -98,6 +110,7 @@ export const memoryMethods = {
 			category,
 			expiresAt,
 		);
+		invalidateMemoryCaches();
 	},
 
 	/**
@@ -108,23 +121,30 @@ export const memoryMethods = {
 		chatId: string,
 		includeOptedOut: boolean = false,
 	): MemoryItem[] {
-		const rows = stmts.getMemories.all(chatId) as {
-			id: number;
-			memory_text: string;
-			embedding: Uint8Array | null;
-			created_at: number;
-			user_id: number | null;
-			category: string | null;
-			expires_at: number | null;
-		}[];
+		return readThroughChatMemories(
+			`${chatId}|${includeOptedOut ? 1 : 0}`,
+			() => {
+				const rows = stmts.getMemories.all(chatId) as {
+					id: number;
+					memory_text: string;
+					embedding: Uint8Array | null;
+					created_at: number;
+					user_id: number | null;
+					category: string | null;
+					expires_at: number | null;
+				}[];
 
-		const parsed = rows.map(rowToMemoryItem);
+				const parsed = rows.map(rowToMemoryItem);
 
-		if (includeOptedOut || optedOutUserIds.size === 0) {
-			return parsed;
-		}
+				if (includeOptedOut || optedOutUserIds.size === 0) {
+					return parsed;
+				}
 
-		return parsed.filter((m) => !m.userId || !this.isUserOptedOut(m.userId));
+				return parsed.filter(
+					(m) => !m.userId || !this.isUserOptedOut(m.userId),
+				);
+			},
+		);
 	},
 
 	/**
@@ -137,6 +157,7 @@ export const memoryMethods = {
 		}[];
 		const deletedCount = deletedRows.length;
 		if (deletedCount > 0) {
+			invalidateMemoryCaches();
 			logger.info(
 				`[Memory] Pruned ${deletedCount} expired memories for chat ${chatId}.`,
 			);
@@ -201,6 +222,7 @@ export const memoryMethods = {
 			}
 		});
 		deleteMany(ids);
+		invalidateMemoryCaches();
 	},
 
 	/**
@@ -227,6 +249,7 @@ export const memoryMethods = {
 		} else {
 			stmts.updateMemoryWithoutEmbedding.run(text, cat, id);
 		}
+		invalidateMemoryCaches();
 	},
 
 	/**
@@ -234,6 +257,7 @@ export const memoryMethods = {
 	 */
 	clearMemories(chatId: string): void {
 		stmts.deleteMemories.run(chatId);
+		invalidateMemoryCaches();
 	},
 
 	/**
@@ -281,29 +305,23 @@ export const memoryMethods = {
 	},
 
 	/**
-	 * Retrieves personal memories/facts saved about a specific user across all chats.
+	 * Retrieves personal memories/facts saved about a specific user across all chats,
+	 * including their embeddings so they can participate in dense (cosine) ranking.
 	 */
-	getUserAllMemories(
-		this: RepositorySelf,
-		userId: number,
-	): Array<{
-		id: number;
-		chat_id: string;
-		memory_text: string;
-		created_at: number;
-		user_id: number | null;
-		category: string;
-		expires_at: number | null;
-	}> {
+	getUserAllMemories(this: RepositorySelf, userId: number): MemoryItem[] {
 		if (this.isUserOptedOut(userId)) return [];
-		return stmts.getUserMemories.all(userId) as Array<{
-			id: number;
-			chat_id: string;
-			memory_text: string;
-			created_at: number;
-			user_id: number | null;
-			category: string;
-			expires_at: number | null;
-		}>;
+		return readThroughUserMemories(userId, () => {
+			const rows = stmts.getUserMemories.all(userId) as {
+				id: number;
+				chat_id: string;
+				memory_text: string;
+				embedding: Uint8Array | null;
+				created_at: number;
+				user_id: number | null;
+				category: string | null;
+				expires_at: number | null;
+			}[];
+			return rows.map(rowToMemoryItem);
+		});
 	},
 };

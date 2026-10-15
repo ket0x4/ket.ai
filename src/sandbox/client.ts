@@ -59,6 +59,7 @@ async function fetchSandbox(
 	endpoint: string,
 	body: unknown,
 	accept?: string,
+	externalSignal?: AbortSignal,
 ): Promise<{ response: Response; cleanup: () => void }> {
 	const controller = new AbortController();
 	const budgetMs = resolveClientTimeoutMs(body);
@@ -72,12 +73,16 @@ async function fetchSandbox(
 	};
 	if (accept) headers.Accept = accept;
 
+	const signal = externalSignal
+		? AbortSignal.any([controller.signal, externalSignal])
+		: controller.signal;
+
 	try {
 		const response = await fetch(getUrl(endpoint), {
 			method: "POST",
 			headers,
 			body: JSON.stringify(body),
-			signal: controller.signal,
+			signal,
 		});
 		if (!response.ok) {
 			const text = await response.text().catch(() => "");
@@ -97,8 +102,14 @@ async function fetchSandbox(
 export async function requestJson<T>(
 	endpoint: string,
 	body: Record<string, unknown>,
+	signal?: AbortSignal,
 ): Promise<T> {
-	const { response, cleanup } = await fetchSandbox(endpoint, body);
+	const { response, cleanup } = await fetchSandbox(
+		endpoint,
+		body,
+		undefined,
+		signal,
+	);
 	try {
 		return (await response.json()) as T;
 	} finally {
@@ -112,21 +123,28 @@ interface SandboxExecuteCallbacks {
 
 async function executeCode(
 	request: SandboxExecuteRequest,
+	signal?: AbortSignal,
 ): Promise<SandboxExecuteResponse> {
-	return requestJson<SandboxExecuteResponse>("/execute", {
-		...request,
-		stream: false,
-	});
+	return requestJson<SandboxExecuteResponse>(
+		"/execute",
+		{
+			...request,
+			stream: false,
+		},
+		signal,
+	);
 }
 
 async function executeStream(
 	request: SandboxExecuteRequest,
 	callbacks: SandboxExecuteCallbacks = {},
+	signal?: AbortSignal,
 ): Promise<SandboxExecuteResponse> {
 	const { response, cleanup } = await fetchSandbox(
 		"/execute",
 		{ ...request, stream: true },
 		"text/event-stream",
+		signal,
 	);
 
 	try {
@@ -150,8 +168,13 @@ async function executeStream(
 }
 
 export const sandboxClient = {
-	execute: executeCode,
-	executeStream,
+	execute: (request: SandboxExecuteRequest, signal?: AbortSignal) =>
+		executeCode(request, signal),
+	executeStream: (
+		request: SandboxExecuteRequest,
+		callbacks: SandboxExecuteCallbacks = {},
+		signal?: AbortSignal,
+	) => executeStream(request, callbacks, signal),
 };
 
 export function isSandboxConnectionError(error: unknown): boolean {

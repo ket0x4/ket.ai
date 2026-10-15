@@ -120,7 +120,7 @@ export const stmts = {
 		"SELECT DISTINCT chat_id FROM messages WHERE user_id = ?",
 	),
 	getUserMemories: db.prepare(
-		"SELECT id, chat_id, memory_text, created_at, user_id, category, expires_at FROM memories WHERE user_id = ? ORDER BY created_at DESC",
+		"SELECT id, chat_id, memory_text, embedding, created_at, user_id, category, expires_at FROM memories WHERE user_id = ? ORDER BY created_at DESC LIMIT 5000",
 	),
 	getUserStats: db.prepare(
 		`SELECT 

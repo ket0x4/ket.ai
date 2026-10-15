@@ -75,11 +75,13 @@ function inspectNoToolCallResponse(
 async function generateFinalSummary(
 	contents: Array<Record<string, unknown>>,
 	genConfig: Record<string, unknown>,
+	signal?: AbortSignal,
 ): Promise<string> {
 	const finalGenConfig = {
 		...genConfig,
 		tools: undefined,
 		maxOutputTokens: 2048,
+		abortSignal: signal,
 	};
 	const finalResponse = await runWithRetry(() =>
 		ai.models.generateContent({
@@ -112,7 +114,7 @@ async function finalizeAfterToolExecution(
 		logger.info(
 			`[Agent:${traceId}] Tool execution finished at step limit. Generating final summary reply...`,
 		);
-		return await generateFinalSummary(contents, genConfig);
+		return await generateFinalSummary(contents, genConfig, signal);
 	} catch (err) {
 		logger.warn(
 			`[Agent:${traceId}] Error generating final summary after tool execution:`,
@@ -152,7 +154,7 @@ export async function runAgentLoop(
 				// biome-ignore lint/suspicious/noExplicitAny: SDK expects content structure
 				contents: contents as any,
 				// biome-ignore lint/suspicious/noExplicitAny: SDK expects config structure
-				config: genConfig as any,
+				config: { ...genConfig, abortSignal: signal } as any,
 			}),
 		);
 

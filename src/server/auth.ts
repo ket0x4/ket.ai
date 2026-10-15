@@ -81,6 +81,23 @@ function verifyTelegramInitData(
 			return { valid: false };
 		}
 
+		// Reject stale or future-dated initData to prevent replay of a captured
+		// payload. Telegram recommends bounding auth_date freshness.
+		const authDateStr = urlParams.get("auth_date");
+		const authDate = authDateStr
+			? Number.parseInt(authDateStr, 10)
+			: Number.NaN;
+		const nowSec = Math.floor(Date.now() / 1000);
+		if (!Number.isFinite(authDate) || authDate > nowSec + 300) {
+			return { valid: false };
+		}
+		if (nowSec - authDate > CONFIG.INIT_DATA_MAX_AGE_SECONDS) {
+			logger.warn(
+				`[Auth] Rejected stale Telegram initData (age ${nowSec - authDate}s > ${CONFIG.INIT_DATA_MAX_AGE_SECONDS}s).`,
+			);
+			return { valid: false };
+		}
+
 		const userStr = urlParams.get("user");
 		const user: TelegramUser | undefined = userStr
 			? JSON.parse(userStr)

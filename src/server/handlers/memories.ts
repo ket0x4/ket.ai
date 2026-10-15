@@ -1,6 +1,7 @@
 import type { AuthContext } from "../../../web/src/types";
 import { db } from "../../db/index";
 import { Repository } from "../../db/repository";
+import { invalidateMemoryCaches } from "../../db/repository/cache";
 import {
 	generateEmbedding,
 	processNewMemory,
@@ -347,6 +348,7 @@ async function handleMemoriesPrune(
 				)
 				.run(now);
 			changes = result.changes;
+			invalidateMemoryCaches();
 		}
 
 		return jsonResponse({ success: true, prunedCount: changes });

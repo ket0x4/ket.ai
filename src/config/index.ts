@@ -18,6 +18,11 @@ interface ConfigJson {
 	max_tool_output_tokens?: number;
 	enable_agent_thinking?: boolean;
 	gemini_min_request_interval_ms?: number;
+	agent_timeout_ms?: number;
+	rate_limit_messages_per_minute?: number;
+	rate_limit_generations_per_minute?: number;
+	rate_limit_api_per_minute?: number;
+	init_data_max_age_seconds?: number;
 	log_level?: string;
 
 	log_dir?: string;
@@ -108,6 +113,36 @@ export const CONFIG = {
 			: process.env.GEMINI_MIN_REQUEST_INTERVAL_MS
 				? parseInt(process.env.GEMINI_MIN_REQUEST_INTERVAL_MS, 10)
 				: 3500,
+	AGENT_TIMEOUT_MS:
+		typeof configJson.agent_timeout_ms === "number"
+			? configJson.agent_timeout_ms
+			: process.env.AGENT_TIMEOUT_MS
+				? parseInt(process.env.AGENT_TIMEOUT_MS, 10)
+				: 180000,
+	RATE_LIMIT_MESSAGES_PER_MINUTE:
+		typeof configJson.rate_limit_messages_per_minute === "number"
+			? configJson.rate_limit_messages_per_minute
+			: process.env.RATE_LIMIT_MESSAGES_PER_MINUTE
+				? parseInt(process.env.RATE_LIMIT_MESSAGES_PER_MINUTE, 10)
+				: 20,
+	RATE_LIMIT_GENERATIONS_PER_MINUTE:
+		typeof configJson.rate_limit_generations_per_minute === "number"
+			? configJson.rate_limit_generations_per_minute
+			: process.env.RATE_LIMIT_GENERATIONS_PER_MINUTE
+				? parseInt(process.env.RATE_LIMIT_GENERATIONS_PER_MINUTE, 10)
+				: 6,
+	RATE_LIMIT_API_PER_MINUTE:
+		typeof configJson.rate_limit_api_per_minute === "number"
+			? configJson.rate_limit_api_per_minute
+			: process.env.RATE_LIMIT_API_PER_MINUTE
+				? parseInt(process.env.RATE_LIMIT_API_PER_MINUTE, 10)
+				: 120,
+	INIT_DATA_MAX_AGE_SECONDS:
+		typeof configJson.init_data_max_age_seconds === "number"
+			? configJson.init_data_max_age_seconds
+			: process.env.INIT_DATA_MAX_AGE_SECONDS
+				? parseInt(process.env.INIT_DATA_MAX_AGE_SECONDS, 10)
+				: 86400,
 	LOG_LEVEL: (
 		configJson.log_level ||
 		process.env.LOG_LEVEL ||

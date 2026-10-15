@@ -12,6 +12,12 @@
 	"sandbox_url": "http://localhost:8080",
 	"sandbox_timeout_ms": 45000,
 	"max_agent_steps": 3,
+	"gemini_min_request_interval_ms": 3500,
+	"agent_timeout_ms": 180000,
+	"rate_limit_messages_per_minute": 20,
+	"rate_limit_generations_per_minute": 6,
+	"rate_limit_api_per_minute": 120,
+	"init_data_max_age_seconds": 86400,
 	"log_level": "info",
 	"log_dir": "logs",
 	"log_max_size_mb": 5

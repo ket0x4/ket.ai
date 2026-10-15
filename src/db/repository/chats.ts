@@ -1,6 +1,7 @@
 import { CONFIG } from "../../config/index";
 import logger from "../../utils/logger";
 import { db } from "../index";
+import { invalidateMemoryCaches } from "./cache";
 import { stmts } from "./statements";
 import type { ChatRow, RepositorySelf } from "./types";
 
@@ -52,6 +53,7 @@ export const chatMethods = {
 		});
 
 		transaction();
+		invalidateMemoryCaches();
 	},
 
 	/**

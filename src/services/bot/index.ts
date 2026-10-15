@@ -1,3 +1,4 @@
+import { type RunnerHandle, run } from "@grammyjs/runner";
 import { CONFIG } from "../../config/index";
 import { Repository } from "../../db/repository";
 import { registerChatHandlers } from "../../modules/chat";
@@ -20,6 +21,7 @@ import {
 	triggerBackgroundMediaPerception,
 } from "./mediaPerception";
 import { installOutgoingArchiveInterceptor } from "./outgoingArchive";
+import { checkRateLimit } from "./rateLimit";
 
 export { withChatLock } from "./concurrency";
 export {
@@ -33,6 +35,9 @@ export { bot, botUsername };
 
 // Sync outgoing Telegram API calls into SQLite as soon as the bot module loads.
 installOutgoingArchiveInterceptor(bot);
+
+// Handle to the concurrent long-polling runner, retained for graceful shutdown.
+let runner: RunnerHandle | null = null;
 
 // Opt-in/opt-out commands are the only interactions still processed for opted-out users.
 const OPT_COMMAND_REGEX =
@@ -50,6 +55,14 @@ async function initBot() {
 	const me = await bot.api.getMe();
 	setBotUsername(me.username);
 	logger.info(`Bot initialized as @${botUsername}`);
+
+	// Global error handler so a single failing update never crashes the process.
+	bot.catch((err) => {
+		logger.error(
+			`[Bot] Unhandled error while processing update ${err.ctx?.update.update_id}:`,
+			err.error,
+		);
+	});
 
 	// 1. Seed initially allowed chats from config/env and sync titles
 	Repository.initSeedAllowedChats(CONFIG.ALLOWED_CHAT_IDS);
@@ -96,6 +109,21 @@ async function initBot() {
 		logger.debug(
 			`[OptOut] Ignored interaction from opted-out user ${from.id} (${from.first_name}) in chat ${ctx.chat?.id}`,
 		);
+	});
+
+	// 2c. Middleware: Per-user message rate limit (abuse / cost protection)
+	bot.use(async (ctx, next) => {
+		const from = ctx.from;
+		if (!from) return await next();
+
+		const limit = CONFIG.RATE_LIMIT_MESSAGES_PER_MINUTE;
+		if (!checkRateLimit(`msg:${from.id}`, limit)) {
+			logger.debug(
+				`[RateLimit] Dropped message from user ${from.id} (${from.first_name}) in chat ${ctx.chat?.id}: exceeded ${limit}/min`,
+			);
+			return;
+		}
+		return await next();
 	});
 
 	// 3. Supergroup Migration Handler
@@ -207,22 +235,44 @@ async function initBot() {
 }
 
 /**
- * Starts the bot in long polling mode.
+ * Starts the bot in concurrent long-polling mode.
+ *
+ * Uses the official grammY runner so updates are processed concurrently instead
+ * of one-at-a-time. This prevents a single slow generation from blocking every
+ * other chat, makes `/stop` able to interrupt an in-flight reply, and gives the
+ * per-chat lock (`withChatLock`) real work to do.
  */
 export async function startBot() {
 	await initBot();
 	logger.info("Bot long polling starting...");
-	bot.start({
-		onStart: () => {
-			logger.info(
-				"----------------------------------------------------------------",
-			);
-			logger.info(
-				`Bot started successfully as @${botUsername} [Ready to receive updates]`,
-			);
-			logger.info(
-				"----------------------------------------------------------------",
-			);
-		},
-	});
+
+	runner = run(bot);
+
+	logger.info(
+		"----------------------------------------------------------------",
+	);
+	logger.info(
+		`Bot started successfully as @${botUsername} [Ready to receive updates]`,
+	);
+	logger.info(
+		"----------------------------------------------------------------",
+	);
+}
+
+/**
+ * Stops the concurrent runner and waits for in-flight updates to drain.
+ */
+export async function stopBot(): Promise<void> {
+	if (!runner) {
+		bot.stop();
+		return;
+	}
+	try {
+		await runner.stop();
+		logger.info("Bot runner stopped.");
+	} catch (error) {
+		logger.error("Error stopping bot runner:", error);
+	} finally {
+		runner = null;
+	}
 }

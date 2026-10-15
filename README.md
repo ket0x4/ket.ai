@@ -20,6 +20,9 @@ It doesn't just reply to direct messages; it understands the flow of the convers
 - **Image and Audio Recognition:** It can view photos and listen to voice messages shared in the group, and reply with fitting, humorous, "shitposter buddy" style responses.
 - **Document & File Operations (Code Execution, Editing & Summarization):** Send any code, document, or data file (.py, .js, .ts, .csv, .xlsx, .pdf, .txt, etc.) directly or reply to one. Ket stages the file into an isolated session sandbox workspace where it can execute scripts, analyze and plot data, fix bugs, summarize contents, and export edited files back to Telegram.
 - **Spontaneous Mode:** Ket can spontaneously jump into the chat flow with a certain probability (e.g., 5%) to drop a funny or sarcastic comment, making the group chat feel alive.
+- **Concurrent Processing & Cancellation:** Updates are handled concurrently (via the grammY runner), so a slow generation never blocks other chats. Use `/stop` to cancel an in-progress reply; long runs are automatically bounded by `agent_timeout_ms`.
+- **Abuse & Cost Protection:** Per-user message limits, per-chat generation limits, and per-IP API rate limits (all configurable) guard against runaway Gemini/sandbox usage. Telegram Mini App `initData` is validated for signature **and** freshness.
+- **Batched Logging with Rotation:** Logs are written asynchronously and rotated automatically at `log_max_size_mb` (`app.log` → `app.log.1`).
 
 ## Technology Stack
 

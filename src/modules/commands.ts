@@ -3,6 +3,7 @@ import { resetWorkspace } from "../agent/tools/workspaceTools";
 import { buildMiniAppKeyboard } from "../bot/ui/index";
 import { CONFIG } from "../config/index";
 import { Repository } from "../db/repository";
+import { abortGeneration } from "../services/bot/generation";
 import { processNewMemory } from "../services/gemini/memory";
 import logger from "../utils/logger";
 import { extractTelegramChatTitle } from "../utils/message";
@@ -90,7 +91,8 @@ export function registerCommandHandlers(bot: Bot) {
 				"• `/app` or `/admin` — Open Web Mini App Dashboard\n" +
 				"• `/remember <fact>` — Save a new fact to memory\n" +
 				"• `/prob [0-100]` — Set random reply probability (Admin)\n" +
-				"• `/reset` — Clear chat history and memory (Admin)\n\n" +
+				"• `/reset` — Clear chat history and memory (Admin)\n" +
+				"• `/stop` — Cancel an in-progress response\n\n" +
 				"**Privacy Commands**:\n" +
 				"• `/optout` — Completely opt-out from bot processing & memories\n" +
 				"• `/optin` — Opt back in to bot interactions",
@@ -185,6 +187,22 @@ export function registerCommandHandlers(bot: Bot) {
 		}
 		return "";
 	}
+
+	// 3c. /stop command to cancel an in-progress generation
+	bot.command("stop", async (ctx) => {
+		if (!ctx.chat) return;
+		const chatId = ctx.chat.id.toString();
+		const aborted = abortGeneration(chatId);
+		logger.info(
+			`[Commands:stop] User ${ctx.from?.id} (${ctx.from?.first_name}) requested stop in chat ${chatId} (aborted: ${aborted})`,
+		);
+		await ctx.reply(
+			aborted
+				? "Stopped the current response."
+				: "Nothing is running right now.",
+			{ reply_to_message_id: ctx.message?.message_id },
+		);
+	});
 
 	// 4. Admin command: /allow <chatId> (Owner only)
 	bot.command("allow", async (ctx) => {

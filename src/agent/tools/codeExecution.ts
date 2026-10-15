@@ -97,25 +97,30 @@ async function fetchSandboxExecution(
 	payload: SandboxExecuteRequest,
 	useStreaming: boolean,
 	onProgress?: (event: CodeExecutionProgressEvent) => void,
+	signal?: AbortSignal,
 ): Promise<RawSandboxExecutionResponse> {
 	const result = useStreaming
-		? await sandboxClient.executeStream(payload, {
-				onEvent: (event) => {
-					if (event.type === "status") {
-						const data =
-							typeof event.data === "object" && event.data
-								? (event.data as { message?: string })
-								: undefined;
-						onProgress?.({
-							type: "status",
-							text: data?.message || event.text,
-						});
-					} else if (event.type === "stdout" || event.type === "stderr") {
-						onProgress?.({ type: event.type, text: event.text });
-					}
+		? await sandboxClient.executeStream(
+				payload,
+				{
+					onEvent: (event) => {
+						if (event.type === "status") {
+							const data =
+								typeof event.data === "object" && event.data
+									? (event.data as { message?: string })
+									: undefined;
+							onProgress?.({
+								type: "status",
+								text: data?.message || event.text,
+							});
+						} else if (event.type === "stdout" || event.type === "stderr") {
+							onProgress?.({ type: event.type, text: event.text });
+						}
+					},
 				},
-			})
-		: await sandboxClient.execute(payload);
+				signal,
+			)
+		: await sandboxClient.execute(payload, signal);
 	return result;
 }
 
@@ -189,6 +194,7 @@ function buildSandboxFailureResult(
  */
 export async function executeInSandbox(
 	args: CodeExecutionArgs,
+	signal?: AbortSignal,
 ): Promise<CodeExecutionResult> {
 	const language = (args.language || "python").toLowerCase();
 	const code = args.code || "";
@@ -238,6 +244,7 @@ export async function executeInSandbox(
 			},
 			useStreaming,
 			args.onProgress,
+			signal,
 		);
 
 		return formatSandboxResult(data);
@@ -317,7 +324,7 @@ export const codeExecutionTool: AgentTool<
 			};
 		}
 
-		return executeInSandbox(mergedArgs);
+		return executeInSandbox(mergedArgs, context?.signal);
 	},
 };
 

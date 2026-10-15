@@ -1,5 +1,6 @@
 import type { AuthContext } from "../../web/src/types";
 import { CONFIG } from "../config/index";
+import { checkRateLimit } from "../services/bot/rateLimit";
 import logger from "../utils/logger";
 import { getAuthContext } from "./auth";
 import { handleAdminAndToolsRoutes } from "./handlers/admin";
@@ -46,6 +47,19 @@ async function handleApiRequest(
 
 let serverInstance: ReturnType<typeof Bun.serve> | null = null;
 
+interface RemoteAddressServer {
+	requestIP: (req: Request) => { address?: string } | null;
+}
+
+function safeRemoteAddress(server: unknown, req: Request): string {
+	try {
+		const address = (server as RemoteAddressServer).requestIP(req)?.address;
+		return address || "unknown";
+	} catch {
+		return "unknown";
+	}
+}
+
 export function startServer(): ReturnType<typeof Bun.serve> {
 	const port = CONFIG.WEB_PORT;
 
@@ -55,7 +69,7 @@ export function startServer(): ReturnType<typeof Bun.serve> {
 
 	serverInstance = Bun.serve({
 		port,
-		async fetch(req) {
+		async fetch(req, server) {
 			const url = new URL(req.url);
 
 			if (req.method === "OPTIONS") {
@@ -70,6 +84,11 @@ export function startServer(): ReturnType<typeof Bun.serve> {
 			}
 
 			if (url.pathname.startsWith("/api/")) {
+				const ip = safeRemoteAddress(server, req);
+				if (!checkRateLimit(`api:${ip}`, CONFIG.RATE_LIMIT_API_PER_MINUTE)) {
+					return errorResponse("Too many requests", 429);
+				}
+
 				const auth = await getAuthContext(req);
 				if (
 					url.pathname !== "/api/me" &&

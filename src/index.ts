@@ -1,18 +1,18 @@
 import { db } from "./db/index";
 import { startServer, stopServer } from "./server/index";
-import { bot, startBot } from "./services/bot";
+import { startBot, stopBot } from "./services/bot";
 import logger from "./utils/logger";
 
 async function main() {
 	logger.info("[Main] Starting ket.ai...");
 	// Start HTTP Web Server for Telegram Mini App
 	startServer();
-	// Start the bot client (long polling)
+	// Start the bot client (concurrent long polling)
 	await startBot();
 }
 
 // Graceful shutdown handling
-const shutdown = () => {
+const shutdown = async () => {
 	logger.info(
 		"[Main] Received shutdown signal. Stopping bot, web server and closing database...",
 	);
@@ -22,7 +22,7 @@ const shutdown = () => {
 		logger.error("[Main] Error stopping web server:", error);
 	}
 	try {
-		bot.stop();
+		await stopBot();
 		logger.info("[Main] Bot polling stopped.");
 	} catch (error) {
 		logger.error("[Main] Error stopping bot:", error);
@@ -33,6 +33,8 @@ const shutdown = () => {
 	} catch (error) {
 		logger.error("[Main] Error closing database:", error);
 	}
+	// Persist any buffered log lines before exiting.
+	logger.flushSync();
 	process.exit(0);
 };
 
@@ -41,5 +43,6 @@ process.on("SIGTERM", shutdown);
 
 main().catch((err) => {
 	logger.error("[Main] Fatal error during bot initialization:", err);
+	logger.flushSync();
 	process.exit(1);
 });

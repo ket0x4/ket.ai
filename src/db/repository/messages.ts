@@ -1,5 +1,6 @@
 import logger from "../../utils/logger";
 import { db } from "../index";
+import { invalidateMemoryCaches } from "./cache";
 import { stmts } from "./statements";
 import type { MessageRow, RepositorySelf } from "./types";
 
@@ -123,6 +124,7 @@ export const messageMethods = {
 			stmts.resetTopic.run(chatId);
 		});
 		transaction();
+		invalidateMemoryCaches();
 	},
 
 	/**

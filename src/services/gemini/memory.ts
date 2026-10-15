@@ -253,37 +253,22 @@ function resolveChatMemories(
 	chatId: string,
 	options?: QueryMemoriesOptions,
 ): MemoryItem[] {
-	let allMemories = Repository.getMemories(chatId);
+	// Copy the cached array before merging so callers never mutate cache state.
+	const allMemories = [...Repository.getMemories(chatId)];
 
 	if (options?.isPrivateChat && options?.senderUserId) {
 		const existingIds = new Set(allMemories.map((m) => m.id));
-		const userAllMems = Repository.getUserAllMemories(options.senderUserId);
-		for (const uMem of userAllMems) {
+		for (const uMem of Repository.getUserAllMemories(options.senderUserId)) {
 			if (!existingIds.has(uMem.id)) {
-				const fullMem = Repository.getMemoryById(uMem.id);
-				if (fullMem) {
-					allMemories = [
-						...allMemories,
-						{
-							id: fullMem.id,
-							text: fullMem.memory_text,
-							embedding: new Float32Array(0),
-							createdAt: fullMem.created_at,
-							userId: fullMem.user_id,
-							category:
-								(fullMem.category as "PROFILE" | "DYNAMIC" | "TEMPORARY") ||
-								"PROFILE",
-							expiresAt: fullMem.expires_at,
-						},
-					];
-				}
+				existingIds.add(uMem.id);
+				allMemories.push(uMem);
 			}
 		}
 	}
-	allMemories = allMemories.filter(
+
+	return allMemories.filter(
 		(m) => !m.userId || !Repository.isUserOptedOut(m.userId),
 	);
-	return allMemories;
 }
 
 function computeDenseAndSparseCandidates(

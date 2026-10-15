@@ -464,6 +464,22 @@ function resolveMediaFallbacks(
 	};
 }
 
+function resolveGenerationFailure(
+	error: unknown,
+	traceId: string,
+	signal: AbortSignal | undefined,
+	fallbackError: string,
+): string {
+	if (signal?.aborted) {
+		logger.info(
+			`[Gemini:${traceId}] Generation aborted (timeout or /stop); suppressing reply.`,
+		);
+		return "";
+	}
+	logger.error(`Error in Gemini _generateResponse [${traceId}]:`, error);
+	return fallbackError;
+}
+
 export const GeminiService = {
 	async _generateResponse(
 		history: MessageRow[],
@@ -559,8 +575,12 @@ export const GeminiService = {
 			// If reply is empty (e.g. suppressed due to parse error), do not send fallback message
 			return reply;
 		} catch (error) {
-			logger.error(`Error in Gemini _generateResponse [${traceId}]:`, error);
-			return options.fallbackError;
+			return resolveGenerationFailure(
+				error,
+				traceId,
+				options.signal,
+				options.fallbackError,
+			);
 		}
 	},
 
