@@ -106,7 +106,6 @@ export function sanitizeToolResultForLLM(result: unknown): unknown {
 
 	const obj = { ...(result as Record<string, unknown>) };
 
-	// Strip heavy base64 data from artifacts
 	if (Array.isArray(obj.artifacts)) {
 		obj.artifacts = obj.artifacts.map((art) => {
 			if (art && typeof art === "object") {
@@ -121,7 +120,6 @@ export function sanitizeToolResultForLLM(result: unknown): unknown {
 		});
 	}
 
-	// Strip heavy base64 data from images
 	if (Array.isArray(obj.images)) {
 		obj.images = obj.images.map((img) => {
 			if (img && typeof img === "object") {
@@ -136,7 +134,6 @@ export function sanitizeToolResultForLLM(result: unknown): unknown {
 		});
 	}
 
-	// Smart truncate stdout if present
 	if (typeof obj.stdout === "string") {
 		const { text, truncated } = smartTruncateText(obj.stdout);
 		obj.stdout = text;
@@ -145,13 +142,11 @@ export function sanitizeToolResultForLLM(result: unknown): unknown {
 		}
 	}
 
-	// Smart truncate stderr if present
 	if (typeof obj.stderr === "string") {
 		const { text } = smartTruncateText(obj.stderr);
 		obj.stderr = text;
 	}
 
-	// Smart truncate content if present (workspace file reads)
 	if (typeof obj.content === "string") {
 		const { text, truncated } = smartTruncateText(obj.content);
 		obj.content = text;

@@ -24,7 +24,6 @@ export const messageMethods = {
 		sentAt: number;
 	}): void {
 		const transaction = db.transaction(() => {
-			// Upsert User
 			stmts.insertUser.run(
 				params.userId,
 				params.username || null,
@@ -32,7 +31,6 @@ export const messageMethods = {
 				params.sentAt,
 			);
 
-			// Insert Message
 			stmts.insertMessage.run(
 				params.chatId,
 				params.messageId,

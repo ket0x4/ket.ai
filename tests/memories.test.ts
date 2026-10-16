@@ -4,10 +4,8 @@ import { Repository } from "../src/db/repository";
 test("Memory pagination logic", () => {
 	const testChatId = "test_pagination_chat_123";
 
-	// Clear existing test memories
 	Repository.clearMemories(testChatId);
 
-	// Add 12 test memories
 	for (let i = 1; i <= 12; i++) {
 		Repository.addMemory(testChatId, `Test memory ${i}`, []);
 	}
@@ -15,7 +13,6 @@ test("Memory pagination logic", () => {
 	const memories = Repository.getMemories(testChatId);
 	expect(memories.length).toBe(12);
 
-	// Clean up
 	Repository.clearMemories(testChatId);
 });
 
@@ -31,7 +28,6 @@ test("Memory caching and invalidation", () => {
 	expect(firstCall.length).toBe(1);
 	expect(firstCall[0].text).toBe("User lives in Istanbul");
 
-	// Second retrieval returns identical records
 	const secondCall = Repository.getMemories(testChatId);
 	expect(secondCall).toEqual(firstCall);
 
@@ -45,7 +41,6 @@ test("Memory caching and invalidation", () => {
 	expect(thirdCall.length).toBe(2);
 	expect(thirdCall).not.toBe(firstCall);
 
-	// Clean up
 	Repository.clearMemories(testChatId);
 	expect(Repository.getMemories(testChatId).length).toBe(0);
 });
@@ -57,13 +52,11 @@ test("User memory indexing and TTL pruning", () => {
 
 	Repository.clearMemories(testChatId);
 
-	// Add Alice's memory (Permanent profile)
 	Repository.addMemory(testChatId, "Alice: Enjoys coffee", [0.1, 0.1], {
 		userId: userIdAlice,
 		category: "PROFILE",
 	});
 
-	// Add Bob's temporary memory (Expired 1 day ago)
 	Repository.addMemory(testChatId, "Bob: Sick today", [0.2, 0.2], {
 		userId: userIdBob,
 		category: "TEMPORARY",
@@ -75,19 +68,15 @@ test("User memory indexing and TTL pruning", () => {
 	expect(aliceMemories[0].text).toBe("Alice: Enjoys coffee");
 	expect(aliceMemories[0].userId).toBe(userIdAlice);
 
-	// Total before prune
 	expect(Repository.getMemories(testChatId).length).toBe(2);
 
-	// Prune expired memories
 	const prunedCount = Repository.pruneExpiredMemories(testChatId);
 	expect(prunedCount).toBe(1);
 
-	// Total after prune
 	const remaining = Repository.getMemories(testChatId);
 	expect(remaining.length).toBe(1);
 	expect(remaining[0].userId).toBe(userIdAlice);
 
-	// Clean up
 	Repository.clearMemories(testChatId);
 });
 
@@ -116,7 +105,6 @@ test("queryMemoriesWithDiagnostics returns comprehensive diagnostics", async () 
 	const testChatId = "test_diagnostics_chat_101";
 	Repository.clearMemories(testChatId);
 
-	// 1. Empty chat test
 	const emptyResult = await queryMemoriesWithDiagnostics(
 		testChatId,
 		"What do you know about me?",
@@ -125,7 +113,6 @@ test("queryMemoriesWithDiagnostics returns comprehensive diagnostics", async () 
 	expect(emptyResult.retrievedMemories.length).toBe(0);
 	expect(emptyResult.details.length).toBe(0);
 
-	// 2. Add memories with synthetic embeddings
 	Repository.addMemory(
 		testChatId,
 		"User loves writing TypeScript and React code",
@@ -189,7 +176,6 @@ test("queryMemoriesWithDiagnostics returns comprehensive diagnostics", async () 
 		expect(topMemory.passedThreshold).toBeTrue();
 		expect(topMemory.selected).toBeTrue();
 
-		// Memory list check
 		expect(result.retrievedMemories.length).toBeGreaterThanOrEqual(1);
 		expect(result.retrievedMemories[0]).toContain("TypeScript");
 
@@ -198,7 +184,6 @@ test("queryMemoriesWithDiagnostics returns comprehensive diagnostics", async () 
 		expect(lowMemory?.cosSim).toBeCloseTo(0.0, 2);
 		expect(lowMemory?.selected).toBeFalse();
 	} finally {
-		// Restore mock
 		ai.models.embedContent = originalEmbed;
 		Repository.clearMemories(testChatId);
 	}
@@ -213,13 +198,11 @@ test("Category-aware scoring preserves PROFILE facts and decays TEMPORARY facts"
 	const testChatId = "test_category_scoring_chat_202";
 	Repository.clearMemories(testChatId);
 
-	// Add a 90-day-old PROFILE fact
 	Repository.addMemory(testChatId, "Alice: Born on May 15th", [1.0, 0.0], {
 		category: "PROFILE",
 		ttlDays: null,
 	});
 
-	// Add a 90-day-old TEMPORARY fact
 	Repository.addMemory(testChatId, "Bob: Going to hospital today", [1.0, 0.0], {
 		category: "TEMPORARY",
 		ttlDays: 120,
@@ -289,7 +272,6 @@ test("Exact text duplicate and Float32Array embedding storage", async () => {
 	const memories2 = Repository.getMemories(testChatId);
 	expect(memories2.length).toBe(1);
 
-	// Update memory text and verify prepared statement update
 	Repository.updateMemory(
 		memories2[0].id,
 		"Alice: Senior software engineer",
@@ -346,7 +328,6 @@ test("Fast path RAG retrieval efficiency and ranking", async () => {
 	};
 
 	try {
-		// Insert 20 memories
 		for (let i = 0; i < 20; i++) {
 			const cat = i % 2 === 0 ? "PROFILE" : "DYNAMIC";
 			const emb = i === 5 ? [1.0, 0.0, 0.0] : [0.0, 0.0, 1.0];
@@ -355,7 +336,6 @@ test("Fast path RAG retrieval efficiency and ranking", async () => {
 			Repository.addMemory(testChatId, text, emb, { category: cat });
 		}
 
-		// Fast path getRelevantMemories
 		const results = await getRelevantMemories(
 			testChatId,
 			"Which sports does user follow?",
@@ -375,7 +355,6 @@ test("Memory LRU cache incremental updates and memory bounds", () => {
 	const testChatId = "test_lru_bounds_999";
 	Repository.clearMemories(testChatId);
 
-	// Add memory 1
 	Repository.addMemory(testChatId, "Fact 1", [1, 0]);
 	const cached1 = Repository.getMemories(testChatId);
 	expect(cached1.length).toBe(1);
@@ -387,7 +366,6 @@ test("Memory LRU cache incremental updates and memory bounds", () => {
 	expect(cached2.length).toBe(2);
 	expect(cached2).not.toBe(cached1);
 
-	// Update memory 1
 	Repository.updateMemory(
 		cached2[0].id,
 		"Updated Fact 1",
@@ -398,7 +376,6 @@ test("Memory LRU cache incremental updates and memory bounds", () => {
 	expect(cached3[0].text).toBe("Updated Fact 1");
 	expect(cached3[0].category).toBe("DYNAMIC");
 
-	// Delete memory 2
 	Repository.deleteMemoriesByIds([cached2[1].id]);
 	const cached4 = Repository.getMemories(testChatId);
 	expect(cached4.length).toBe(1);
@@ -411,7 +388,6 @@ test("FTS5 Full-Text Search and trigger synchronization", () => {
 	const testChatId = "test_fts_sync_100";
 	Repository.clearMemories(testChatId);
 
-	// Insert
 	Repository.addMemory(
 		testChatId,
 		"Ahmet Kadikoy Bella Italia restoranini cok seviyor",
@@ -423,7 +399,6 @@ test("FTS5 Full-Text Search and trigger synchronization", () => {
 		[0.3, 0.4],
 	);
 
-	// Exact keyword query on FTS
 	const ftsRes1 = Repository.searchMemoriesFTS(testChatId, "Bella Italia");
 	expect(ftsRes1.length).toBe(1);
 	expect(ftsRes1[0].text).toContain("Bella Italia");
@@ -432,7 +407,6 @@ test("FTS5 Full-Text Search and trigger synchronization", () => {
 	expect(ftsRes2.length).toBe(1);
 	expect(ftsRes2[0].text).toContain("Zeynep");
 
-	// Update memory and check FTS sync
 	const mems = Repository.getMemories(testChatId);
 	Repository.updateMemory(
 		mems[0].id,
@@ -448,7 +422,6 @@ test("FTS5 Full-Text Search and trigger synchronization", () => {
 	const ftsOld = Repository.searchMemoriesFTS(testChatId, "Bella Italia");
 	expect(ftsOld.length).toBe(0);
 
-	// Delete and check FTS sync
 	Repository.deleteMemoriesByIds([mems[0].id]);
 	const ftsAfterDel = Repository.searchMemoriesFTS(testChatId, "Moda espresso");
 	expect(ftsAfterDel.length).toBe(0);
@@ -463,20 +436,16 @@ test("Tiered capacity eviction prioritizes expired and temporary before profile"
 
 	const now = Math.floor(Date.now() / 1000);
 
-	// 1. Profile fact 100 days old
 	Repository.addMemory(testChatId, "Profile permanent fact", [1, 0], {
 		category: "PROFILE",
 	});
-	// 2. Dynamic fact 20 days old
 	Repository.addMemory(testChatId, "Dynamic medium fact", [0, 1], {
 		category: "DYNAMIC",
 	});
-	// 3. Temporary fact
 	Repository.addMemory(testChatId, "Temporary recent event", [1, 1], {
 		category: "TEMPORARY",
 		ttlDays: 10,
 	});
-	// 4. Expired Temporary fact
 	Repository.addMemory(testChatId, "Temporary expired fact", [0.5, 0.5], {
 		category: "TEMPORARY",
 		ttlDays: -1,
@@ -553,7 +522,6 @@ test("Multiple distinct facts for the same user are preserved without being over
 	});
 
 	try {
-		// Initial memory: Ali does not wear a watch
 		await processNewMemory(testChatId, "Ali: does not wear a watch", {
 			userId: userIdAli,
 			category: "PROFILE",
@@ -642,13 +610,11 @@ test("Bi-Level retrieval prioritizes speaking user personal facts over group noi
 	const userIdOther = 999;
 	Repository.clearMemories(testChatId);
 
-	// Speaker profile
 	Repository.addMemory(testChatId, "Speaker: Loves electric cars", [0.9, 0.1], {
 		userId: userIdSpeaker,
 		category: "PROFILE",
 	});
 
-	// Other user profile
 	Repository.addMemory(
 		testChatId,
 		"Other: Bought a Tesla Model Y",

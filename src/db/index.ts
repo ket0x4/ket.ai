@@ -22,7 +22,6 @@ if (dbDir && dbDir !== "." && !existsSync(dbDir)) {
 	}
 }
 
-// Initialize the database and ensure schema is ready
 export const db = new Database(dbPath, { create: true });
 db.run("PRAGMA journal_mode=WAL");
 db.run("PRAGMA synchronous=NORMAL");
@@ -30,11 +29,9 @@ db.run("PRAGMA temp_store=MEMORY");
 db.run("PRAGMA busy_timeout=5000");
 db.run("PRAGMA foreign_keys=ON");
 
-// Run migrations (create tables)
 function runMigrations() {
 	logger.info("Running database migrations (Strict Mode)...");
 
-	// Table: users
 	db.run(`
     CREATE TABLE IF NOT EXISTS users (
       user_id INTEGER PRIMARY KEY,
@@ -45,7 +42,6 @@ function runMigrations() {
     ) STRICT;
   `);
 
-	// Table: chats
 	db.run(`
     CREATE TABLE IF NOT EXISTS chats (
       chat_id TEXT PRIMARY KEY,
@@ -86,7 +82,6 @@ function runMigrations() {
 		logger.debug("[DB Migration] personas schema migration check:", e);
 	}
 
-	// Table: personas
 	db.run(`
     CREATE TABLE IF NOT EXISTS personas (
       id TEXT PRIMARY KEY,
@@ -106,7 +101,6 @@ function runMigrations() {
     ON personas(created_by);
   `);
 
-	// Table: messages
 	db.run(`
     CREATE TABLE IF NOT EXISTS messages (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -127,13 +121,11 @@ function runMigrations() {
     ) STRICT;
   `);
 
-	// Indexes for faster lookups on message history
 	db.run(`
     CREATE INDEX IF NOT EXISTS idx_messages_chat_id_sent_at_id
     ON messages(chat_id, sent_at DESC, id DESC);
   `);
 
-	// Table: memories
 	db.run(`
     CREATE TABLE IF NOT EXISTS memories (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -148,7 +140,6 @@ function runMigrations() {
     ) STRICT;
   `);
 
-	// Index for faster lookups on memories
 	db.run(`
     CREATE INDEX IF NOT EXISTS idx_memories_chat_id
     ON memories(chat_id);

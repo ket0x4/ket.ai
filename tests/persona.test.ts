@@ -13,7 +13,6 @@ test("Default system persona ket-default is seeded", () => {
 test("Custom persona lifecycle (create, update, delete)", () => {
 	const customId = `test_persona_${Date.now()}`;
 
-	// 1. Create
 	const created = Repository.createPersona({
 		id: customId,
 		name: "Test Robot",
@@ -27,11 +26,9 @@ test("Custom persona lifecycle (create, update, delete)", () => {
 	expect(created.is_system).toBe(0);
 	expect(created.created_by).toBe(99999);
 
-	// 2. Retrieve
 	const fetched = Repository.getPersonaById(customId);
 	expect(fetched?.prompt).toBe("You are a test robot. Speak in binary.");
 
-	// 3. Update
 	const updated = Repository.updatePersona(customId, {
 		name: "Updated Robot",
 		description: "Updated description",
@@ -41,7 +38,6 @@ test("Custom persona lifecycle (create, update, delete)", () => {
 	expect(updated?.name).toBe("Updated Robot");
 	expect(updated?.prompt).toBe("Updated prompt content");
 
-	// 4. Delete
 	const deleteResult = Repository.deletePersona(customId);
 	expect(deleteResult).toBe(true);
 
@@ -67,11 +63,9 @@ test("Chat active persona assignment and clearing on persona deletion", () => {
 		prompt: "Temporary prompt",
 	});
 
-	// Initially no persona
 	const initial = Repository.getActivePersonaForChat(testChatId);
 	expect(initial).toBeNull();
 
-	// Set active persona
 	const setSuccess = Repository.setActivePersonaForChat(testChatId, customId);
 	expect(setSuccess).toBe(true);
 

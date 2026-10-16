@@ -48,7 +48,6 @@ async function executeDocumentReplyWorkflow(
 			doc.mime_type,
 		);
 
-		// Automatically stage file into persistent session workspace for code execution or inspection
 		await stageDocumentInWorkspace(
 			chatIdStr,
 			docContext.fileName,
@@ -98,12 +97,10 @@ async function executeDocumentReplyWorkflow(
 			await sendSingleArtifact(ctx, art, msg.message_id);
 		}
 
-		// Send final text reply
 		await sendLongMessage(ctx, reply, {
 			reply_to_message_id: msg.message_id,
 		});
 
-		// Trigger background memory worker counter
 		checkAndRunBackgroundMemoryExtraction(chatIdStr).catch(() => {});
 	} catch (err) {
 		logger.error(

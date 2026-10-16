@@ -15,7 +15,6 @@ export function isConversationFollowUp(
 	const recent = Repository.getRecentMessages(chatId, maxLookback);
 	if (recent.length === 0) return false;
 
-	// Find the index of the most recent bot reply in recent messages
 	let latestBotIdx = -1;
 	for (let i = recent.length - 1; i >= 0; i--) {
 		if (recent[i].is_bot_reply === 1) {
@@ -41,7 +40,6 @@ export function isConversationFollowUp(
 		if (prev.is_bot_reply === 1) {
 			continue;
 		}
-		// First user message preceding the bot reply
 		return prev.user_id === userId;
 	}
 

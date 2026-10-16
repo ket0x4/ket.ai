@@ -51,7 +51,6 @@ describe("Agent Execution Robustness", () => {
 		const capturedContents: Array<MockContent[]> = [];
 		let onMediaCalled = false;
 
-		// Register dummy artifact producing tool
 		const dummyArtifactTool: AgentTool = {
 			name: "generate_mock_chart",
 			description: "Generates mock chart with base64 data",
@@ -82,7 +81,6 @@ describe("Agent Execution Robustness", () => {
 			);
 
 			if (turnCount === 1) {
-				// Turn 1: Request tool execution with call id
 				return {
 					candidates: [
 						{
@@ -103,7 +101,6 @@ describe("Agent Execution Robustness", () => {
 				};
 			}
 
-			// Turn 2: Return final model reply
 			return {
 				text: "Here is your generated chart!",
 			};
@@ -126,10 +123,8 @@ describe("Agent Execution Robustness", () => {
 			expect(reply).toBe("Here is your generated chart!");
 			expect(onMediaCalled).toBeTrue();
 
-			// Verify Turn 2 contents sent to Gemini
 			expect(capturedContents.length).toBe(2);
 			const turn2Contents = capturedContents[1];
-			// Find tool response part
 			const userTurn = turn2Contents.find(
 				(c: MockContent) =>
 					c.role === "user" &&

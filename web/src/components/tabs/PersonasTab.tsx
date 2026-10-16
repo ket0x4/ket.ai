@@ -240,7 +240,6 @@ export const PersonasTab: FC<PersonasTabProps> = ({
 
 	return (
 		<div className="space-y-4">
-			{/* Toolbar */}
 			<div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
 				<div className="flex min-w-0 items-center gap-2">
 					{manageableChats.length > 0 && (
@@ -279,7 +278,6 @@ export const PersonasTab: FC<PersonasTabProps> = ({
 				</div>
 			</div>
 
-			{/* Active persona */}
 			<div className="flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3">
 				<Sparkles className="h-4 w-4 shrink-0 text-primary" />
 				<div className="min-w-0 flex-1">
@@ -310,7 +308,6 @@ export const PersonasTab: FC<PersonasTabProps> = ({
 				</span>
 			</div>
 
-			{/* Grid */}
 			{filteredPersonas.length === 0 ? (
 				<div className="rounded-xl border border-dashed border-border bg-card/40 p-10 text-center">
 					<Bot className="mx-auto mb-3 h-6 w-6 text-muted-foreground/50" />

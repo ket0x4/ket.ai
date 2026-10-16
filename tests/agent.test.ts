@@ -337,7 +337,6 @@ describe("ThinkingConfig and Reply Parsing", () => {
 
 	test("GeminiService suppresses reply on broken JSON or stray bracket", async () => {
 		const originalGenerateContent = ai.models.generateContent;
-		// Mock model returning a single stray brace
 		// biome-ignore lint/suspicious/noExplicitAny: Mocking SDK method for unit test
 		(ai.models as any).generateContent = async () => ({
 			text: "{",

@@ -503,7 +503,6 @@ export const GeminiService = {
 				options.mediaFallbackText,
 			);
 
-			// Resolve active persona for chat if not already supplied
 			let personaPrompt = options.personaPrompt;
 			if (personaPrompt === undefined && chatIdStr) {
 				const activePersona = Repository.getActivePersonaForChat(chatIdStr);

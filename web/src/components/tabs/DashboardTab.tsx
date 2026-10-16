@@ -144,7 +144,6 @@ const MemoryCard: FC<{
 				<RefreshButton variant="ghost" size="icon" onClick={onRefresh} />
 			</CardHeader>
 			<CardContent className="space-y-4">
-				{/* Distribution bar */}
 				<div className="flex h-1.5 w-full overflow-hidden rounded-full bg-secondary">
 					{MEMORY_CATEGORY_LIST.map((cat, idx) => (
 						<div
@@ -156,7 +155,6 @@ const MemoryCard: FC<{
 					))}
 				</div>
 
-				{/* Legend */}
 				<div className="grid grid-cols-1 gap-px overflow-hidden rounded-lg border border-border sm:grid-cols-3">
 					{MEMORY_CATEGORY_LIST.map((cat, idx) => (
 						<div

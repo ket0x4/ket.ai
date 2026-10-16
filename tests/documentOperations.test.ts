@@ -85,7 +85,6 @@ describe("Document Handling, Staging & Operations", () => {
 		);
 		expect(stageRes.success).toBeTrue();
 
-		// Verify file is readable from workspace
 		const readRes = await readWorkspaceFile({
 			filename: "stage_test.py",
 			sessionId,
@@ -95,7 +94,6 @@ describe("Document Handling, Staging & Operations", () => {
 	});
 
 	test("executes uploaded code file in sandbox and captures output", async () => {
-		// User uploaded fib.py to workspace
 		const fibCode = `
 def fib(n):
     a, b = 0, 1
@@ -112,7 +110,6 @@ print("FIB_10:", fib(10))
 			true,
 		);
 
-		// Execute via executeInSandbox
 		const runRes = await executeInSandbox({
 			language: "bash",
 			code: "python3 fib.py",
@@ -124,7 +121,6 @@ print("FIB_10:", fib(10))
 	});
 
 	test("supports editing uploaded file and delivering updated file to user via send_workspace_file", async () => {
-		// Step 1: Upload original buggy code
 		const buggyCode = `
 def greet(name):
     # Bug: undefined var
@@ -137,7 +133,6 @@ def greet(name):
 			true,
 		);
 
-		// Step 2: Edit and fix code using writeWorkspaceFile
 		const fixedCode = `
 def greet(name):
     return "Hello " + name
@@ -164,7 +159,6 @@ print(greet("World"))
 		expect(emittedArtifacts[0].filename).toBe("greeting.py");
 		expect(emittedArtifacts[0].buffer.toString("utf-8")).toBe(fixedCode);
 
-		// Step 4: Run the fixed code to verify it works
 		const runFixed = await executeInSandbox({
 			language: "bash",
 			code: "python3 greeting.py",

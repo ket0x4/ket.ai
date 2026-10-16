@@ -29,7 +29,6 @@ export const Header: FC<HeaderProps> = ({
 	return (
 		<header className="sticky top-0 z-40 w-full border-b border-border bg-background/85 backdrop-blur-md">
 			<div className="mx-auto flex h-14 max-w-5xl items-center justify-between gap-4 px-4 sm:px-6">
-				{/* Brand */}
 				<div className="flex min-w-0 items-center gap-2.5">
 					<div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary text-primary-foreground">
 						<Bot className="h-4 w-4" />
@@ -46,7 +45,6 @@ export const Header: FC<HeaderProps> = ({
 					</span>
 				</div>
 
-				{/* User */}
 				<div className="flex min-w-0 items-center gap-2.5">
 					<div className="hidden min-w-0 text-right sm:block">
 						<div className="truncate text-xs font-medium leading-tight">

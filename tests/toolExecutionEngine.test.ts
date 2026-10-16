@@ -116,7 +116,6 @@ describe("Parallel Tool Execution Engine", () => {
 			},
 		};
 
-		// Register in global tool registry for executor
 		const { toolRegistry } = await import("../src/agent/registry");
 		toolRegistry.register(slowToolA);
 		toolRegistry.register(slowToolB);

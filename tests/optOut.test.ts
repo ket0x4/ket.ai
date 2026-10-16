@@ -48,7 +48,6 @@ describe("User Opt-Out & Opt-In Feature", () => {
 	});
 
 	test("Repository: setUserOptOut updates both cache and database persistence", () => {
-		// 1. Opt out
 		Repository.setUserOptOut(TEST_USER_ID, true, {
 			username: "optout_tester",
 			firstName: "OptOut Tester",
@@ -57,13 +56,11 @@ describe("User Opt-Out & Opt-In Feature", () => {
 		expect(Repository.isUserOptedOut(TEST_USER_ID)).toBe(true);
 		expect(Repository.getOptedOutUserIds()).toContain(TEST_USER_ID);
 
-		// Verify database row
 		const row = db
 			.prepare("SELECT is_opted_out FROM users WHERE user_id = ?")
 			.get(TEST_USER_ID) as { is_opted_out: number } | null;
 		expect(row?.is_opted_out).toBe(1);
 
-		// 2. Opt back in
 		Repository.setUserOptOut(TEST_USER_ID, false);
 		expect(Repository.isUserOptedOut(TEST_USER_ID)).toBe(false);
 		expect(Repository.getOptedOutUserIds()).not.toContain(TEST_USER_ID);
@@ -80,14 +77,12 @@ describe("User Opt-Out & Opt-In Feature", () => {
 
 		const initialMemCount = Repository.getMemories(TEST_CHAT_ID).length;
 
-		// 1. Refusal by explicit userId
 		await processNewMemory(TEST_CHAT_ID, "Tester likes Earl Grey tea", {
 			userId,
 			category: "PROFILE",
 		});
 		expect(Repository.getMemories(TEST_CHAT_ID).length).toBe(initialMemCount);
 
-		// 2. Refusal by username prefix even without userId
 		await processNewMemory(
 			TEST_CHAT_ID,
 			"secret_agent: lives in an undisclosed location",
@@ -97,7 +92,6 @@ describe("User Opt-Out & Opt-In Feature", () => {
 		);
 		expect(Repository.getMemories(TEST_CHAT_ID).length).toBe(initialMemCount);
 
-		// Clean up opt-out state
 		Repository.setUserOptOut(userId, false);
 	});
 
@@ -116,12 +110,10 @@ describe("User Opt-Out & Opt-In Feature", () => {
 			category: "PROFILE",
 		});
 
-		// Both present before opt-out
 		const memoriesBefore = Repository.getMemories(chatId);
 		expect(memoriesBefore.some((m) => m.userId === userB)).toBe(true);
 		expect(memoriesBefore.some((m) => m.userId === userA)).toBe(true);
 
-		// User B opts out
 		Repository.setUserOptOut(userB, true, { username: "bob_amsterdam" });
 
 		// Direct call to Repository.getMemories(chatId) MUST exclude userB
@@ -129,12 +121,10 @@ describe("User Opt-Out & Opt-In Feature", () => {
 		expect(memoriesAfter.some((m) => m.userId === userB)).toBe(false);
 		expect(memoriesAfter.some((m) => m.userId === userA)).toBe(true);
 
-		// getUserMemories and getUserAllMemories also return empty for userB
 		expect(Repository.getUserMemories(chatId, userB).length).toBe(0);
 		expect(Repository.getUserAllMemories(userB).length).toBe(0);
 		expect(Repository.getUserMemories(chatId, userA).length).toBe(1);
 
-		// Clean up
 		Repository.setUserOptOut(userB, false);
 		Repository.clearMemories(chatId);
 	});
@@ -147,7 +137,6 @@ describe("User Opt-Out & Opt-In Feature", () => {
 
 		Repository.createChat(chatId, "History Opt-Out Test Chat", true);
 
-		// Insert messages: Active user, Opted-out user, Bot reply
 		Repository.saveMessage({
 			chatId,
 			messageId: 101,
@@ -177,12 +166,10 @@ describe("User Opt-Out & Opt-In Feature", () => {
 			sentAt: now - 10,
 		});
 
-		// Both user messages present before opt-out
 		const beforeOptOut = Repository.getRecentMessages(chatId, 10);
 		expect(beforeOptOut.some((m) => m.user_id === userOptedOut)).toBe(true);
 		expect(beforeOptOut.some((m) => m.user_id === userActive)).toBe(true);
 
-		// User Bob opts out
 		Repository.setUserOptOut(userOptedOut, true, { username: "bob" });
 
 		// After Bob opts out: getRecentMessages MUST NOT return Bob's messages
@@ -191,12 +178,10 @@ describe("User Opt-Out & Opt-In Feature", () => {
 		expect(afterOptOut.some((m) => m.user_id === userActive)).toBe(true);
 		expect(afterOptOut.some((m) => m.is_bot_reply === 1)).toBe(true);
 
-		// Bob opts back in
 		Repository.setUserOptOut(userOptedOut, false, { username: "bob" });
 		const afterOptIn = Repository.getRecentMessages(chatId, 10);
 		expect(afterOptIn.some((m) => m.user_id === userOptedOut)).toBe(true);
 
-		// Clean up
 		Repository.clearChatHistory(chatId);
 	});
 
@@ -209,11 +194,9 @@ describe("User Opt-Out & Opt-In Feature", () => {
 		const initData = createSignedInitData(webUser);
 		const baseUrl = `http://localhost:${CONFIG.WEB_PORT}`;
 
-		// 1. Unauthorized request
 		const unauthRes = await fetch(`${baseUrl}/api/user/opt-out`);
 		expect(unauthRes.status).toBe(401);
 
-		// 2. GET opt-out status (initially false)
 		Repository.setUserOptOut(webUser.id, false);
 		const getRes = await fetch(`${baseUrl}/api/user/opt-out`, {
 			headers: { "x-telegram-init-data": initData },
@@ -222,7 +205,6 @@ describe("User Opt-Out & Opt-In Feature", () => {
 		const getData = (await getRes.json()) as { isOptedOut: boolean };
 		expect(getData.isOptedOut).toBe(false);
 
-		// Check /api/me
 		const meRes1 = await fetch(`${baseUrl}/api/me`, {
 			headers: { "x-telegram-init-data": initData },
 		});
@@ -233,7 +215,6 @@ describe("User Opt-Out & Opt-In Feature", () => {
 		expect(meData1.isOptedOut).toBe(false);
 		expect(meData1.user.is_opted_out).toBe(false);
 
-		// 3. POST toggle to true
 		const postRes = await fetch(`${baseUrl}/api/user/opt-out`, {
 			method: "POST",
 			headers: {
@@ -251,7 +232,6 @@ describe("User Opt-Out & Opt-In Feature", () => {
 		expect(postData.isOptedOut).toBe(true);
 		expect(Repository.isUserOptedOut(webUser.id)).toBe(true);
 
-		// Check /api/me reflects true
 		const meRes2 = await fetch(`${baseUrl}/api/me`, {
 			headers: { "x-telegram-init-data": initData },
 		});
@@ -262,7 +242,6 @@ describe("User Opt-Out & Opt-In Feature", () => {
 		expect(meData2.isOptedOut).toBe(true);
 		expect(meData2.user.is_opted_out).toBe(true);
 
-		// 4. POST toggle back to false
 		const postRes2 = await fetch(`${baseUrl}/api/user/opt-out`, {
 			method: "POST",
 			headers: {
@@ -280,7 +259,6 @@ describe("User Opt-Out & Opt-In Feature", () => {
 		expect(postData2.isOptedOut).toBe(false);
 		expect(Repository.isUserOptedOut(webUser.id)).toBe(false);
 
-		// Clean up
 		Repository.setUserOptOut(webUser.id, false);
 	});
 
@@ -293,7 +271,6 @@ describe("User Opt-Out & Opt-In Feature", () => {
 		const initData = createSignedInitData(optedUser);
 		const baseUrl = `http://localhost:${CONFIG.WEB_PORT}`;
 
-		// Opt out the user
 		Repository.setUserOptOut(optedUser.id, true);
 
 		const res = await fetch(`${baseUrl}/api/memories`, {
@@ -313,7 +290,6 @@ describe("User Opt-Out & Opt-In Feature", () => {
 		const data = (await res.json()) as { error: string };
 		expect(data.error).toContain("opted out");
 
-		// Clean up
 		Repository.setUserOptOut(optedUser.id, false);
 	});
 });

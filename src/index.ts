@@ -5,13 +5,10 @@ import logger from "./utils/logger";
 
 async function main() {
 	logger.info("[Main] Starting ket.ai...");
-	// Start HTTP Web Server for Telegram Mini App
 	startServer();
-	// Start the bot client (concurrent long polling)
 	await startBot();
 }
 
-// Graceful shutdown handling
 const shutdown = async () => {
 	logger.info(
 		"[Main] Received shutdown signal. Stopping bot, web server and closing database...",

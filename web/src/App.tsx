@@ -76,10 +76,8 @@ export default function App() {
 	const [isOptedOut, setIsOptedOut] = useState(false);
 	const [isUpdatingOptOut, setIsUpdatingOptOut] = useState(false);
 
-	// Navigation tab state
 	const [activeTab, setActiveTab] = useState("dashboard");
 
-	// Shared application data
 	const [stats, setStats] = useState<StatsResponse | null>(null);
 	const [chats, setChats] = useState<Chat[]>([]);
 	const [memories, setMemories] = useState<Memory[]>([]);
@@ -89,7 +87,6 @@ export default function App() {
 	>({});
 	const [isLoadingData, setIsLoadingData] = useState(false);
 
-	// Modals state
 	const [memoryModal, setMemoryModal] = useState<{
 		open: boolean;
 		mode: "add" | "edit";
@@ -102,7 +99,6 @@ export default function App() {
 		persona?: Persona | null;
 	}>({ open: false, mode: "add", persona: null });
 
-	// Toggle user opt-out status
 	const handleToggleOptOut = useCallback(async (optedOut: boolean) => {
 		try {
 			setIsUpdatingOptOut(true);
@@ -118,7 +114,6 @@ export default function App() {
 		}
 	}, []);
 
-	// Authenticate session
 	const authenticate = useCallback(async () => {
 		const tg = getTelegramWebApp();
 		tg?.ready();
@@ -144,7 +139,6 @@ export default function App() {
 		}
 	}, []);
 
-	// Fetch stats, chats, memories, and personas
 	const loadAppData = useCallback(async () => {
 		if (!isAuthenticated) return;
 
@@ -203,7 +197,6 @@ export default function App() {
 
 	return (
 		<div className="min-h-[100dvh] flex flex-col bg-background text-foreground selection:bg-primary/20">
-			{/* Top Header */}
 			<Header
 				user={currentUser}
 				role={role}
@@ -212,10 +205,8 @@ export default function App() {
 				onToggleOptOut={() => handleToggleOptOut(!isOptedOut)}
 			/>
 
-			{/* Main Container */}
 			<main className="mx-auto w-full max-w-5xl flex-1 space-y-5 px-3 py-4 sm:px-6 sm:py-6">
 				<Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-					{/* Navigation Bar */}
 					<div
 						className="-mx-1 overflow-x-auto px-1 no-scrollbar touch-pan-x"
 						onWheel={handleHorizontalWheelScroll}
@@ -233,7 +224,6 @@ export default function App() {
 						</TabsList>
 					</div>
 
-					{/* Tab 1: Dashboard */}
 					<TabsContent value="dashboard">
 						<DashboardTab
 							stats={stats}
@@ -247,7 +237,6 @@ export default function App() {
 						/>
 					</TabsContent>
 
-					{/* Tab 2: Memories */}
 					<TabsContent value="memories">
 						<Suspense
 							fallback={
@@ -276,7 +265,6 @@ export default function App() {
 						</Suspense>
 					</TabsContent>
 
-					{/* Tab 3: Personas */}
 					<TabsContent value="personas">
 						<Suspense
 							fallback={
@@ -306,7 +294,6 @@ export default function App() {
 						</Suspense>
 					</TabsContent>
 
-					{/* Tab 4: Groups */}
 					<TabsContent value="groups">
 						<Suspense
 							fallback={
@@ -326,7 +313,6 @@ export default function App() {
 						</Suspense>
 					</TabsContent>
 
-					{/* Tab 5: System & Logs (Owner) */}
 					{role === "owner" && (
 						<TabsContent value="system">
 							<Suspense
@@ -345,7 +331,6 @@ export default function App() {
 				</Tabs>
 			</main>
 
-			{/* Memory Modal */}
 			{memoryModal.open && (
 				<Suspense fallback={null}>
 					<MemoryModal
@@ -365,7 +350,6 @@ export default function App() {
 				</Suspense>
 			)}
 
-			{/* Persona Modal */}
 			{personaModal.open && (
 				<Suspense fallback={null}>
 					<PersonaModal
@@ -380,7 +364,6 @@ export default function App() {
 				</Suspense>
 			)}
 
-			{/* Modern Sonner Toast Notifications */}
 			<Toaster position="bottom-right" />
 		</div>
 	);

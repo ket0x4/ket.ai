@@ -67,7 +67,6 @@ async function executeSingleToolCall(
 
 	const durationMs = Date.now() - startTime;
 
-	// Extract and deliver full binary/base64 media artifacts (photos, excel, video, etc.)
 	const artifacts = extractMediaArtifactsFromResult(result);
 	if (artifacts.length > 0) {
 		await emit({ type: "media-generated", media: artifacts });

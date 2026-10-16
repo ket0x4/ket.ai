@@ -6,7 +6,6 @@ import {
 } from "../services/mediaHelper";
 
 export function registerImageHandlers(bot: Bot) {
-	// Listen to photo messages
 	bot.on("message:photo", async (ctx) => {
 		if (!isDirectMediaInteraction(ctx, "Image")) {
 			return;

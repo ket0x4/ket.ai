@@ -57,7 +57,6 @@ export async function checkAndRunBackgroundMemoryExtraction(
 		return;
 	}
 
-	// Reset counter and run background extraction asynchronously
 	backgroundCounter.set(chatIdStr, 0);
 	runBackgroundMemoryExtraction(chatIdStr).catch((err) => {
 		logger.error(

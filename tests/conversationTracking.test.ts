@@ -68,7 +68,6 @@ describe("Outgoing Message Interceptor & Storage", () => {
 		expect(extractedPhoto?.text).toBe("Burada grafik var");
 		expect(extractedPhoto?.replyToMessageId).toBe(55);
 
-		// editMessageText
 		const editPayload = {
 			chat_id: testChatId,
 			message_id: 100,
@@ -117,7 +116,6 @@ describe("Outgoing Message Interceptor & Storage", () => {
 
 		Repository.createChat(followUpChat, "FollowUp Chat", true);
 
-		// 1. User sends prompt
 		Repository.saveMessage({
 			chatId: followUpChat,
 			messageId: 1,
@@ -127,7 +125,6 @@ describe("Outgoing Message Interceptor & Storage", () => {
 			sentAt: now - 10,
 		});
 
-		// 2. Bot replies via saveOutgoingMessage (as called by interceptor)
 		saveOutgoingMessage(
 			followUpChat,
 			2,
@@ -136,7 +133,6 @@ describe("Outgoing Message Interceptor & Storage", () => {
 			1, // reply to message 1
 		);
 
-		// Verify bot reply is in DB
 		const botDbMsg = Repository.getMessage(followUpChat, 2);
 		expect(botDbMsg).not.toBeNull();
 		expect(botDbMsg?.is_bot_reply).toBe(1);
@@ -200,18 +196,15 @@ describe("Message History Representation & Reply Preview", () => {
 		const historyList = buildHistoryList(chatHistory, "ket", "chat_1");
 		expect(historyList.length).toBe(3);
 
-		// Message 1 (Alice)
 		expect(historyList[0].message_id).toBe(10);
 		expect(historyList[0].sender).toContain("Alice");
 		expect(historyList[0].reply_to_preview).toBeUndefined();
 
-		// Message 2 (Bot reply to Alice)
 		expect(historyList[1].message_id).toBe(11);
 		expect(historyList[1].sender).toBe("You (ket.ai)");
 		expect(historyList[1].reply_to_message_id).toBe(10);
 		expect(historyList[1].reply_to_preview).toContain("Alice");
 
-		// Message 3 (Bob reply to Alice)
 		expect(historyList[2].message_id).toBe(12);
 		expect(historyList[2].sender).toContain("Bob");
 		expect(historyList[2].reply_to_message_id).toBe(10);
@@ -224,7 +217,6 @@ describe("Message History Representation & Reply Preview", () => {
 
 describe("Reply-To Context Extraction", () => {
 	it("should extract full context from ctx.message.reply_to_message", () => {
-		// Mock Telegram Context
 		const mockCtx = {
 			message: {
 				message_id: 50,
@@ -294,12 +286,10 @@ describe("Safe Memory Target User Resolution", () => {
 	});
 
 	it("should find another user in history or SQLite users table", () => {
-		// Found in history
 		expect(resolveTargetUserId("Can", undefined, history, 999, "Zeynep")).toBe(
 			501,
 		);
 
-		// Found in SQLite users table
 		expect(
 			resolveTargetUserId("Barış", undefined, history, 999, "Zeynep"),
 		).toBe(602);

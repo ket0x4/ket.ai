@@ -64,11 +64,9 @@ async function initBot() {
 		);
 	});
 
-	// 1. Seed initially allowed chats from config/env and sync titles
 	Repository.initSeedAllowedChats(CONFIG.ALLOWED_CHAT_IDS);
 	void syncChatTitles();
 
-	// 2. Middleware: Whitelist Checker & Title Syncer
 	bot.use(async (ctx, next) => {
 		const chat = ctx.chat;
 		if (!chat) return await next();
@@ -91,7 +89,6 @@ async function initBot() {
 		}
 	});
 
-	// 2b. Middleware: Opt-Out User Guard (completely ignores opted-out users)
 	// ponytail: Intercept at top-level middleware so opted-out users skip all message archiving,
 	// media perception, and LLM handlers with zero DB overhead.
 	bot.use(async (ctx, next) => {
@@ -100,7 +97,6 @@ async function initBot() {
 			return await next();
 		}
 
-		// If user is opted-out, allow opt-in and opt-out commands through
 		if (isOptCommandText(ctx.message?.text || ctx.message?.caption || "")) {
 			return await next();
 		}
@@ -111,7 +107,6 @@ async function initBot() {
 		);
 	});
 
-	// 2c. Middleware: Per-user message rate limit (abuse / cost protection)
 	bot.use(async (ctx, next) => {
 		const from = ctx.from;
 		if (!from) return await next();
@@ -126,7 +121,6 @@ async function initBot() {
 		return await next();
 	});
 
-	// 3. Supergroup Migration Handler
 	bot.on("message:migrate_to_chat_id", async (ctx) => {
 		const oldChatId = ctx.chat.id.toString();
 		const newChatId = ctx.message.migrate_to_chat_id.toString();
@@ -137,7 +131,6 @@ async function initBot() {
 		Repository.migrateChat(oldChatId, newChatId);
 	});
 
-	// 4. Middleware: Message Archiver & Background Topic Summarizer
 	bot.on(
 		[
 			"message:text",
@@ -153,7 +146,6 @@ async function initBot() {
 
 			if (!chat || !msg || !from) return await next();
 
-			// Do not archive opt-in/opt-out commands or messages from opted-out users
 			if (
 				isOptCommandText(msg.text || msg.caption || "") ||
 				Repository.isUserOptedOut(from.id)
@@ -196,7 +188,6 @@ async function initBot() {
 		},
 	);
 
-	// 5. Permission Checker: Ensure bot can write, otherwise leave immediately
 	bot.on("my_chat_member", async (ctx) => {
 		const chat = ctx.chat;
 		if (!chat || chat.type === "private") return;

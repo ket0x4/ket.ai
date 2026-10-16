@@ -66,7 +66,6 @@ function resolveRememberTarget(ctx: Context): {
 }
 
 export function registerCommandHandlers(bot: Bot) {
-	// 1. /start command
 	bot.command("start", async (ctx) => {
 		logger.info(
 			`[Commands:start] User ${ctx.from?.id} (${ctx.from?.first_name}) invoked /start in chat ${ctx.chat?.id}`,
@@ -77,7 +76,6 @@ export function registerCommandHandlers(bot: Bot) {
 		);
 	});
 
-	// 2. /help command
 	bot.command("help", async (ctx) => {
 		logger.info(
 			`[Commands:help] User ${ctx.from?.id} (${ctx.from?.first_name}) invoked /help in chat ${ctx.chat?.id}`,
@@ -100,7 +98,6 @@ export function registerCommandHandlers(bot: Bot) {
 		);
 	});
 
-	// 2b. /app and /admin commands for Telegram Mini App
 	bot.command(["app", "admin"], async (ctx) => {
 		try {
 			if (!(await isAuthorized(ctx))) {
@@ -128,7 +125,6 @@ export function registerCommandHandlers(bot: Bot) {
 		}
 	});
 
-	// 3. /reset command
 	bot.command("reset", async (ctx) => {
 		if (!ctx.chat) return;
 
@@ -152,7 +148,6 @@ export function registerCommandHandlers(bot: Bot) {
 		);
 	});
 
-	// 3b. /reset_sandbox command to reset code execution workspace
 	bot.command(["reset_sandbox", "clear_session"], async (ctx) => {
 		if (!ctx.chat) return;
 
@@ -188,7 +183,6 @@ export function registerCommandHandlers(bot: Bot) {
 		return "";
 	}
 
-	// 3c. /stop command to cancel an in-progress generation
 	bot.command("stop", async (ctx) => {
 		if (!ctx.chat) return;
 		const chatId = ctx.chat.id.toString();
@@ -204,7 +198,6 @@ export function registerCommandHandlers(bot: Bot) {
 		);
 	});
 
-	// 4. Admin command: /allow <chatId> (Owner only)
 	bot.command("allow", async (ctx) => {
 		if (!CONFIG.BOT_OWNER_ID || ctx.from?.id !== CONFIG.BOT_OWNER_ID) {
 			logger.warn(
@@ -244,7 +237,6 @@ export function registerCommandHandlers(bot: Bot) {
 		});
 	});
 
-	// 5. Admin command: /disallow <chatId> (Owner only)
 	bot.command("disallow", async (ctx) => {
 		if (!CONFIG.BOT_OWNER_ID || ctx.from?.id !== CONFIG.BOT_OWNER_ID) {
 			logger.warn(
@@ -272,7 +264,6 @@ export function registerCommandHandlers(bot: Bot) {
 		);
 	});
 
-	// 6. /prob command to adjust response probability
 	bot.command("prob", async (ctx) => {
 		if (!ctx.chat) return;
 
@@ -326,7 +317,6 @@ export function registerCommandHandlers(bot: Bot) {
 		);
 	});
 
-	// 7. /remember command — explicitly save a fact to memory
 	bot.command("remember", async (ctx) => {
 		if (!ctx.chat || !ctx.from) return;
 		const chatIdStr = ctx.chat.id.toString();
@@ -376,7 +366,6 @@ export function registerCommandHandlers(bot: Bot) {
 		});
 	});
 
-	// 8. /optout command — completely opt out of bot interactions, memories, and message processing
 	bot.command(["optout", "opt_out"], async (ctx) => {
 		if (!ctx.from) return;
 		const userId = ctx.from.id;
@@ -404,7 +393,6 @@ export function registerCommandHandlers(bot: Bot) {
 		);
 	});
 
-	// 9. /optin command — opt back in to bot interactions
 	bot.command(["optin", "opt_in"], async (ctx) => {
 		if (!ctx.from) return;
 		const userId = ctx.from.id;

@@ -10,7 +10,6 @@ export const stmts = {
 		"UPDATE chats SET is_allowed = ? WHERE chat_id = ?",
 	),
 
-	// Persona statements
 	getAllPersonas: db.prepare(
 		"SELECT * FROM personas ORDER BY is_system DESC, created_at DESC",
 	),

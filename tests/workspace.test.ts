@@ -77,7 +77,6 @@ with open("summary.txt", "w") as out:
 	test("should support iterative multi-turn debugging flow", async () => {
 		const debugSession = "test_debug_flow_99";
 
-		// Step 1: User runs buggy code
 		const step1 = await executeInSandbox({
 			language: "python",
 			filename: "buggy_calc.py",
@@ -92,7 +91,6 @@ print("VAL:", items[10])
 		expect(step1.success).toBeFalse();
 		expect(step1.stderr).toContain("IndexError");
 
-		// Step 2: Agent inspects code from workspace
 		const readCode = await readWorkspaceFile({
 			filename: "buggy_calc.py",
 			sessionId: debugSession,
@@ -100,7 +98,6 @@ print("VAL:", items[10])
 		expect(readCode.success).toBeTrue();
 		expect(readCode.content).toContain("items = [10, 20, 30]");
 
-		// Step 3: Agent fixes code and re-runs in the same session
 		const step3 = await executeInSandbox({
 			language: "python",
 			filename: "buggy_calc.py",
@@ -137,7 +134,6 @@ print("FIXED_VAL:", items[idx])
 		const legitimateSession = "auth_session_legit_100";
 		const victimSession = "auth_session_victim_200";
 
-		// Write secret file to victim session
 		await writeWorkspaceFile(
 			{ filename: "victim_secrets.txt", content: "SECRET_PASSWORD_123" },
 			{ sessionId: victimSession },

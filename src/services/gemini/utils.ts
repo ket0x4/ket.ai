@@ -495,7 +495,6 @@ export function resolveTargetUserId(
 
 	const cleanName = userName.toLowerCase().trim();
 
-	// Check if the stated user_name refers to the sender themself
 	const isSelf =
 		cleanName === "me" ||
 		cleanName === "myself" ||
@@ -509,7 +508,6 @@ export function resolveTargetUserId(
 		return fallbackUserId;
 	}
 
-	// Try matching in recent message history
 	if (history.length > 0) {
 		const matchedMsg = history
 			.slice()
@@ -526,7 +524,6 @@ export function resolveTargetUserId(
 		}
 	}
 
-	// Try matching in SQLite users table
 	const dbUser = Repository.getUserByName(cleanName);
 	if (dbUser) {
 		return dbUser.user_id;
@@ -554,7 +551,6 @@ export function expandContextualQuery(
 
 	let contextSnippet = "";
 	if ((isAnaphoric || isVeryShort) && history.length > 0) {
-		// Extract text from recent user messages before current query
 		const recentUserMsgs = history
 			.slice(-4)
 			.filter((m) => !m.is_bot_reply && m.text?.trim())

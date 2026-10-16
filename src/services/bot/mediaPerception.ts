@@ -41,7 +41,6 @@ async function processBackgroundVoice(
 			`[Multimodal Perception] Voice transcribed for msg ${messageId} in chat ${chatIdStr}: "${updatedText}"`,
 		);
 
-		// Trigger background memory worker counter
 		checkAndRunBackgroundMemoryExtraction(chatIdStr).catch(() => {});
 	} catch (err) {
 		logger.error(
@@ -89,7 +88,6 @@ async function processBackgroundPhoto(
 			`[Multimodal Perception] Photo described for msg ${messageId} in chat ${chatIdStr}: "${updatedText}"`,
 		);
 
-		// Trigger background memory worker counter
 		checkAndRunBackgroundMemoryExtraction(chatIdStr).catch(() => {});
 	} catch (err) {
 		logger.error(

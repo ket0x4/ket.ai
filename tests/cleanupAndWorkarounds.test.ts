@@ -111,7 +111,6 @@ describe("Robust Conversation Follow-Up Detection", () => {
 	it("should handle multi-part bot responses properly", () => {
 		const chatMulti = `test_multi_${Date.now()}`;
 		Repository.createChat(chatMulti, "group", true);
-		// User sends prompt
 		Repository.saveMessage({
 			chatId: chatMulti,
 			messageId: 10,
@@ -119,7 +118,6 @@ describe("Robust Conversation Follow-Up Detection", () => {
 			text: "Draw a chart",
 			sentAt: baseTime - 20,
 		});
-		// Bot sends media artifact
 		Repository.saveMessage({
 			chatId: chatMulti,
 			messageId: 11,
@@ -128,7 +126,6 @@ describe("Robust Conversation Follow-Up Detection", () => {
 			isBotReply: true,
 			sentAt: baseTime - 15,
 		});
-		// Bot sends text explanation
 		Repository.saveMessage({
 			chatId: chatMulti,
 			messageId: 12,
@@ -155,7 +152,6 @@ describe("Robust Conversation Follow-Up Detection", () => {
 
 describe("Dynamic Tool Registry Sync", () => {
 	it("should dynamically enable and disable tools when config updates", () => {
-		// Enable both
 		updateBotSettings({
 			enable_web_search: true,
 			enable_code_execution: true,
@@ -163,21 +159,18 @@ describe("Dynamic Tool Registry Sync", () => {
 		expect(toolRegistry.hasTool("web_search")).toBe(true);
 		expect(toolRegistry.hasTool("execute_code")).toBe(true);
 
-		// Disable web search
 		updateBotSettings({
 			enable_web_search: false,
 		});
 		expect(toolRegistry.hasTool("web_search")).toBe(false);
 		expect(toolRegistry.hasTool("execute_code")).toBe(true);
 
-		// Disable code execution
 		updateBotSettings({
 			enable_code_execution: false,
 		});
 		expect(toolRegistry.hasTool("execute_code")).toBe(false);
 		expect(toolRegistry.hasTool("read_workspace_file")).toBe(false);
 
-		// Re-enable
 		updateBotSettings({
 			enable_web_search: true,
 			enable_code_execution: true,

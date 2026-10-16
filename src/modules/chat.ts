@@ -199,7 +199,6 @@ async function resolveRepliedDocument(
 				cleanName,
 				mimeType,
 			);
-			// Automatically stage into chat sandbox workspace
 			await stageDocumentInWorkspace(
 				chatIdStr,
 				docContext.fileName,
@@ -334,7 +333,6 @@ async function generateAndSendReply(
 		await sendSingleArtifact(ctx, art, replyToMessageId);
 	}
 
-	// Send final reply
 	await sendLongMessage(
 		ctx,
 		reply,
@@ -391,11 +389,9 @@ async function trySpontaneousReply(
 }
 
 export function registerChatHandlers(bot: Bot) {
-	// Listen to all text messages (non-commands)
 	bot.on("message:text", async (ctx) => {
 		const text = ctx.message.text;
 
-		// Ignore commands (starts with '/')
 		if (text.startsWith("/")) return;
 
 		const chat = ctx.chat;
@@ -405,12 +401,10 @@ export function registerChatHandlers(bot: Bot) {
 
 		const chatIdStr = chat.id.toString();
 
-		// Trigger background memory worker counter
 		checkAndRunBackgroundMemoryExtraction(chatIdStr).catch(() => {});
 
 		const isDirectInteraction = checkDirectInteraction(text, msg, chat);
 
-		// Get chat configuration
 		const chatSettings = Repository.getChat(chatIdStr);
 		if (!chatSettings) return;
 

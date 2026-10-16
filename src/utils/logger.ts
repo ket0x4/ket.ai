@@ -178,7 +178,6 @@ class Logger {
 		const formattedMeta = this.formatArgs(args);
 		const fullText = formattedMeta ? `${message} ${formattedMeta}` : message;
 
-		// Console output with colors
 		const color = COLOR_CODES[level];
 		const levelBadge = `[${level.toUpperCase()}]`.padEnd(7);
 		const consoleMsg = `${timestamp} ${color}${levelBadge}${RESET_COLOR} ${fullText}`;
@@ -191,7 +190,6 @@ class Logger {
 			console.log(consoleMsg);
 		}
 
-		// File output (plain text without ANSI codes)
 		const fileLine = `${timestamp} [${level.toUpperCase().padEnd(5)}] ${fullText}`;
 
 		if (this.isTestEnv) {

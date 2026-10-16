@@ -37,7 +37,6 @@ export const chatMethods = {
 	migrateChat(oldChatId: string, newChatId: string): void {
 		logger.info(`[Repository] Migrating chat ID ${oldChatId} -> ${newChatId}`);
 
-		// Check if new chat already exists (edge case)
 		const newChatExists = stmts.getChat.get(newChatId) as ChatRow | null;
 		if (newChatExists) {
 			logger.warn(

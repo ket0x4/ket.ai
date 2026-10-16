@@ -14,7 +14,6 @@ describe("Sandbox Server Daemon", () => {
 			stderr: "pipe",
 		});
 
-		// Wait for server to be ready
 		let ready = false;
 		for (let i = 0; i < 20; i++) {
 			try {
@@ -304,7 +303,6 @@ print("Saved data.csv")
 		const pngBase64 =
 			"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
 
-		// Turn 1: Generates old_chart.png in persistent session
 		const res1 = await fetch(`http://127.0.0.1:${testPort}/execute`, {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
@@ -331,7 +329,6 @@ print("Turn 1 complete")
 		// Sleep briefly so filesystem timestamps tick forward
 		await new Promise((r) => setTimeout(r, 50));
 
-		// Turn 2: Generates new_report.csv in the SAME persistent session
 		const res2 = await fetch(`http://127.0.0.1:${testPort}/execute`, {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
