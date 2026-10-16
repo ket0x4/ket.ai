@@ -35,7 +35,7 @@ const GroupLabel: FC<{ icon: ElementType; title: string }> = ({
 
 export const BotSettingsCard: FC = () => {
 	const [settings, setSettings] = useState<BotSettings>({
-		gemini_model: "gemini-3.8-flash",
+		gemini_model: "",
 		default_reply_probability: 0.05,
 		chat_history_limit: 10,
 		max_agent_steps: 3,
@@ -87,35 +87,19 @@ export const BotSettingsCard: FC = () => {
 					<div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
 						<div className="space-y-1.5">
 							<label
-								htmlFor="select-gemini-model-sys"
+								htmlFor="input-gemini-model-sys"
 								className="text-xs text-muted-foreground"
 							>
 								Model
 							</label>
-							<Select
-								value={settings.gemini_model || "gemini-3.8-flash"}
-								onValueChange={(val) =>
-									setSettings({ ...settings, gemini_model: val })
+							<Input
+								id="input-gemini-model-sys"
+								placeholder="Enter model name"
+								value={settings.gemini_model ?? ""}
+								onChange={(e) =>
+									setSettings({ ...settings, gemini_model: e.target.value })
 								}
-							>
-								<SelectTrigger id="select-gemini-model-sys" className="w-full">
-									<SelectValue />
-								</SelectTrigger>
-								<SelectContent>
-									<SelectItem value="gemini-3.8-flash">
-										gemini-3.8-flash · flagship
-									</SelectItem>
-									<SelectItem value="gemini-3.7-flash">
-										gemini-3.7-flash · balanced
-									</SelectItem>
-									<SelectItem value="gemini-3.5-flash-lite">
-										gemini-3.5-flash-lite · fast
-									</SelectItem>
-									<SelectItem value="gemini-3.1-pro-preview">
-										gemini-3.1-pro-preview · reasoning
-									</SelectItem>
-								</SelectContent>
-							</Select>
+							/>
 						</div>
 
 						<div className="space-y-1.5">
