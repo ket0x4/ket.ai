@@ -278,6 +278,12 @@ describe("ThinkingConfig and Reply Parsing", () => {
 		expect(getThinkingConfig("gemini-3.8-flash", { isAgentic: true })).toEqual({
 			thinkingLevel: "MEDIUM",
 		});
+		expect(getThinkingConfig("gemma-4-26b-a4b-it")).toEqual({
+			thinkingLevel: "MINIMAL",
+		});
+		expect(getThinkingConfig("gemma-4-31b-it", { isAgentic: true })).toEqual({
+			thinkingLevel: "HIGH",
+		});
 	});
 
 	function createSingleMessageHistory(text = "Selam") {

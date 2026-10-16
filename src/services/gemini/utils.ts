@@ -125,6 +125,39 @@ export function stripEmoji(text: string): string {
 	return text.replace(EMOJI_REGEX, "");
 }
 
+function isGemma4Model(lower: string): boolean {
+	return lower.includes("gemma-4");
+}
+
+function getGemma4ThinkingConfig(isAgentic: boolean): Record<string, unknown> {
+	return { thinkingLevel: isAgentic ? "HIGH" : "MINIMAL" };
+}
+
+function getAgenticThinkingConfig(lower: string): Record<string, unknown> {
+	// Allocate thinking for code planning & error reflection
+	if (lower.includes("3") || lower.includes("gemini-3")) {
+		return { thinkingLevel: "MEDIUM" };
+	}
+	if (lower.includes("2.5") && lower.includes("pro")) {
+		return { thinkingBudget: 2048 };
+	}
+	return { thinkingBudget: 1024 };
+}
+
+function getDefaultThinkingConfig(lower: string): Record<string, unknown> {
+	// Non-agentic (regular chat responses): minimize thinking to preserve latency
+	if (lower.includes("2.5") && lower.includes("pro")) {
+		return { thinkingBudget: 128 };
+	}
+	if (lower.includes("3") && lower.includes("pro")) {
+		return { thinkingLevel: "LOW" };
+	}
+	if (lower.includes("3") || lower.includes("gemini-3")) {
+		return { thinkingLevel: "MINIMAL" };
+	}
+	return { thinkingBudget: 0 };
+}
+
 /**
  * Returns thinkingConfig. When tools are active (isAgentic: true), allocates
  * a reasoning budget to enable planning, code verification, and self-correction.
@@ -136,29 +169,13 @@ export function getThinkingConfig(
 	const lower = (modelName || "").toLowerCase();
 	const isAgentic = Boolean(options?.isAgentic && CONFIG.ENABLE_AGENT_THINKING);
 
+	if (isGemma4Model(lower)) {
+		return getGemma4ThinkingConfig(isAgentic);
+	}
 	if (isAgentic) {
-		// Allocate thinking for code planning & error reflection
-		if (lower.includes("3") || lower.includes("gemini-3")) {
-			return { thinkingLevel: "MEDIUM" };
-		}
-		if (lower.includes("2.5") && lower.includes("pro")) {
-			return { thinkingBudget: 2048 };
-		}
-		return { thinkingBudget: 1024 };
+		return getAgenticThinkingConfig(lower);
 	}
-
-	// Non-agentic (regular chat responses): minimize thinking to preserve latency
-	if (lower.includes("2.5") && lower.includes("pro")) {
-		return { thinkingBudget: 128 };
-	}
-	if (lower.includes("3") && lower.includes("pro")) {
-		return { thinkingLevel: "LOW" };
-	}
-	if (lower.includes("3") || lower.includes("gemini-3")) {
-		return { thinkingLevel: "MINIMAL" };
-	}
-
-	return { thinkingBudget: 0 };
+	return getDefaultThinkingConfig(lower);
 }
 
 function parseDetailsDelay(error: unknown): number | null {
