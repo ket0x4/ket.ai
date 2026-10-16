@@ -2,9 +2,9 @@ import type { Bot, Context } from "grammy";
 import { mergeAgentEventHandlers } from "../agent/index";
 import { createToolNotifier, sendSingleArtifact } from "../bot/ui/index";
 import { CONFIG } from "../config";
-import { Repository } from "../db/repository";
-import { botUsername, withChatLock, withTyping } from "../services/bot";
+import { Repository } from "../db/repository/index";
 import { startGeneration } from "../services/bot/generation";
+import { botUsername, withChatLock, withTyping } from "../services/bot/index";
 import { checkRateLimit } from "../services/bot/rateLimit";
 import {
 	type PreparedDocumentContext,

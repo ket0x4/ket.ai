@@ -2,8 +2,8 @@ import type { Bot, Context } from "grammy";
 import { mergeAgentEventHandlers } from "../agent/index";
 import { createToolNotifier, sendSingleArtifact } from "../bot/ui/index";
 import { CONFIG } from "../config";
-import { Repository } from "../db/repository";
-import { withChatLock, withTyping } from "../services/bot";
+import { Repository } from "../db/repository/index";
+import { withChatLock, withTyping } from "../services/bot/index";
 import {
 	prepareDocumentContext,
 	stageDocumentInWorkspace,

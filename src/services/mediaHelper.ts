@@ -1,13 +1,13 @@
 import type { Context } from "grammy";
 import { CONFIG } from "../config/index";
-import { type MessageRow, Repository } from "../db/repository";
+import { type MessageRow, Repository } from "../db/repository/index";
 import logger from "../utils/logger";
 import {
 	downloadTelegramFile,
 	isDownloadError,
 } from "../utils/mediaDownloader";
 import { sendLongMessage } from "../utils/message";
-import { botUsername, withChatLock, withTyping } from "./bot";
+import { botUsername, withChatLock, withTyping } from "./bot/index";
 import { LlmService, type TargetMessageInfo } from "./llm/index";
 
 interface MediaProcessorOptions {

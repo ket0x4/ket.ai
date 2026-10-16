@@ -1,7 +1,7 @@
 import type { AuthContext, TelegramUser } from "../../../web/src/types";
 import { db } from "../../db/index";
-import { Repository } from "../../db/repository";
-import { bot } from "../../services/bot";
+import { Repository } from "../../db/repository/index";
+import { bot } from "../../services/bot/index";
 import { isPlaceholderChatTitle } from "../../utils/chatTitle";
 import logger from "../../utils/logger";
 import { extractTelegramChatTitle } from "../../utils/message";

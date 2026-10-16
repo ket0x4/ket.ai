@@ -2,8 +2,8 @@ import crypto from "node:crypto";
 import type { AuthContext, TelegramUser, UserRole } from "../../web/src/types";
 import { CONFIG } from "../config/index";
 import { db } from "../db/index";
-import { Repository } from "../db/repository";
-import { bot } from "../services/bot";
+import { Repository } from "../db/repository/index";
+import { bot } from "../services/bot/index";
 import logger from "../utils/logger";
 
 // In-memory cache for Telegram group administrator status (5 min TTL)

@@ -2,7 +2,7 @@ import {
 	type MemoryItem,
 	type MessageRow,
 	Repository,
-} from "../../db/repository";
+} from "../../db/repository/index";
 import logger from "../../utils/logger";
 import { dotProduct, normalizeVector } from "../../utils/vector";
 import { getLlmProvider } from "../llm/index";

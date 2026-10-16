@@ -1,6 +1,6 @@
 import { db } from "./db/index";
 import { startServer, stopServer } from "./server/index";
-import { startBot, stopBot } from "./services/bot";
+import { startBot, stopBot } from "./services/bot/index";
 import logger from "./utils/logger";
 
 async function main() {
