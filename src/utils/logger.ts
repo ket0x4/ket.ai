@@ -115,13 +115,23 @@ class Logger {
 		else this.errorBytes = 0;
 	}
 
-	/** Non-blocking batched append used in production. */
-	private appendAsync(filePath: string, sink: LogSink, lines: string[]): void {
-		if (lines.length === 0) return;
+	private prepareAppend(
+		filePath: string,
+		sink: LogSink,
+		lines: string[],
+	): string | null {
+		if (lines.length === 0) return null;
 		const data = `${lines.join("\n")}\n`;
 		const bytes = Buffer.byteLength(data);
 		this.rotateIfNeeded(filePath, sink, bytes);
 		this.addBytes(sink, bytes);
+		return data;
+	}
+
+	/** Non-blocking batched append used in production. */
+	private appendAsync(filePath: string, sink: LogSink, lines: string[]): void {
+		const data = this.prepareAppend(filePath, sink, lines);
+		if (!data) return;
 		fs.appendFile(filePath, data, (e) => {
 			if (e) console.error(`[Logger] Failed to write log to ${filePath}:`, e);
 		});
@@ -129,11 +139,8 @@ class Logger {
 
 	/** Synchronous append used in tests so logs are readable immediately. */
 	private appendSync(filePath: string, sink: LogSink, lines: string[]): void {
-		if (lines.length === 0) return;
-		const data = `${lines.join("\n")}\n`;
-		const bytes = Buffer.byteLength(data);
-		this.rotateIfNeeded(filePath, sink, bytes);
-		this.addBytes(sink, bytes);
+		const data = this.prepareAppend(filePath, sink, lines);
+		if (!data) return;
 		try {
 			fs.appendFileSync(filePath, data, "utf-8");
 		} catch (e) {

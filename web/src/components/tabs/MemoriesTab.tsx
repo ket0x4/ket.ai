@@ -1,11 +1,4 @@
-import {
-	Download,
-	Edit2,
-	Inbox,
-	Plus,
-	Trash2,
-	Upload,
-} from "lucide-react";
+import { Download, Edit2, Inbox, Plus, Trash2, Upload } from "lucide-react";
 import { type ChangeEvent, type FC, useMemo, useRef, useState } from "react";
 import {
 	CategoryBadge,
@@ -16,15 +9,15 @@ import {
 	LoadingState,
 	SearchInput,
 } from "@/components/common";
-import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import {
+	Button,
+	Card,
 	Select,
 	SelectContent,
 	SelectItem,
 	SelectTrigger,
 	SelectValue,
-} from "@/components/ui/select";
+} from "@/components/ui";
 import { useAsyncAction } from "@/hooks/useAsyncAction";
 import { api } from "@/lib/api";
 import {

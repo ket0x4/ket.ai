@@ -12,13 +12,13 @@ import {
 	sanitizeDocumentFilename,
 	stageDocumentInWorkspace,
 } from "../services/gemini/documentPerception";
+import { checkAndRunBackgroundMemoryExtraction } from "../services/gemini/memoryWorker";
 import {
-	GeminiService,
 	type GeneratedMediaArtifact,
+	LlmService,
 	type ReplyContextInfo,
 	type TargetMessageInfo,
-} from "../services/gemini/index";
-import { checkAndRunBackgroundMemoryExtraction } from "../services/gemini/memoryWorker";
+} from "../services/llm/index";
 import logger from "../utils/logger";
 import {
 	downloadTelegramFileById,
@@ -247,7 +247,7 @@ function extractReplyMessageText(
 	return "[Media]";
 }
 
-export function resolveReplyContext(
+function resolveReplyContext(
 	ctx: Context,
 	chatIdStr: string,
 ): ReplyContextInfo | undefined {
@@ -294,7 +294,7 @@ async function generateAndSendReply(
 	// Concurrency: fetch active topic, history, replied photo, and replied document in parallel
 	const [activeTopic, history, mediaPayload, documentPayload] =
 		await Promise.all([
-			GeminiService.ensureTopicSummary(chatIdStr, chatSettings.current_topic),
+			LlmService.ensureTopicSummary(chatIdStr, chatSettings.current_topic),
 			Promise.resolve(
 				Repository.getRecentMessages(chatIdStr, CONFIG.CHAT_HISTORY_LIMIT),
 			),
@@ -309,7 +309,7 @@ async function generateAndSendReply(
 	const generation = startGeneration(chatIdStr);
 	let reply = "";
 	try {
-		reply = await GeminiService.generateReply({
+		reply = await LlmService.generateReply({
 			history,
 			topicSummary: activeTopic,
 			isSpontaneous,

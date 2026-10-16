@@ -8,11 +8,8 @@ import {
 	prepareDocumentContext,
 	stageDocumentInWorkspace,
 } from "../services/gemini/documentPerception";
-import {
-	GeminiService,
-	type GeneratedMediaArtifact,
-} from "../services/gemini/index";
 import { checkAndRunBackgroundMemoryExtraction } from "../services/gemini/memoryWorker";
+import { type GeneratedMediaArtifact, LlmService } from "../services/llm/index";
 import { isDirectMediaInteraction } from "../services/mediaHelper";
 import logger from "../utils/logger";
 import {
@@ -61,7 +58,7 @@ async function executeDocumentReplyWorkflow(
 		});
 
 		const [activeTopic, history] = await Promise.all([
-			GeminiService.ensureTopicSummary(chatIdStr, chatSettings.current_topic),
+			LlmService.ensureTopicSummary(chatIdStr, chatSettings.current_topic),
 			Promise.resolve(
 				Repository.getRecentMessages(chatIdStr, CONFIG.CHAT_HISTORY_LIMIT),
 			),
@@ -78,7 +75,7 @@ async function executeDocumentReplyWorkflow(
 			sentAt: msg.date,
 		};
 
-		const reply = await GeminiService.generateReply({
+		const reply = await LlmService.generateReply({
 			history,
 			topicSummary: activeTopic,
 			chatId: chatIdStr,

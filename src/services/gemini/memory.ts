@@ -1,4 +1,3 @@
-import { CONFIG } from "../../config/index";
 import {
 	type MemoryItem,
 	type MessageRow,
@@ -6,12 +5,9 @@ import {
 } from "../../db/repository";
 import logger from "../../utils/logger";
 import { dotProduct, normalizeVector } from "../../utils/vector";
+import { getLlmProvider } from "../llm/index";
 import { ai } from "./client";
-import {
-	expandContextualQuery,
-	getThinkingConfig,
-	runWithRetry,
-} from "./utils";
+import { expandContextualQuery, runWithRetry } from "./utils";
 
 const newMemoriesCount = new Map<string, number>();
 const MAX_TRACKED_CHATS = 200;
@@ -225,7 +221,7 @@ function createDefaultDiagnosticItem(m: {
 	};
 }
 
-export interface MemoryQueryDiagnostics {
+interface MemoryQueryDiagnostics {
 	chatId: string;
 	originalQuery: string;
 	enrichedQuery: string;
@@ -240,7 +236,7 @@ export interface MemoryQueryDiagnostics {
 	details: MemoryDiagnosticItem[];
 }
 
-export interface QueryMemoriesOptions {
+interface QueryMemoriesOptions {
 	activeTopic?: string;
 	history?: MessageRow[];
 	senderUserId?: number;
@@ -393,7 +389,7 @@ function selectBiLevelCandidates(
 	return { retrievedMemories, matchedCount };
 }
 
-export async function queryMemoriesWithDiagnostics(
+async function queryMemoriesWithDiagnostics(
 	chatId: string,
 	query: string,
 	options?: QueryMemoriesOptions,
@@ -534,29 +530,17 @@ Memories:
 ${memoryListText}`;
 
 		try {
-			const response = await runWithRetry(() =>
-				ai.models.generateContent({
-					model: CONFIG.GEMINI_MODEL,
-					contents: prompt,
-					config: {
-						systemInstruction:
-							"You are an automated data maintenance service. Analyze stored memories and identify redundant or contradictory memory IDs for deletion. Return strictly JSON.",
-						maxOutputTokens: 2048,
-						thinkingConfig: getThinkingConfig(CONFIG.GEMINI_MODEL),
-						responseMimeType: "application/json",
-						responseSchema: {
-							type: "ARRAY",
-							items: {
-								type: "INTEGER",
-							},
-							description: "List of memory IDs to delete",
-						},
+			const idsToDelete = await getLlmProvider().generateStructured<number[]>(
+				prompt,
+				{
+					type: "ARRAY",
+					items: {
+						type: "INTEGER",
 					},
-				}),
+					description: "List of memory IDs to delete",
+				},
+				"You are an automated data maintenance service. Analyze stored memories and identify redundant or contradictory memory IDs for deletion. Return strictly JSON.",
 			);
-
-			const responseText = response.text?.trim() || "[]";
-			const idsToDelete: number[] = JSON.parse(responseText);
 
 			if (Array.isArray(idsToDelete) && idsToDelete.length > 0) {
 				Repository.deleteMemoriesByIds(idsToDelete);

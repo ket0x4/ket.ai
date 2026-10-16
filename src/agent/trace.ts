@@ -1,12 +1,12 @@
 import logger from "../utils/logger";
 
-export type AgentTraceKind =
+type AgentTraceKind =
 	| "step-start"
 	| "step-complete"
 	| "loop-detected"
 	| "final";
 
-export interface AgentTraceEntry {
+interface AgentTraceEntry {
 	id: string;
 	traceId: string;
 	timestamp: string;

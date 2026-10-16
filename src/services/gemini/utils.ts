@@ -233,7 +233,7 @@ function tryParseJsonObject(raw: unknown): unknown {
  * Extracts recommended retry delay in milliseconds from Gemini API errors or error messages.
  * @internal
  */
-export function extractRetryDelayMs(error: unknown): number | null {
+function extractRetryDelayMs(error: unknown): number | null {
 	if (!error) return null;
 
 	const parsedObj = tryParseJsonObject(error);
@@ -259,7 +259,7 @@ interface RunWithRetryOptions {
 	customIntervalMs?: number;
 }
 
-export class GeminiRateLimiter {
+class GeminiRateLimiter {
 	private lastRequestEndTime = 0;
 	private queue: Promise<void> = Promise.resolve();
 

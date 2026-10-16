@@ -46,8 +46,3 @@ export function checkRateLimit(
 	timestamps.push(now);
 	return true;
 }
-
-/** Clears all limiter state (used for tests). */
-export function resetRateLimits(): void {
-	windows.clear();
-}

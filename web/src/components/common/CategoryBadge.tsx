@@ -30,9 +30,7 @@ export const CategoryBadge: FC<CategoryBadgeProps> = ({
 				className,
 			)}
 		>
-			{showDot && (
-				<span className="h-1.5 w-1.5 rounded-full bg-primary" />
-			)}
+			{showDot && <span className="h-1.5 w-1.5 rounded-full bg-primary" />}
 			<span>{meta.label.toLowerCase()}</span>
 		</span>
 	);

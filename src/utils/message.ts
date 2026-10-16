@@ -31,7 +31,7 @@ function findSplitPoint(text: string, limit: number): number {
 /**
  * Escapes special HTML characters (&, <, >) for safe Telegram HTML parsing.
  */
-export function escapeHtml(text: string): string {
+function escapeHtml(text: string): string {
 	return text
 		.replace(/&/g, "&amp;")
 		.replace(/</g, "&lt;")
@@ -42,7 +42,7 @@ export function escapeHtml(text: string): string {
  * Converts standard Markdown (fenced code blocks, inline code, bold, italic, strikethrough, links)
  * to Telegram-compatible HTML entities with full syntax highlighting and robust error resilience.
  */
-export function markdownToTelegramHtml(markdown: string): string {
+function markdownToTelegramHtml(markdown: string): string {
 	if (!markdown?.trim()) return "";
 
 	// Step 1: Extract and replace code blocks with unique placeholders
@@ -113,7 +113,7 @@ export function markdownToTelegramHtml(markdown: string): string {
  * Ensures code fences (```) spanning across split message chunks are properly closed
  * at chunk ends and reopened at the start of subsequent chunks for valid Telegram Markdown.
  */
-export function balanceCodeFences(chunks: string[]): string[] {
+function balanceCodeFences(chunks: string[]): string[] {
 	const result: string[] = [];
 	let openCodeLanguage: string | null = null;
 
@@ -148,7 +148,7 @@ export function balanceCodeFences(chunks: string[]): string[] {
 /**
  * Ensures <pre> tags spanning across split message chunks are properly closed and reopened.
  */
-export function balanceHtmlTags(chunks: string[]): string[] {
+function balanceHtmlTags(chunks: string[]): string[] {
 	const result: string[] = [];
 	let openPreTag: string | null = null;
 
@@ -184,7 +184,7 @@ export function balanceHtmlTags(chunks: string[]): string[] {
  * Splits text into chunks that respect Telegram's 4096-character message limit.
  * Tries to split on paragraph or sentence boundaries to avoid cutting mid-sentence.
  */
-export function splitMessage(text: string): string[] {
+function splitMessage(text: string): string[] {
 	if (!text?.trim()) return [];
 	if (text.length <= TELEGRAM_MAX_LENGTH) return [text];
 

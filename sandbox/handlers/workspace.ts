@@ -12,6 +12,31 @@ import { ARTIFACT_MIME_MAP } from "../lib/artifacts";
 import type { WorkspaceFileEntry } from "../lib/types";
 import { resolveSafePath, resolveWorkspace } from "../lib/workspace";
 
+function fileStatResponse(
+	filename: string,
+	stats: { size: number; mtime: Date },
+) {
+	return {
+		success: true,
+		filename,
+		sizeBytes: stats.size,
+		modifiedAt: stats.mtime.toISOString(),
+	};
+}
+
+async function parseSessionId(
+	req: Request,
+): Promise<{ sessionId: string } | Response> {
+	const body = (await req.json()) as { sessionId?: string };
+	if (!body?.sessionId) {
+		return Response.json(
+			{ success: false, error: "Missing 'sessionId'" },
+			{ status: 400 },
+		);
+	}
+	return { sessionId: body.sessionId };
+}
+
 export async function handleWorkspaceRead(req: Request): Promise<Response> {
 	try {
 		const body = (await req.json()) as {
@@ -58,11 +83,8 @@ export async function handleWorkspaceRead(req: Request): Promise<Response> {
 
 		const content = readFileSync(targetPath, "utf-8");
 		return Response.json({
-			success: true,
-			filename,
+			...fileStatResponse(filename, stats),
 			content,
-			sizeBytes: stats.size,
-			modifiedAt: stats.mtime.toISOString(),
 		});
 	} catch (err) {
 		return Response.json(
@@ -101,12 +123,7 @@ export async function handleWorkspaceWrite(req: Request): Promise<Response> {
 		writeFileSync(targetPath, buffer);
 		const stats = statSync(targetPath);
 
-		return Response.json({
-			success: true,
-			filename,
-			sizeBytes: stats.size,
-			modifiedAt: stats.mtime.toISOString(),
-		});
+		return Response.json(fileStatResponse(filename, stats));
 	} catch (err) {
 		return Response.json(
 			{ success: false, error: err instanceof Error ? err.message : String(err) },
@@ -117,14 +134,9 @@ export async function handleWorkspaceWrite(req: Request): Promise<Response> {
 
 export async function handleWorkspaceList(req: Request): Promise<Response> {
 	try {
-		const body = (await req.json()) as { sessionId?: string };
-		const { sessionId } = body;
-		if (!sessionId) {
-			return Response.json(
-				{ success: false, error: "Missing 'sessionId'" },
-				{ status: 400 },
-			);
-		}
+		const parsed = await parseSessionId(req);
+		if (parsed instanceof Response) return parsed;
+		const { sessionId } = parsed;
 
 		const { workspaceDir } = resolveWorkspace(sessionId);
 		const files: WorkspaceFileEntry[] = [];
@@ -167,14 +179,9 @@ export async function handleWorkspaceList(req: Request): Promise<Response> {
 
 export async function handleWorkspaceReset(req: Request): Promise<Response> {
 	try {
-		const body = (await req.json()) as { sessionId?: string };
-		const { sessionId } = body;
-		if (!sessionId) {
-			return Response.json(
-				{ success: false, error: "Missing 'sessionId'" },
-				{ status: 400 },
-			);
-		}
+		const parsed = await parseSessionId(req);
+		if (parsed instanceof Response) return parsed;
+		const { sessionId } = parsed;
 
 		const { workspaceDir } = resolveWorkspace(sessionId);
 		if (existsSync(workspaceDir)) {

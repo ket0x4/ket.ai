@@ -8,7 +8,7 @@ const TAIL_LINES = 25;
 /**
  * Intelligently truncates oversized text output preserving the beginning and end.
  */
-export function smartTruncateText(text: string): {
+function smartTruncateText(text: string): {
 	text: string;
 	truncated: boolean;
 } {

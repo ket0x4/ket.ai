@@ -119,7 +119,9 @@ const MemoryCard: FC<{
 		TEMPORARY: 0,
 	};
 	const totalSum =
-		(catStats.PROFILE || 0) + (catStats.DYNAMIC || 0) + (catStats.TEMPORARY || 0);
+		(catStats.PROFILE || 0) +
+		(catStats.DYNAMIC || 0) +
+		(catStats.TEMPORARY || 0);
 
 	const share = (n: number) =>
 		totalSum > 0 ? Math.round((n / totalSum) * 100) : 0;
@@ -131,7 +133,11 @@ const MemoryCard: FC<{
 			value: formatUptime(stats?.uptimeSeconds ?? 0),
 		},
 		{ icon: Cpu, label: "RAM", value: `${stats?.memoryUsageMb ?? 0} MB` },
-		{ icon: Database, label: "DB size", value: formatBytes(stats?.dbSizeBytes ?? 0) },
+		{
+			icon: Database,
+			label: "DB size",
+			value: formatBytes(stats?.dbSizeBytes ?? 0),
+		},
 	];
 
 	return (

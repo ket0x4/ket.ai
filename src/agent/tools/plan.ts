@@ -32,7 +32,7 @@ function normalizeItems(items: unknown): string[] {
 		.slice(0, MAX_PLAN_ITEMS);
 }
 
-export function setPlan(sessionId: string, items: unknown): string[] {
+function setPlan(sessionId: string, items: unknown): string[] {
 	const clean = normalizeItems(items);
 	if (clean.length === 0) {
 		plans.delete(sessionId);
@@ -48,10 +48,6 @@ export function setPlan(sessionId: string, items: unknown): string[] {
 
 export function getPlan(sessionId: string): string[] {
 	return plans.get(sessionId) ?? [];
-}
-
-export function clearPlan(sessionId: string): void {
-	plans.delete(sessionId);
 }
 
 interface UpdatePlanArgs {

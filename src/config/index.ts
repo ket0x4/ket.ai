@@ -2,8 +2,12 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 
 interface ConfigJson {
 	telegram_bot_token?: string;
+	llm_provider?: "gemini" | "openai";
 	gemini_api_key?: string;
 	gemini_model?: string;
+	openai_api_key?: string;
+	openai_base_url?: string;
+	openai_model?: string;
 	chat_history_limit?: number;
 	image_history_limit?: number;
 	default_reply_probability?: number;
@@ -51,9 +55,21 @@ if (existsSync(CONFIG_FILE_PATH)) {
 export const CONFIG = {
 	TELEGRAM_BOT_TOKEN:
 		configJson.telegram_bot_token || process.env.TELEGRAM_BOT_TOKEN || "",
+	LLM_PROVIDER: (
+		configJson.llm_provider ||
+		process.env.LLM_PROVIDER ||
+		"gemini"
+	).toLowerCase() as "gemini" | "openai",
 	GEMINI_API_KEY: configJson.gemini_api_key || process.env.GEMINI_API_KEY || "",
 	GEMINI_MODEL:
 		configJson.gemini_model || process.env.GEMINI_MODEL || "gemini-3.8-flash",
+	OPENAI_API_KEY: configJson.openai_api_key || process.env.OPENAI_API_KEY || "",
+	OPENAI_BASE_URL:
+		configJson.openai_base_url ||
+		process.env.OPENAI_BASE_URL ||
+		"http://localhost:8080/v1",
+	OPENAI_MODEL:
+		configJson.openai_model || process.env.OPENAI_MODEL || "default",
 	CHAT_HISTORY_LIMIT:
 		typeof configJson.chat_history_limit === "number"
 			? configJson.chat_history_limit
@@ -256,7 +272,11 @@ if (
  * Updates bot configuration settings and persists changes to config.json.
  */
 export function updateBotSettings(settings: {
+	llm_provider?: "gemini" | "openai";
 	gemini_model?: string;
+	openai_model?: string;
+	openai_base_url?: string;
+	openai_api_key?: string;
 	default_reply_probability?: number;
 	chat_history_limit?: number;
 	enable_web_search?: boolean;
@@ -267,9 +287,25 @@ export function updateBotSettings(settings: {
 	gemini_min_request_interval_ms?: number;
 	log_level?: "debug" | "info" | "warn" | "error";
 }): void {
+	if (settings.llm_provider !== undefined) {
+		CONFIG.LLM_PROVIDER = settings.llm_provider;
+		configJson.llm_provider = settings.llm_provider;
+	}
 	if (settings.gemini_model !== undefined) {
 		CONFIG.GEMINI_MODEL = settings.gemini_model;
 		configJson.gemini_model = settings.gemini_model;
+	}
+	if (settings.openai_model !== undefined) {
+		CONFIG.OPENAI_MODEL = settings.openai_model;
+		configJson.openai_model = settings.openai_model;
+	}
+	if (settings.openai_base_url !== undefined) {
+		CONFIG.OPENAI_BASE_URL = settings.openai_base_url;
+		configJson.openai_base_url = settings.openai_base_url;
+	}
+	if (settings.openai_api_key !== undefined) {
+		CONFIG.OPENAI_API_KEY = settings.openai_api_key;
+		configJson.openai_api_key = settings.openai_api_key;
 	}
 	if (settings.default_reply_probability !== undefined) {
 		CONFIG.DEFAULT_REPLY_PROBABILITY = settings.default_reply_probability;

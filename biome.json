@@ -10,7 +10,6 @@
 		"includes": [
 			"src/**/*",
 			"web/src/**/*",
-			"tests/**/*",
 			"package.json",
 			"web/package.json",
 			"biome.json",

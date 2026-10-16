@@ -27,6 +27,106 @@ import {
 	truncateOutput,
 } from "../lib/workspace";
 
+function resolvePackageInstallCommand(
+	normalizedLang: string,
+	packages: string[],
+): string[] {
+	if (normalizedLang === "python") {
+		return resolvePythonInstallCommand(packages);
+	}
+	if (normalizedLang === "javascript" || normalizedLang === "typescript") {
+		return ["bun", "add", ...packages];
+	}
+	return [];
+}
+
+interface ExecutionResultInput {
+	executionId: string;
+	workspaceDir: string;
+	scriptFileName: string;
+	normalizedLang: string;
+	result: { exitCode: number; stdout: string; stderr: string };
+	packageInstallStderr: string;
+	startTime: number;
+	beforeSnapshot: ReturnType<typeof getWorkspaceSnapshot>;
+	targetFiles?: string[];
+	installedPackages: string[];
+	isPersistent: boolean;
+}
+
+function buildExecutionResult(input: ExecutionResultInput): {
+	responsePayload: ExecuteResponse;
+	status: ExecuteResponse["status"];
+} {
+	const durationMs = Date.now() - input.startTime;
+	const status: ExecuteResponse["status"] =
+		input.result.exitCode === 130
+			? "cancelled"
+			: input.result.exitCode === 0
+				? "completed"
+				: "failed";
+
+	const totalStderr = input.packageInstallStderr
+		? `${input.packageInstallStderr}\n${input.result.stderr}`
+		: input.result.stderr;
+
+	const notes: string[] = [];
+	const generatedArtifacts = detectGeneratedArtifacts(
+		input.workspaceDir,
+		[input.scriptFileName, "package.json", "bun.lock", ".session_meta.json"],
+		input.beforeSnapshot,
+		input.targetFiles,
+		notes,
+	);
+	const generatedImages = generatedArtifacts.filter((a) => a.type === "image");
+
+	const stdoutTruncated = truncateOutput(input.result.stdout);
+	const stderrTruncated = truncateOutput(totalStderr);
+	const errorHint = generateErrorHint(totalStderr, input.result.exitCode);
+
+	if (input.isPersistent) {
+		try {
+			const metaPath = join(input.workspaceDir, ".session_meta.json");
+			writeFileSync(
+				metaPath,
+				JSON.stringify(
+					{
+						lastLanguage: input.normalizedLang,
+						lastScriptFile: input.scriptFileName,
+						lastExitCode: input.result.exitCode,
+						lastExecutionTimeMs: durationMs,
+						lastStderrSnippet: totalStderr.slice(0, 500),
+						lastStdoutSnippet: input.result.stdout.slice(0, 500),
+						lastExecutedAt: new Date().toISOString(),
+						errorHint,
+					},
+					null,
+					2,
+				),
+				"utf-8",
+			);
+		} catch {}
+	}
+
+	const responsePayload: ExecuteResponse = {
+		executionId: input.executionId,
+		status,
+		success: input.result.exitCode === 0,
+		stdout: stdoutTruncated.text,
+		stderr: stderrTruncated.text,
+		exitCode: input.result.exitCode,
+		executionTimeMs: durationMs,
+		installedPackages: input.installedPackages,
+		artifacts: generatedArtifacts.length > 0 ? generatedArtifacts : undefined,
+		images: generatedImages.length > 0 ? generatedImages : undefined,
+		errorHint,
+		truncated: stdoutTruncated.truncated || stderrTruncated.truncated,
+		notes: notes.length > 0 ? notes : undefined,
+	};
+
+	return { responsePayload, status };
+}
+
 export async function handleExecute(req: Request): Promise<Response> {
 	let body: ExecuteRequest;
 	try {
@@ -145,16 +245,10 @@ export async function handleExecute(req: Request): Promise<Response> {
 							stage: "installing",
 							message: `Installing packages: ${packages.join(", ")}...`,
 						});
-						let installCmd: string[] = [];
-
-						if (normalizedLang === "python") {
-							installCmd = resolvePythonInstallCommand(packages);
-						} else if (
-							normalizedLang === "javascript" ||
-							normalizedLang === "typescript"
-						) {
-							installCmd = ["bun", "add", ...packages];
-						}
+						const installCmd = resolvePackageInstallCommand(
+							normalizedLang,
+							packages,
+						);
 
 						if (installCmd.length > 0) {
 							const pkgResult = await runCommand(
@@ -217,85 +311,28 @@ export async function handleExecute(req: Request): Promise<Response> {
 							execution.cancel = cancel;
 						},
 					);
-					const durationMs = Date.now() - startTime;
-					execution.status = result.exitCode === 130 ? "cancelled" : "collecting";
-
-					const totalStderr = packageInstallStderr
-						? `${packageInstallStderr}\n${result.stderr}`
-						: result.stderr;
-
 					sendEvent("status", {
 						stage: "detecting_artifacts",
-						message: "Scanning workspace for generated files, charts, and media...",
+						message:
+							"Scanning workspace for generated files, charts, and media...",
 					});
 
-					// Detect any artifacts generated specifically by this script execution
-					const notes: string[] = [];
-					const generatedArtifacts = detectGeneratedArtifacts(
+					const { responsePayload, status } = buildExecutionResult({
+						executionId: execution.executionId,
 						workspaceDir,
-						[scriptFileName, "package.json", "bun.lock", ".session_meta.json"],
+						scriptFileName,
+						normalizedLang,
+						result,
+						packageInstallStderr,
+						startTime,
 						beforeSnapshot,
 						targetFiles,
-						notes,
-					);
-					const generatedImages = generatedArtifacts.filter(
-						(a) => a.type === "image",
-					);
-
-					const stdoutTruncated = truncateOutput(result.stdout);
-					const stderrTruncated = truncateOutput(totalStderr);
-					const errorHint = generateErrorHint(totalStderr, result.exitCode);
-
-					// Save session metadata for continuity
-					if (isPersistent) {
-						try {
-							const metaPath = join(workspaceDir, ".session_meta.json");
-							writeFileSync(
-								metaPath,
-								JSON.stringify(
-									{
-										lastLanguage: normalizedLang,
-										lastScriptFile: scriptFileName,
-										lastExitCode: result.exitCode,
-										lastExecutionTimeMs: durationMs,
-										lastStderrSnippet: totalStderr.slice(0, 500),
-										lastStdoutSnippet: result.stdout.slice(0, 500),
-										lastExecutedAt: new Date().toISOString(),
-										errorHint,
-									},
-									null,
-									2,
-								),
-								"utf-8",
-							);
-						} catch {}
-					}
-
-					const responsePayload: ExecuteResponse = {
-						executionId: execution.executionId,
-						status:
-							result.exitCode === 130
-								? "cancelled"
-								: result.exitCode === 0
-									? "completed"
-									: "failed",
-						success: result.exitCode === 0,
-						stdout: stdoutTruncated.text,
-						stderr: stderrTruncated.text,
-						exitCode: result.exitCode,
-						executionTimeMs: durationMs,
 						installedPackages,
-						artifacts:
-							generatedArtifacts.length > 0 ? generatedArtifacts : undefined,
-						images:
-							generatedImages.length > 0 ? generatedImages : undefined,
-						errorHint,
-						truncated: stdoutTruncated.truncated || stderrTruncated.truncated,
-						notes: notes.length > 0 ? notes : undefined,
-					};
+						isPersistent,
+					});
 
 					sendEvent("result", responsePayload);
-					execution.status = responsePayload.status;
+					execution.status = status;
 				} catch (error) {
 					const durationMs = Date.now() - startTime;
 					const errMessage =
@@ -349,16 +386,10 @@ export async function handleExecute(req: Request): Promise<Response> {
 			console.log(
 				`[Sandbox:${workspaceDir}] Installing packages: ${packages.join(", ")}`,
 			);
-			let installCmd: string[] = [];
-
-			if (normalizedLang === "python") {
-				installCmd = resolvePythonInstallCommand(packages);
-			} else if (
-				normalizedLang === "javascript" ||
-				normalizedLang === "typescript"
-			) {
-				installCmd = ["bun", "add", ...packages];
-			}
+			const installCmd = resolvePackageInstallCommand(
+				normalizedLang,
+				packages,
+			);
 
 			if (installCmd.length > 0) {
 				execution.status = "installing";
@@ -420,74 +451,21 @@ export async function handleExecute(req: Request): Promise<Response> {
 				execution.cancel = cancel;
 			},
 		);
-		const durationMs = Date.now() - startTime;
-		execution.status = result.exitCode === 130 ? "cancelled" : "collecting";
-
-		const totalStderr = packageInstallStderr
-			? `${packageInstallStderr}\n${result.stderr}`
-			: result.stderr;
-
-		// Detect any artifacts generated specifically by this script execution
-		const notes: string[] = [];
-		const generatedArtifacts = detectGeneratedArtifacts(
+		const { responsePayload, status } = buildExecutionResult({
+			executionId: execution.executionId,
 			workspaceDir,
-			[scriptFileName, "package.json", "bun.lock", ".session_meta.json"],
+			scriptFileName,
+			normalizedLang,
+			result,
+			packageInstallStderr,
+			startTime,
 			beforeSnapshot,
 			targetFiles,
-			notes,
-		);
-		const generatedImages = generatedArtifacts.filter((a) => a.type === "image");
-
-		const stdoutTruncated = truncateOutput(result.stdout);
-		const stderrTruncated = truncateOutput(totalStderr);
-		const errorHint = generateErrorHint(totalStderr, result.exitCode);
-
-		// Save session metadata for continuity
-		if (isPersistent) {
-			try {
-				const metaPath = join(workspaceDir, ".session_meta.json");
-				writeFileSync(
-					metaPath,
-					JSON.stringify(
-						{
-							lastLanguage: normalizedLang,
-							lastScriptFile: scriptFileName,
-							lastExitCode: result.exitCode,
-							lastExecutionTimeMs: durationMs,
-							lastStderrSnippet: totalStderr.slice(0, 500),
-							lastStdoutSnippet: result.stdout.slice(0, 500),
-							lastExecutedAt: new Date().toISOString(),
-							errorHint,
-						},
-						null,
-						2,
-					),
-					"utf-8",
-				);
-			} catch {}
-		}
-
-		const responsePayload: ExecuteResponse = {
-			executionId: execution.executionId,
-			status:
-				result.exitCode === 130
-					? "cancelled"
-					: result.exitCode === 0
-						? "completed"
-						: "failed",
-			success: result.exitCode === 0,
-			stdout: stdoutTruncated.text,
-			stderr: stderrTruncated.text,
-			exitCode: result.exitCode,
-			executionTimeMs: durationMs,
 			installedPackages,
-			artifacts: generatedArtifacts.length > 0 ? generatedArtifacts : undefined,
-			images: generatedImages.length > 0 ? generatedImages : undefined,
-			errorHint,
-			truncated: stdoutTruncated.truncated || stderrTruncated.truncated,
-			notes: notes.length > 0 ? notes : undefined,
-		};
+			isPersistent,
+		});
 
+		execution.status = status;
 		return Response.json(responsePayload);
 	} catch (error) {
 		const durationMs = Date.now() - startTime;

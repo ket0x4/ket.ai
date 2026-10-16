@@ -1,6 +1,8 @@
 import { CONFIG } from "../config";
 import { ai } from "../services/gemini/client";
 import { runWithRetry } from "../services/gemini/utils";
+import { openAiProvider } from "../services/llm/openAiProvider";
+import type { ChatMessage } from "../services/llm/types";
 import logger from "../utils/logger";
 import type { AgentEvent, AgentEventHandler } from "./events";
 import {
@@ -8,10 +10,117 @@ import {
 	type ToolExecutionOptions,
 } from "./executor";
 import { extractFunctionCalls, type RawFunctionCall } from "./functionCalls";
+import { toolRegistry } from "./registry";
 import { getPlan } from "./tools/plan";
 import { AgentTraceLogger } from "./trace";
 
-export type AgentLoopOptions = ToolExecutionOptions;
+function convertToolParts(
+	toolParts: Array<Record<string, unknown>>,
+	text: string,
+): ChatMessage[] {
+	const out: ChatMessage[] = [];
+	for (const tp of toolParts) {
+		const result = (tp.response as { result?: unknown })?.result ?? tp.response;
+		out.push({
+			role: "tool",
+			toolName: typeof tp.name === "string" ? tp.name : undefined,
+			toolCallId: typeof tp.id === "string" ? tp.id : undefined,
+			content:
+				typeof result === "string" ? result : JSON.stringify(result ?? {}),
+		});
+	}
+	if (text) {
+		out.push({ role: "user", content: text });
+	}
+	return out;
+}
+
+function convertUserParts(
+	parts: Array<Record<string, unknown>>,
+): ChatMessage[] {
+	let text = "";
+	let media: { buffer: Buffer; mimeType: string } | undefined;
+	const toolParts: Array<Record<string, unknown>> = [];
+
+	for (const part of parts) {
+		if (typeof part.text === "string") {
+			text = text ? `${text}\n${part.text}` : part.text;
+		} else if (part.inlineData) {
+			const inline = part.inlineData as { data: string; mimeType: string };
+			media = {
+				buffer: Buffer.from(inline.data, "base64"),
+				mimeType: inline.mimeType,
+			};
+		} else if (part.functionResponse) {
+			toolParts.push(part.functionResponse as Record<string, unknown>);
+		}
+	}
+
+	if (toolParts.length > 0) {
+		return convertToolParts(toolParts, text);
+	}
+	return [{ role: "user", content: text || null, media }];
+}
+
+function convertModelParts(parts: Array<Record<string, unknown>>): ChatMessage {
+	let text = "";
+	const toolCalls: RawFunctionCall[] = [];
+
+	for (const part of parts) {
+		if (typeof part.text === "string") {
+			text = text ? `${text}\n${part.text}` : part.text;
+		} else if (part.functionCall) {
+			const fc = part.functionCall as {
+				id?: string;
+				name: string;
+				args?: Record<string, unknown>;
+			};
+			toolCalls.push({
+				id: fc.id,
+				name: fc.name,
+				args: fc.args || {},
+			});
+		}
+	}
+
+	return {
+		role: "assistant",
+		content: text || null,
+		toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+	};
+}
+
+function convertSingleContentEntry(
+	entry: Record<string, unknown>,
+): ChatMessage[] {
+	const role = String(entry.role || "");
+	if (
+		!entry.parts &&
+		(entry.content !== undefined || entry.toolCalls || role === "tool")
+	) {
+		return [entry as unknown as ChatMessage];
+	}
+
+	const parts = Array.isArray(entry.parts)
+		? (entry.parts as Array<Record<string, unknown>>)
+		: [];
+
+	if (role === "user") {
+		return convertUserParts(parts);
+	}
+	if (role === "model" || role === "assistant") {
+		return [convertModelParts(parts)];
+	}
+	return [];
+}
+
+function convertContentsToChatMessages(
+	contents: Array<Record<string, unknown>>,
+): ChatMessage[] {
+	return contents.flatMap(convertSingleContentEntry);
+}
+
+type AgentLoopOptions = ToolExecutionOptions;
 
 // Provider finish reasons that mean the model refused or was filtered rather
 // than simply choosing to answer without tools.
@@ -30,7 +139,7 @@ const COMPACT_TEXT_PART_LIMIT = 2500;
 const COMPACT_TOOL_RESULT_LIMIT = 1500;
 const COMPACT_KEEP_RECENT_TURNS = 6;
 
-export function generateTraceId(): string {
+function generateTraceId(): string {
 	return `trace_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
 }
 
@@ -48,23 +157,37 @@ function inspectNoToolCallResponse(
 		text?: string;
 		candidates?: Array<{ finishReason?: unknown }>;
 		promptFeedback?: { blockReason?: unknown };
+		choices?: Array<{
+			finish_reason?: unknown;
+			message?: { content?: unknown };
+		}>;
 	},
 	traceId: string,
 	step: number,
 ): NoToolCallOutcome {
-	const text = response.text?.trim() || "";
-	const finishReason = String(response.candidates?.[0]?.finishReason ?? "");
+	const text =
+		response.text?.trim() ||
+		(typeof response.choices?.[0]?.message?.content === "string"
+			? (response.choices[0].message.content as string).trim()
+			: "");
+	const finishReason = String(
+		response.candidates?.[0]?.finishReason ??
+			response.choices?.[0]?.finish_reason ??
+			"",
+	);
 	const blockReason = response.promptFeedback?.blockReason
 		? String(response.promptFeedback.blockReason)
 		: undefined;
 	const blocked =
-		Boolean(blockReason) || BLOCKING_FINISH_REASONS.has(finishReason);
+		Boolean(blockReason) ||
+		BLOCKING_FINISH_REASONS.has(finishReason) ||
+		finishReason === "content_filter";
 
 	if (!text) {
 		logger.warn(
 			`[Agent:${traceId}] Model returned no tool calls and no text at step ${step} (finishReason=${finishReason || "unknown"}, blockReason=${blockReason ?? "none"}).`,
 		);
-	} else if (finishReason === "MAX_TOKENS") {
+	} else if (finishReason === "MAX_TOKENS" || finishReason === "length") {
 		logger.warn(
 			`[Agent:${traceId}] Response truncated at MAX_TOKENS; using partial text.`,
 		);
@@ -81,7 +204,7 @@ function inspectNoToolCallResponse(
  * Stable identity for a tool call: name plus a canonicalized argument payload,
  * so re-issued identical calls can be detected and suppressed.
  */
-export function fingerprintToolCall(fc: RawFunctionCall): string {
+function fingerprintToolCall(fc: RawFunctionCall): string {
 	const args = fc.args ?? {};
 	let serialized: string;
 	try {
@@ -110,7 +233,7 @@ function sortedKeys(value: unknown): unknown {
  * turns are always preserved intact; only the first (task payload) entry and
  * the newest turns are guaranteed to survive untouched.
  */
-export function compactContents(
+function compactContents(
 	contents: Array<Record<string, unknown>>,
 	maxChars: number,
 	keepRecentTurns: number = COMPACT_KEEP_RECENT_TURNS,
@@ -188,7 +311,7 @@ function compactEntry(entry: Record<string, unknown>): Record<string, unknown> {
  * current working plan, so the model knows how much room it has and stays on
  * track on long tasks.
  */
-export function buildStepGuidance(
+function buildStepGuidance(
 	step: number,
 	maxSteps: number,
 	plan: string[] = [],
@@ -248,6 +371,16 @@ async function generateFinalSummary(
 	genConfig: Record<string, unknown>,
 	signal?: AbortSignal,
 ): Promise<string> {
+	if (CONFIG.LLM_PROVIDER === "openai") {
+		const messages = convertContentsToChatMessages(contents);
+		const result = await openAiProvider.chat(messages, {
+			systemInstruction: genConfig.systemInstruction as string | undefined,
+			maxTokens: 2048,
+			signal,
+		});
+		return result.text;
+	}
+
 	const finalGenConfig = {
 		...genConfig,
 		tools: undefined,
@@ -517,17 +650,21 @@ function buildStepConfig(
 	};
 }
 
+interface ModelStepResponse {
+	text?: string;
+	candidates?: Array<{ content?: unknown; finishReason?: unknown }>;
+	promptFeedback?: { blockReason?: unknown };
+	toolCalls?: RawFunctionCall[];
+	raw?: unknown;
+}
+
 interface NoToolCallTurn {
 	action: "retry" | "break";
 	text: string;
 }
 
 function resolveNoToolCallTurn(
-	response: {
-		text?: string;
-		candidates?: Array<{ finishReason?: unknown }>;
-		promptFeedback?: { blockReason?: unknown };
-	},
+	response: ModelStepResponse,
 	traceId: string,
 	step: number,
 	alreadyRetried: boolean,
@@ -562,6 +699,41 @@ function nextStallCount(
 	if (ranAny) return { count: 0, end: false };
 	const count = stallCount + 1;
 	return { count, end: count >= 2 };
+}
+
+async function callModelForStep(
+	compactedContents: Array<Record<string, unknown>>,
+	stepConfig: Record<string, unknown>,
+	signal?: AbortSignal,
+): Promise<ModelStepResponse> {
+	if (CONFIG.LLM_PROVIDER === "openai") {
+		const chatMessages = convertContentsToChatMessages(compactedContents);
+		const tools =
+			toolRegistry.count > 0
+				? toolRegistry.getFunctionDeclarations()
+				: undefined;
+		const isJson = !tools && stepConfig.responseMimeType === "application/json";
+		return await openAiProvider.chat(chatMessages, {
+			systemInstruction: stepConfig.systemInstruction as string | undefined,
+			tools,
+			maxTokens:
+				typeof stepConfig.maxOutputTokens === "number"
+					? stepConfig.maxOutputTokens
+					: 2048,
+			responseFormat: isJson ? "json" : "text",
+			signal,
+		});
+	}
+
+	return (await runWithRetry(() =>
+		ai.models.generateContent({
+			model: CONFIG.GEMINI_MODEL,
+			// biome-ignore lint/suspicious/noExplicitAny: SDK expects content structure
+			contents: compactedContents as any,
+			// biome-ignore lint/suspicious/noExplicitAny: SDK expects config structure
+			config: { ...stepConfig, abortSignal: signal } as any,
+		}),
+	)) as ModelStepResponse;
 }
 
 /**
@@ -618,14 +790,10 @@ export async function runAgentLoop(
 			contents,
 			CONFIG.AGENT_CONTEXT_MAX_CHARS,
 		);
-		const response = await runWithRetry(() =>
-			ai.models.generateContent({
-				model: CONFIG.GEMINI_MODEL,
-				// biome-ignore lint/suspicious/noExplicitAny: SDK expects content structure
-				contents: compactedContents as any,
-				// biome-ignore lint/suspicious/noExplicitAny: SDK expects config structure
-				config: { ...stepConfig, abortSignal: signal } as any,
-			}),
+		const response = await callModelForStep(
+			compactedContents,
+			stepConfig,
+			signal,
 		);
 
 		const functionCalls = extractFunctionCalls(response);

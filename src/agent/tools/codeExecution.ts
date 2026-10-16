@@ -192,7 +192,7 @@ function buildSandboxFailureResult(
 /**
  * Executes a code snippet inside the dedicated sandboxed container.
  */
-export async function executeInSandbox(
+async function executeInSandbox(
 	args: CodeExecutionArgs,
 	signal?: AbortSignal,
 ): Promise<CodeExecutionResult> {

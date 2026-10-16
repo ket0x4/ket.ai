@@ -35,7 +35,10 @@ const GroupLabel: FC<{ icon: ElementType; title: string }> = ({
 
 export const BotSettingsCard: FC = () => {
 	const [settings, setSettings] = useState<BotSettings>({
+		llm_provider: "gemini",
 		gemini_model: "",
+		openai_model: "",
+		openai_base_url: "",
 		default_reply_probability: 0.05,
 		chat_history_limit: 10,
 		max_agent_steps: 3,
@@ -71,6 +74,8 @@ export const BotSettingsCard: FC = () => {
 		(settings.default_reply_probability ?? 0.05) * 100,
 	);
 
+	const isOpneAi = settings.llm_provider === "openai";
+
 	return (
 		<Card>
 			<CardHeader className="flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
@@ -87,20 +92,71 @@ export const BotSettingsCard: FC = () => {
 					<div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
 						<div className="space-y-1.5">
 							<label
-								htmlFor="input-gemini-model-sys"
+								htmlFor="select-provider-sys"
 								className="text-xs text-muted-foreground"
 							>
-								Model
+								Provider
+							</label>
+							<select
+								id="select-provider-sys"
+								className="h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+								value={settings.llm_provider ?? "gemini"}
+								onChange={(e) =>
+									setSettings({
+										...settings,
+										llm_provider: e.target.value as "gemini" | "openai",
+									})
+								}
+							>
+								<option value="gemini">Google Gemini</option>
+								<option value="openai">OpenAI / llama-server</option>
+							</select>
+						</div>
+
+						<div className="space-y-1.5">
+							<label
+								htmlFor="input-model-sys"
+								className="text-xs text-muted-foreground"
+							>
+								{isOpneAi ? "OpenAI / Local Model" : "Gemini Model"}
 							</label>
 							<Input
-								id="input-gemini-model-sys"
-								placeholder="Enter model name"
-								value={settings.gemini_model ?? ""}
+								id="input-model-sys"
+								placeholder={isOpneAi ? "default" : "gemini-3.8-flash"}
+								value={
+									isOpneAi
+										? (settings.openai_model ?? "")
+										: (settings.gemini_model ?? "")
+								}
 								onChange={(e) =>
-									setSettings({ ...settings, gemini_model: e.target.value })
+									isOpneAi
+										? setSettings({ ...settings, openai_model: e.target.value })
+										: setSettings({ ...settings, gemini_model: e.target.value })
 								}
 							/>
 						</div>
+
+						{isOpneAi && (
+							<div className="space-y-1.5 sm:col-span-2">
+								<label
+									htmlFor="input-openai-baseurl-sys"
+									className="text-xs text-muted-foreground"
+								>
+									Server Base URL (e.g. http://localhost:8080/v1)
+								</label>
+								<Input
+									id="input-openai-baseurl-sys"
+									placeholder="http://localhost:8080/v1"
+									value={settings.openai_base_url ?? ""}
+									onChange={(e) =>
+										setSettings({
+											...settings,
+											openai_base_url: e.target.value,
+										})
+									}
+								/>
+							</div>
+						)}
 
 						<div className="space-y-1.5">
 							<label

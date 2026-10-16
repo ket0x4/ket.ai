@@ -7,23 +7,27 @@ import { CONFIG } from "../../config";
 import type { MessageRow } from "../../db/repository";
 import { Repository } from "../../db/repository";
 import logger from "../../utils/logger";
-import { ai } from "./client";
-import type { PreparedDocumentContext } from "./documentPerception";
-import { getRelevantMemories } from "./memory";
+import type { PreparedDocumentContext } from "../gemini/documentPerception";
+import { getRelevantMemories } from "../gemini/memory";
 import {
 	MEMORY_UPDATE_ITEM_SCHEMA,
 	saveExtractedMemories,
-} from "./memoryWorker";
+} from "../gemini/memoryWorker";
 import {
 	buildHistoryList,
 	cleanUserText,
 	getSystemInstruction,
-	getThinkingConfig,
-	runWithRetry,
 	stripEmoji,
-} from "./utils";
+} from "../gemini/utils";
+import { geminiProvider } from "./geminiProvider";
+import { openAiProvider } from "./openAiProvider";
+import type { LlmProvider } from "./types";
 
 export type { GeneratedMediaArtifact } from "../../agent/index";
+
+export function getLlmProvider(): LlmProvider {
+	return CONFIG.LLM_PROVIDER === "openai" ? openAiProvider : geminiProvider;
+}
 
 const lastSummarizedCount = new Map<string, number>();
 const MAX_TRACKED_CHATS = 200;
@@ -216,59 +220,6 @@ function buildResponseSchemaProperties(
 	};
 }
 
-function buildInitialContents(
-	inputPayload: Record<string, unknown>,
-	media?: { buffer: Buffer; mimeType: string },
-): Array<Record<string, unknown>> {
-	const initialParts: Array<Record<string, unknown>> = [
-		{ text: JSON.stringify(inputPayload) },
-	];
-	if (media) {
-		initialParts.push({
-			inlineData: {
-				mimeType: media.mimeType,
-				data: media.buffer.toString("base64"),
-			},
-		});
-	}
-	return [{ role: "user", parts: initialParts }];
-}
-
-function buildGenConfig(
-	options: GenerateResponseOptions,
-	toolsConfig?: Array<Record<string, unknown>>,
-): Record<string, unknown> {
-	const isAgentic = Boolean(toolsConfig && toolsConfig.length > 0);
-	const genConfig: Record<string, unknown> = {
-		systemInstruction: getSystemInstruction(
-			options.personaPrompt,
-			toolRegistry.getAllTools().map((t) => t.name),
-		),
-		maxOutputTokens: isAgentic
-			? CONFIG.MAX_TOOL_OUTPUT_TOKENS && CONFIG.MAX_TOOL_OUTPUT_TOKENS > 0
-				? CONFIG.MAX_TOOL_OUTPUT_TOKENS
-				: undefined
-			: 2048,
-		thinkingConfig: getThinkingConfig(CONFIG.GEMINI_MODEL, { isAgentic }),
-		tools: toolsConfig,
-	};
-
-	if (!toolsConfig) {
-		genConfig.responseMimeType = "application/json";
-		genConfig.responseSchema = {
-			type: "OBJECT",
-			properties: buildResponseSchemaProperties(options.replyDescription),
-			required: ["reply"],
-		};
-	}
-
-	return genConfig;
-}
-
-function isStrayBracket(text: string): boolean {
-	return text === "}" || text === "{" || text === "[]" || text === "{}";
-}
-
 function extractReplyFieldFromObject(
 	parsed: Record<string, unknown>,
 ): string | undefined {
@@ -325,7 +276,7 @@ async function handleJsonReply(
 				senderUsername,
 			).catch((err) => {
 				logger.error(
-					`[Gemini:${traceId}] Error persisting extracted memories:`,
+					`[LLM:${traceId}] Error persisting extracted memories:`,
 					err,
 				);
 			});
@@ -345,7 +296,7 @@ async function handleJsonReply(
 		return "";
 	} catch {
 		logger.warn(
-			`[Gemini:${traceId}] Parse error on model JSON response. Using cleaned plain text. Raw text: "${rawText}"`,
+			`[LLM:${traceId}] Parse error on model JSON response. Using cleaned plain text. Raw text: "${rawText}"`,
 		);
 		return cleanedText;
 	}
@@ -381,9 +332,14 @@ async function parseAndProcessReply(
 		return "";
 	}
 
-	if (isStrayBracket(trimmed)) {
+	if (
+		trimmed === "}" ||
+		trimmed === "{" ||
+		trimmed === "[]" ||
+		trimmed === "{}"
+	) {
 		logger.warn(
-			`[Gemini:${traceId}] Model returned stray bracket/empty payload: "${trimmed}". Suppressing reply.`,
+			`[LLM:${traceId}] Model returned stray bracket/empty payload: "${trimmed}". Suppressing reply.`,
 		);
 		return "";
 	}
@@ -404,8 +360,25 @@ async function parseAndProcessReply(
 		if (jsonReply) return stripEmoji(jsonReply).trim();
 	}
 
-	// Markdown or plain text response (e.g. from tool execution or unstructured output)
 	return stripEmoji(trimmed).trim();
+}
+
+function buildInitialContents(
+	inputPayload: Record<string, unknown>,
+	media?: { buffer: Buffer; mimeType: string },
+): Array<Record<string, unknown>> {
+	const initialParts: Array<Record<string, unknown>> = [
+		{ text: JSON.stringify(inputPayload) },
+	];
+	if (media) {
+		initialParts.push({
+			inlineData: {
+				mimeType: media.mimeType,
+				data: media.buffer.toString("base64"),
+			},
+		});
+	}
+	return [{ role: "user", parts: initialParts }];
 }
 
 function resolveMediaFallbacks(
@@ -472,15 +445,70 @@ function resolveGenerationFailure(
 ): string {
 	if (signal?.aborted) {
 		logger.info(
-			`[Gemini:${traceId}] Generation aborted (timeout or /stop); suppressing reply.`,
+			`[LLM:${traceId}] Generation aborted (timeout or /stop); suppressing reply.`,
 		);
 		return "";
 	}
-	logger.error(`Error in Gemini _generateResponse [${traceId}]:`, error);
+	logger.error(`Error in LLM _generateResponse [${traceId}]:`, error);
 	return fallbackError;
 }
 
-export const GeminiService = {
+function buildGenConfig(
+	personaPrompt: string | undefined,
+	replyDescription: string,
+): Record<string, unknown> {
+	const isAgentic = toolRegistry.count > 0;
+	const systemInstruction = getSystemInstruction(
+		personaPrompt,
+		toolRegistry.getAllTools().map((t) => t.name),
+	);
+
+	const genConfig: Record<string, unknown> = {
+		systemInstruction,
+		maxOutputTokens: isAgentic
+			? CONFIG.MAX_TOOL_OUTPUT_TOKENS && CONFIG.MAX_TOOL_OUTPUT_TOKENS > 0
+				? CONFIG.MAX_TOOL_OUTPUT_TOKENS
+				: undefined
+			: 2048,
+		tools: isAgentic ? toolRegistry.getFunctionDeclarations() : undefined,
+	};
+
+	if (!isAgentic) {
+		genConfig.responseMimeType = "application/json";
+		genConfig.responseSchema = {
+			type: "OBJECT",
+			properties: buildResponseSchemaProperties(replyDescription),
+			required: ["reply"],
+		};
+	}
+
+	return genConfig;
+}
+
+async function loadContextMemories(
+	chatIdStr: string,
+	history: MessageRow[],
+	topicSummary: string | null,
+	options: GenerateResponseOptions,
+	lastMessageText: string,
+	targetUserId?: number,
+): Promise<unknown[]> {
+	if (!chatIdStr) return [];
+	const queryForMemory = options.isSpontaneous
+		? topicSummary || "General chat"
+		: lastMessageText;
+	const isPrivate = Boolean(
+		targetUserId && chatIdStr === targetUserId.toString(),
+	);
+	return await getRelevantMemories(chatIdStr, queryForMemory, {
+		activeTopic: topicSummary || undefined,
+		history,
+		senderUserId: targetUserId,
+		isPrivateChat: isPrivate,
+	});
+}
+
+export const LlmService = {
 	async _generateResponse(
 		history: MessageRow[],
 		topicSummary: string | null,
@@ -492,7 +520,7 @@ export const GeminiService = {
 		try {
 			if (history.length === 0) {
 				logger.warn(
-					`[Gemini:${traceId}] _generateResponse called with empty history. Returning fallback.`,
+					`[LLM:${traceId}] _generateResponse called with empty history. Returning fallback.`,
 				);
 				return options.fallbackEmpty;
 			}
@@ -509,26 +537,18 @@ export const GeminiService = {
 				personaPrompt = activePersona?.prompt;
 			}
 
-			const queryForMemory = options.isSpontaneous
-				? topicSummary || "General chat"
-				: lastMessageText;
 			const targetUserId =
 				options.targetMessage?.userId ??
 				(lastMsg && !lastMsg.is_bot_reply ? lastMsg.user_id : undefined);
-			const senderFirstName = options.targetMessage?.userName;
-			const senderUsername = options.targetMessage?.userUsername;
-			const isPrivate = Boolean(
-				targetUserId && chatIdStr === targetUserId.toString(),
-			);
 
-			const memories = chatIdStr
-				? await getRelevantMemories(chatIdStr, queryForMemory, {
-						activeTopic: topicSummary || undefined,
-						history,
-						senderUserId: targetUserId,
-						isPrivateChat: isPrivate,
-					})
-				: [];
+			const memories = await loadContextMemories(
+				chatIdStr,
+				history,
+				topicSummary,
+				options,
+				lastMessageText,
+				targetUserId,
+			);
 
 			const inputPayload = buildInputPayload(
 				history,
@@ -536,22 +556,9 @@ export const GeminiService = {
 				options,
 				memories,
 			);
+
 			const contents = buildInitialContents(inputPayload, options.media);
-
-			const toolsConfig =
-				toolRegistry.count > 0
-					? [
-							{
-								functionDeclarations: toolRegistry.getFunctionDeclarations(),
-							},
-						]
-					: undefined;
-
-			const effectiveOptions: GenerateResponseOptions = {
-				...options,
-				personaPrompt,
-			};
-			const genConfig = buildGenConfig(effectiveOptions, toolsConfig);
+			const genConfig = buildGenConfig(personaPrompt, options.replyDescription);
 
 			const responseText = await runAgentLoop(contents, genConfig, {
 				chatId: chatIdStr,
@@ -561,18 +568,16 @@ export const GeminiService = {
 				signal: options.signal,
 			});
 
-			const reply = await parseAndProcessReply(
+			return await parseAndProcessReply(
 				responseText,
 				chatIdStr,
 				traceId,
 				history,
 				lastMsg,
 				targetUserId,
-				senderFirstName,
-				senderUsername,
+				options.targetMessage?.userName,
+				options.targetMessage?.userUsername,
 			);
-			// If reply is empty (e.g. suppressed due to parse error), do not send fallback message
-			return reply;
 		} catch (error) {
 			return resolveGenerationFailure(
 				error,
@@ -660,51 +665,32 @@ export const GeminiService = {
 			const prompt =
 				"Analyze the conversations below. Summarize the main topic of conversation or the situation being discussed by a person in a maximum of 1–2 sentences.";
 
-			const response = await runWithRetry(() =>
-				ai.models.generateContent({
-					model: CONFIG.GEMINI_MODEL,
-					contents: JSON.stringify({
-						messages: historyList,
-						instruction: prompt,
-					}),
-					config: {
-						systemInstruction:
-							"You are an analysis expert. You summarize group chats in just 1-2 sentences.",
-						maxOutputTokens: 1024,
-						thinkingConfig: getThinkingConfig(CONFIG.GEMINI_MODEL),
-						responseMimeType: "application/json",
-						responseSchema: {
-							type: "OBJECT",
-							properties: {
-								summary: {
-									type: "STRING",
-									description:
-										"A 1-2 sentence text summarizing the current topic of the group chat.",
-								},
-							},
-							required: ["summary"],
-						},
+			const schema = {
+				type: "OBJECT",
+				properties: {
+					summary: {
+						type: "STRING",
+						description:
+							"A 1-2 sentence text summarizing the current topic of the group chat.",
 					},
+				},
+				required: ["summary"],
+			};
+
+			const parsed = await getLlmProvider().generateStructured<{
+				summary?: string;
+			}>(
+				JSON.stringify({
+					messages: historyList,
+					instruction: prompt,
 				}),
+				schema,
+				"You are an analysis expert. You summarize group chats in just 1-2 sentences.",
 			);
 
-			const responseText = response.text?.trim() || "";
-			if (!responseText) return "";
-
-			try {
-				const cleaned = responseText
-					.replace(/^```(?:json)?\n?|\n?```$/g, "")
-					.trim();
-				const parsed = JSON.parse(cleaned);
-				return typeof parsed.summary === "string" ? parsed.summary.trim() : "";
-			} catch {
-				logger.warn(
-					`[Summarizer] Failed to parse summary JSON. Raw text: "${responseText}"`,
-				);
-				return "";
-			}
+			return typeof parsed?.summary === "string" ? parsed.summary.trim() : "";
 		} catch (error) {
-			logger.error("Error in Gemini summarizeTopic:", error);
+			logger.error("Error in summarizeTopic:", error);
 			return "";
 		}
 	},

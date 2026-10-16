@@ -59,7 +59,7 @@ function decodeEntities(text: string): string {
  * Converts an HTML document into readable plain text: drops script/style/nav
  * noise, collapses whitespace, and decodes common entities.
  */
-export function htmlToText(html: string): string {
+function htmlToText(html: string): string {
 	if (!html) return "";
 	const withoutNoise = html
 		.replace(/<!--[\s\S]*?-->/g, " ")

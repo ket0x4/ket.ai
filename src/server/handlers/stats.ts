@@ -93,7 +93,11 @@ function getOwnerStats(): Response {
 		topChats,
 		uptimeSeconds: Math.floor(process.uptime()),
 		memoryUsageMb: Math.round((memUsage.heapUsed / 1024 / 1024) * 100) / 100,
-		model: CONFIG.GEMINI_MODEL,
+		model:
+			CONFIG.LLM_PROVIDER === "openai"
+				? CONFIG.OPENAI_MODEL
+				: CONFIG.GEMINI_MODEL,
+		llm_provider: CONFIG.LLM_PROVIDER,
 		webSearch: CONFIG.ENABLE_WEB_SEARCH,
 	});
 }
@@ -191,21 +195,30 @@ export async function handleSettings(
 		);
 	}
 
+	const getSettingsSnapshot = () => ({
+		llm_provider: CONFIG.LLM_PROVIDER,
+		gemini_model: CONFIG.GEMINI_MODEL,
+		openai_model: CONFIG.OPENAI_MODEL,
+		openai_base_url: CONFIG.OPENAI_BASE_URL,
+		default_reply_probability: CONFIG.DEFAULT_REPLY_PROBABILITY,
+		chat_history_limit: CONFIG.CHAT_HISTORY_LIMIT,
+		enable_web_search: CONFIG.ENABLE_WEB_SEARCH,
+		max_agent_steps: CONFIG.MAX_AGENT_STEPS,
+		log_level: CONFIG.LOG_LEVEL,
+	});
+
 	if (req.method === "GET") {
-		return jsonResponse({
-			gemini_model: CONFIG.GEMINI_MODEL,
-			default_reply_probability: CONFIG.DEFAULT_REPLY_PROBABILITY,
-			chat_history_limit: CONFIG.CHAT_HISTORY_LIMIT,
-			enable_web_search: CONFIG.ENABLE_WEB_SEARCH,
-			max_agent_steps: CONFIG.MAX_AGENT_STEPS,
-			log_level: CONFIG.LOG_LEVEL,
-		});
+		return jsonResponse(getSettingsSnapshot());
 	}
 
 	if (req.method === "PATCH") {
 		try {
 			const body = (await req.json()) as {
+				llm_provider?: "gemini" | "openai";
 				gemini_model?: string;
+				openai_model?: string;
+				openai_base_url?: string;
+				openai_api_key?: string;
 				default_reply_probability?: number;
 				chat_history_limit?: number;
 				enable_web_search?: boolean;
@@ -216,14 +229,7 @@ export async function handleSettings(
 			return jsonResponse({
 				success: true,
 				message: "Settings updated successfully",
-				settings: {
-					gemini_model: CONFIG.GEMINI_MODEL,
-					default_reply_probability: CONFIG.DEFAULT_REPLY_PROBABILITY,
-					chat_history_limit: CONFIG.CHAT_HISTORY_LIMIT,
-					enable_web_search: CONFIG.ENABLE_WEB_SEARCH,
-					max_agent_steps: CONFIG.MAX_AGENT_STEPS,
-					log_level: CONFIG.LOG_LEVEL,
-				},
+				settings: getSettingsSnapshot(),
 			});
 		} catch (e) {
 			logger.error("[Server] Error updating settings:", e);

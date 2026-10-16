@@ -5,7 +5,7 @@ import { CONFIG } from "../../config";
 // `withChatLock` guarantees at most one generation per chat is active at a time.
 const activeGenerations = new Map<string, AbortController>();
 
-export interface ActiveGeneration {
+interface ActiveGeneration {
 	/** Aborts the generation on demand (see `abortGeneration`). */
 	controller: AbortController;
 	/** Combined signal (manual abort + agent timeout) to pass into the LLM loop. */

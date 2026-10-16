@@ -49,7 +49,7 @@ function isLikelyTextBuffer(buffer: Buffer): boolean {
 	return true;
 }
 
-export function classifyDocument(
+function classifyDocument(
 	filename: string,
 	mimeType: string,
 	buffer: Buffer,

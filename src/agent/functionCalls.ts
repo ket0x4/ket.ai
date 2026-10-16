@@ -1,6 +1,3 @@
-/**
- * Normalized shape of a function call requested by the model.
- */
 export interface RawFunctionCall {
 	id?: string;
 	name: string;
@@ -15,7 +12,7 @@ interface GeminiFunctionCallPart {
 	};
 }
 
-interface GeminiResponseLike {
+interface ModelResponseLike {
 	functionCalls?: Array<{
 		id?: string;
 		name?: string;
@@ -26,15 +23,43 @@ interface GeminiResponseLike {
 			parts?: GeminiFunctionCallPart[];
 		};
 	}>;
+	choices?: Array<{
+		message?: {
+			tool_calls?: Array<{
+				id?: string;
+				type?: string;
+				function?: {
+					name?: string;
+					arguments?: string;
+				};
+			}>;
+		};
+	}>;
 }
 
-/**
- * Extracts function calls from a Gemini model response, supporting both the
- * root `functionCalls` helper property and raw candidate content parts.
- */
 export function extractFunctionCalls(
-	response: GeminiResponseLike,
+	response: ModelResponseLike,
 ): RawFunctionCall[] {
+	if (response.choices?.[0]?.message?.tool_calls) {
+		return response.choices[0].message.tool_calls
+			.filter((tc) => tc.function?.name)
+			.map((tc) => {
+				let parsedArgs: Record<string, unknown> = {};
+				try {
+					parsedArgs = tc.function?.arguments
+						? JSON.parse(tc.function.arguments)
+						: {};
+				} catch {
+					parsedArgs = { raw: tc.function?.arguments };
+				}
+				return {
+					id: tc.id,
+					name: tc.function?.name || "",
+					args: parsedArgs,
+				};
+			});
+	}
+
 	const rawParts = response.candidates?.[0]?.content?.parts;
 	const candidateCalls =
 		response.functionCalls ||

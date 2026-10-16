@@ -2,15 +2,15 @@ import { Bot, Edit3, Plus, Sparkles, Trash2 } from "lucide-react";
 import { type FC, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { SearchInput } from "@/components/common";
-import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import {
+	Button,
+	Card,
 	Select,
 	SelectContent,
 	SelectItem,
 	SelectTrigger,
 	SelectValue,
-} from "@/components/ui/select";
+} from "@/components/ui";
 import { useAsyncAction } from "@/hooks/useAsyncAction";
 import { api } from "@/lib/api";
 import { cn, getChatDisplayName, normalizeSearchText } from "@/lib/utils";
@@ -281,7 +281,10 @@ export const PersonasTab: FC<PersonasTabProps> = ({
 			<div className="flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3">
 				<Sparkles className="h-4 w-4 shrink-0 text-primary" />
 				<div className="min-w-0 flex-1">
-					<div className="truncate text-[11px] text-muted-foreground" dir="auto">
+					<div
+						className="truncate text-[11px] text-muted-foreground"
+						dir="auto"
+					>
 						Active in {selectedChatTitle}
 					</div>
 					<div className="truncate text-sm font-medium" dir="auto">

@@ -93,7 +93,11 @@ export interface Chat {
 }
 
 export interface BotSettings {
+	llm_provider?: "gemini" | "openai";
 	gemini_model?: string;
+	openai_model?: string;
+	openai_base_url?: string;
+	openai_api_key?: string;
 	default_reply_probability?: number;
 	chat_history_limit?: number;
 	max_agent_steps?: number;

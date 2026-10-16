@@ -1,7 +1,7 @@
 import type { Bot } from "grammy";
 import { Repository } from "../db/repository";
-import { GeminiService } from "../services/gemini/index";
 import { transcribeAudio } from "../services/gemini/mediaPerception";
+import { LlmService } from "../services/llm/index";
 import {
 	isDirectMediaInteraction,
 	processMediaInteraction,
@@ -50,7 +50,7 @@ export function registerVoiceHandlers(bot: Bot) {
 					? { ...targetMessage, text: formattedText }
 					: undefined;
 
-				return GeminiService.generateReply({
+				return LlmService.generateReply({
 					history,
 					topicSummary: activeTopic,
 					chatId: chatIdStr,

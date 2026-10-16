@@ -1,10 +1,9 @@
-import { CONFIG } from "../../config/index";
 import type { MessageRow } from "../../db/repository";
 import { Repository } from "../../db/repository";
 import logger from "../../utils/logger";
-import { ai } from "./client";
+import { getLlmProvider } from "../llm/index";
 import { processNewMemory } from "./memory";
-import { getThinkingConfig, resolveTargetUserId, runWithRetry } from "./utils";
+import { resolveTargetUserId } from "./utils";
 
 export const MEMORY_UPDATE_ITEM_SCHEMA = {
 	type: "OBJECT",
@@ -172,24 +171,12 @@ async function runBackgroundMemoryExtraction(chatIdStr: string): Promise<void> {
 	);
 
 	try {
-		const response = await runWithRetry(() =>
-			ai.models.generateContent({
-				model: CONFIG.GEMINI_MODEL,
-				contents: prompt,
-				config: {
-					systemInstruction:
-						"You are a quiet background memory analyzer for a Telegram group bot. Extract factual details about users. Output strictly JSON.",
-					maxOutputTokens: 2048,
-					thinkingConfig: getThinkingConfig(CONFIG.GEMINI_MODEL),
-					responseMimeType: "application/json",
-					// biome-ignore lint/suspicious/noExplicitAny: SDK schema typing
-					responseSchema: getExtractionSchema() as any,
-				},
-			}),
+		const extractedList = await getLlmProvider().generateStructured<unknown[]>(
+			prompt,
+			getExtractionSchema(),
+			"You are a quiet background memory analyzer for a Telegram group bot. Extract factual details about users. Output strictly JSON.",
 		);
 
-		const responseText = response.text?.trim() || "[]";
-		const extractedList = JSON.parse(responseText);
 		const savedCount = await saveExtractedMemories(
 			chatIdStr,
 			extractedList,

@@ -18,7 +18,7 @@ import type {
 	ToolExecutionContext,
 } from "./types";
 
-export class ToolRegistry {
+class ToolRegistry {
 	private readonly tools: Map<string, AgentTool> = new Map();
 
 	constructor(preloadDefaults = false) {

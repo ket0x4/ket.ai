@@ -1,5 +1,6 @@
 import { CONFIG } from "../../config/index";
 import logger from "../../utils/logger";
+import { openAiProvider } from "../llm/openAiProvider";
 import { ai } from "./client";
 import { getThinkingConfig, runWithRetry } from "./utils";
 
@@ -47,7 +48,7 @@ export async function transcribeAudio(
 
 /**
  * Generates a concise, factual 1-2 sentence description for an image.
- * Uses the model configured in CONFIG.GEMINI_MODEL.
+ * Uses the model configured in CONFIG.GEMINI_MODEL or OpenAI provider.
  */
 export async function describeImage(
 	imageBuffer: Buffer,
@@ -59,6 +60,20 @@ export async function describeImage(
 Describe what/who is shown (objects, scene, activities, persons) and any notable visible text, signs, labels, numbers, or titles.
 If it is a meme, tweet, screenshot, or document, state its main topic or message.
 Do not comment, interpret, or make assumptions; provide only factual content. Return ONLY the concise description.${userCaption ? `\nUser caption provided with image: "${userCaption}".` : ""}`;
+
+		if (CONFIG.LLM_PROVIDER === "openai") {
+			const res = await openAiProvider.chat(
+				[
+					{
+						role: "user",
+						content: prompt,
+						media: { buffer: imageBuffer, mimeType },
+					},
+				],
+				{ maxTokens: 1024 },
+			);
+			return res.text;
+		}
 
 		const response = await runWithRetry(() =>
 			ai.models.generateContent({

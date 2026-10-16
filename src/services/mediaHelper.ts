@@ -8,7 +8,7 @@ import {
 } from "../utils/mediaDownloader";
 import { sendLongMessage } from "../utils/message";
 import { botUsername, withChatLock, withTyping } from "./bot";
-import { GeminiService, type TargetMessageInfo } from "./gemini/index";
+import { LlmService, type TargetMessageInfo } from "./llm/index";
 
 interface MediaProcessorOptions {
 	mediaType: "photo" | "voice";
@@ -89,7 +89,7 @@ export async function processMediaInteraction(
 				}
 
 				const mimeType = options.resolveMimeType(downloadResult);
-				const activeTopic = await GeminiService.ensureTopicSummary(
+				const activeTopic = await LlmService.ensureTopicSummary(
 					chatIdStr,
 					chatSettings.current_topic,
 				);
@@ -117,7 +117,7 @@ export async function processMediaInteraction(
 							activeTopic,
 							targetMessage,
 						)
-					: await GeminiService.generateReply({
+					: await LlmService.generateReply({
 							history,
 							topicSummary: activeTopic,
 							chatId: chatIdStr,

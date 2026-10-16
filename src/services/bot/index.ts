@@ -24,11 +24,6 @@ import { installOutgoingArchiveInterceptor } from "./outgoingArchive";
 import { checkRateLimit } from "./rateLimit";
 
 export { withChatLock } from "./concurrency";
-export {
-	extractOutgoingPayload,
-	isTransientStatusMessage,
-	saveOutgoingMessage,
-} from "./outgoingArchive";
 export { withTyping } from "./typing";
 // Public API re-exports (preserves the original `services/bot` surface).
 export { bot, botUsername };

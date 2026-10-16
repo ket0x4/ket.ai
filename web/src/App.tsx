@@ -215,7 +215,11 @@ export default function App() {
 							{navTabs.map((t) => {
 								const Icon = t.icon;
 								return (
-									<TabsTrigger key={t.value} value={t.value} className="shrink-0 gap-1.5">
+									<TabsTrigger
+										key={t.value}
+										value={t.value}
+										className="shrink-0 gap-1.5"
+									>
 										<Icon className="h-3.5 w-3.5" />
 										<span>{t.label}</span>
 									</TabsTrigger>

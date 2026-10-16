@@ -45,7 +45,11 @@ const GroupCard: FC<GroupCardProps> = ({ chat, role, onToggleAllowed }) => {
 	};
 
 	const groupStats = [
-		{ icon: MessageSquare, label: "Msgs", value: chat.stats?.totalMessages ?? 0 },
+		{
+			icon: MessageSquare,
+			label: "Msgs",
+			value: chat.stats?.totalMessages ?? 0,
+		},
 		{ icon: Users, label: "Members", value: chat.stats?.uniqueUsers ?? 0 },
 		{ icon: Brain, label: "Memories", value: chat.memoryCount ?? 0 },
 	];

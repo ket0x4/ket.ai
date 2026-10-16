@@ -12,7 +12,7 @@ interface OutgoingMessageInfo {
 	replyToMessageId?: number;
 }
 
-export function saveOutgoingMessage(
+function saveOutgoingMessage(
 	chatId: string,
 	msgId: number,
 	text: string,
@@ -34,7 +34,7 @@ export function saveOutgoingMessage(
 
 const TRANSIENT_STATUS_REGEX = /^(?:🔍|⚡|📦|📄|✏️|📤|📁|🧹|Spawning subagent)/u;
 
-export function isTransientStatusMessage(text: string): boolean {
+function isTransientStatusMessage(text: string): boolean {
 	if (!text) return false;
 	const trimmed = text.trim();
 	return (
@@ -102,7 +102,7 @@ const SUPPORTED_OUTGOING_METHODS = new Set([
 	"sendVideo",
 ]);
 
-export function extractOutgoingPayload(
+function extractOutgoingPayload(
 	method: string,
 	payload: unknown,
 	result: unknown,

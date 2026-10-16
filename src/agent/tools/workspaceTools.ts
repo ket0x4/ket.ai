@@ -132,7 +132,7 @@ function getWorkspaceFileMime(filename: string): {
 	return { mimeType, type: inferArtifactType(mimeType) };
 }
 
-export async function readWorkspaceFile(
+async function readWorkspaceFile(
 	args: ReadWorkspaceFileArgs,
 	context?: ToolExecutionContext,
 ): Promise<ReadWorkspaceFileResult> {
@@ -284,7 +284,7 @@ function countOccurrences(haystack: string, needle: string): number {
  * current file, replaces an exact (and by default unique) match, and writes it
  * back. Far safer than rewriting whole files for small edits.
  */
-export async function editWorkspaceFile(
+async function editWorkspaceFile(
 	args: EditWorkspaceFileArgs,
 	context?: ToolExecutionContext,
 ): Promise<EditWorkspaceFileResult> {
