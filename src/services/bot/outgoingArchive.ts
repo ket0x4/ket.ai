@@ -56,6 +56,8 @@ function resolveMediaFallbackText(method: string): string {
 			return "[Document]";
 		case "sendVideo":
 			return "[Video]";
+		case "sendMediaGroup":
+			return "[Media]";
 		default:
 			return "";
 	}
@@ -100,6 +102,7 @@ const SUPPORTED_OUTGOING_METHODS = new Set([
 	"sendVoice",
 	"sendAudio",
 	"sendVideo",
+	"sendMediaGroup",
 ]);
 
 function extractOutgoingPayload(
@@ -114,16 +117,22 @@ function extractOutgoingPayload(
 	const chatId = String(payloadRecord.chat_id ?? "");
 	if (!chatId) return null;
 
+	// For sendMediaGroup, result is an array of messages
+	const primaryMsg = Array.isArray(result)
+		? (result[0] as Record<string, unknown> | undefined)
+		: undefined;
+
 	const resultRecord =
 		typeof result === "object" && result !== null
 			? (result as Record<string, unknown>)
 			: undefined;
 	const innerResult =
-		resultRecord &&
+		primaryMsg ||
+		(resultRecord &&
 		typeof resultRecord.result === "object" &&
 		resultRecord.result !== null
 			? (resultRecord.result as Record<string, unknown>)
-			: resultRecord;
+			: resultRecord);
 
 	const msgId =
 		(payloadRecord.message_id as number) ||

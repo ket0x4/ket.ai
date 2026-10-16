@@ -1,4 +1,4 @@
-import type { ArtifactMediaType, GeneratedMediaArtifact } from "./types";
+import type { ArtifactMediaType } from "./types";
 
 const MAX_OUTPUT_CHARS = 6000;
 const MAX_OUTPUT_LINES = 150;
@@ -45,48 +45,6 @@ export function inferArtifactType(
 	if (mimeType?.startsWith("video/")) return "video";
 	if (mimeType?.startsWith("audio/")) return "audio";
 	return "document";
-}
-
-function extractRawArtifacts(result: unknown): unknown[] {
-	if (!result || typeof result !== "object") return [];
-	const obj = result as { artifacts?: unknown; images?: unknown };
-	if (Array.isArray(obj.artifacts)) return obj.artifacts;
-	if (Array.isArray(obj.images)) return obj.images;
-	return [];
-}
-
-function parseGeneratedArtifact(art: {
-	filename?: string;
-	mimeType?: string;
-	data?: string;
-	type?: ArtifactMediaType;
-	sizeBytes?: number;
-}): GeneratedMediaArtifact | null {
-	if (!art.data || typeof art.data !== "string") return null;
-	const buf = Buffer.from(art.data, "base64");
-	return {
-		filename: art.filename || "output.dat",
-		mimeType: art.mimeType || "application/octet-stream",
-		buffer: buf,
-		type: inferArtifactType(art.mimeType, art.type),
-		sizeBytes: art.sizeBytes || buf.length,
-	};
-}
-
-export function extractMediaArtifactsFromResult(
-	result: unknown,
-): GeneratedMediaArtifact[] {
-	const rawArtifacts = extractRawArtifacts(result);
-	if (rawArtifacts.length === 0) return [];
-
-	const artifacts: GeneratedMediaArtifact[] = [];
-	for (const raw of rawArtifacts) {
-		const parsed = parseGeneratedArtifact(
-			raw as Parameters<typeof parseGeneratedArtifact>[0],
-		);
-		if (parsed) artifacts.push(parsed);
-	}
-	return artifacts;
 }
 
 /**

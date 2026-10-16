@@ -42,7 +42,7 @@ function escapeHtml(text: string): string {
  * Converts standard Markdown (fenced code blocks, inline code, bold, italic, strikethrough, links)
  * to Telegram-compatible HTML entities with full syntax highlighting and robust error resilience.
  */
-function markdownToTelegramHtml(markdown: string): string {
+export function markdownToTelegramHtml(markdown: string): string {
 	if (!markdown?.trim()) return "";
 
 	// Step 1: Extract and replace code blocks with unique placeholders

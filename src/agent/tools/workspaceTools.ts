@@ -89,7 +89,6 @@ interface WriteWorkspaceFileArgs {
 	content: string;
 	sessionId?: string;
 	encoding?: "utf-8" | "base64";
-	sendToUser?: boolean;
 }
 
 export interface WriteWorkspaceFileResult {
@@ -213,29 +212,13 @@ export async function writeWorkspaceFile(
 			encoding: args.encoding,
 		});
 
-		if (args.sendToUser && data.success && context?.emitArtifact) {
-			const buf =
-				args.encoding === "base64"
-					? Buffer.from(content, "base64")
-					: Buffer.from(content, "utf-8");
-			const { mimeType, type: artType } = getWorkspaceFileMime(filename);
-
-			context.emitArtifact({
-				filename,
-				mimeType,
-				buffer: buf,
-				type: artType,
-				sizeBytes: buf.length,
-			});
-		}
-
 		return {
 			success: data.success,
 			filename,
 			sizeBytes: data.sizeBytes,
 			error: data.error,
 			system_note: data.success
-				? `File '${filename}' written successfully (${data.sizeBytes} bytes)${args.sendToUser ? " and queued for sending to user" : ""}.`
+				? `File '${filename}' written successfully (${data.sizeBytes} bytes).`
 				: `Failed writing '${filename}': ${data.error}`,
 		};
 	} catch (err) {
@@ -256,7 +239,6 @@ interface EditWorkspaceFileArgs {
 	new_string: string;
 	replace_all?: boolean;
 	sessionId?: string;
-	sendToUser?: boolean;
 }
 
 interface EditWorkspaceFileResult {
@@ -348,7 +330,6 @@ async function editWorkspaceFile(
 			filename,
 			content: updated,
 			sessionId: args.sessionId,
-			sendToUser: args.sendToUser,
 		},
 		context,
 	);
@@ -368,7 +349,7 @@ async function editWorkspaceFile(
 		filename,
 		replacements,
 		sizeBytes: writeRes.sizeBytes,
-		system_note: `Applied ${replacements} replacement(s) to '${filename}'.${args.sendToUser ? " The updated file was also queued for delivery to the user." : ""}`,
+		system_note: `Applied ${replacements} replacement(s) to '${filename}'.`,
 	};
 }
 
@@ -508,9 +489,27 @@ async function sendWorkspaceFile(
 	args: SendWorkspaceFileArgs,
 	context?: ToolExecutionContext,
 ): Promise<SendWorkspaceFileResult> {
+	const filename = validateFilename(args.filename);
+	if (!filename) {
+		return {
+			success: false,
+			filename: "",
+			error: "Filename parameter is required.",
+		};
+	}
+
+	const lowerFilename = filename.toLowerCase();
+	if (context?.sentFiles?.has(lowerFilename)) {
+		return {
+			success: true,
+			filename,
+			system_note: `File '${filename}' has already been delivered to the user in this interaction. Do not call send_workspace_file again for '${filename}'. Proceed with your answer to the user.`,
+		};
+	}
+
 	const readRes = await readWorkspaceFile(
 		{
-			filename: args.filename,
+			filename,
 			sessionId: args.sessionId,
 			encoding: "base64",
 		},
@@ -522,12 +521,11 @@ async function sendWorkspaceFile(
 			success: false,
 			filename: readRes.filename,
 			error: readRes.error,
-			system_note: `Could not retrieve '${args.filename}' to send to user. Ensure file exists in workspace.`,
+			system_note: `Could not retrieve '${filename}' to send to user. Ensure file exists in workspace.`,
 		};
 	}
 
 	try {
-		const filename = readRes.filename;
 		const buffer = Buffer.from(readRes.data, "base64");
 		const { mimeType, type: artType } = getWorkspaceFileMime(filename);
 
@@ -537,17 +535,19 @@ async function sendWorkspaceFile(
 			buffer,
 			type: artType,
 			sizeBytes: buffer.length,
+			caption: args.caption?.trim() || undefined,
 		};
 
 		if (context?.emitArtifact) {
 			context.emitArtifact(artifact);
 		}
+		context?.sentFiles?.add(lowerFilename);
 
 		return {
 			success: true,
 			filename,
 			sizeBytes: buffer.length,
-			system_note: `File '${filename}' (${buffer.length} bytes) successfully queued and will be delivered to the user as a Telegram file attachment.`,
+			system_note: `File '${filename}' (${buffer.length} bytes) successfully queued and will be delivered to the user as a Telegram file attachment. Do not call send_workspace_file again for this file.`,
 		};
 	} catch (err) {
 		const msg = err instanceof Error ? err.message : String(err);
@@ -658,7 +658,7 @@ export const writeWorkspaceFileTool: AgentTool<
 > = {
 	name: "write_workspace_file",
 	description:
-		"Writes or updates a text/code file in the persistent session workspace. Set sendToUser to true if you want the written file delivered directly to the user as a Telegram file attachment.",
+		"Writes or updates a text/code file in the persistent session workspace. To deliver the file to the user, call send_workspace_file.",
 	parameters: {
 		type: "OBJECT",
 		properties: {
@@ -670,11 +670,6 @@ export const writeWorkspaceFileTool: AgentTool<
 			content: {
 				type: "STRING",
 				description: "Text or code content to write into the file.",
-			},
-			sendToUser: {
-				type: "BOOLEAN",
-				description:
-					"Optional. Set to true to deliver this file directly to the Telegram user as a document attachment.",
 			},
 		},
 		required: ["filename", "content"],
@@ -716,11 +711,6 @@ export const editWorkspaceFileTool: AgentTool<
 				description:
 					"Optional. When true, replace every occurrence of old_string instead of requiring a unique match.",
 			},
-			sendToUser: {
-				type: "BOOLEAN",
-				description:
-					"Optional. Set to true to deliver the updated file to the Telegram user as a document attachment.",
-			},
 		},
 		required: ["filename", "old_string", "new_string"],
 	},
@@ -739,7 +729,7 @@ export const sendWorkspaceFileTool: AgentTool<
 > = {
 	name: "send_workspace_file",
 	description:
-		"Delivers an existing workspace file, chart, spreadsheet, or generated media directly to the user as a Telegram document, photo, or video.",
+		"Delivers an existing workspace file, chart, spreadsheet, or generated media directly to the user as a Telegram document, photo, or video. You can optionally specify a caption describing the file.",
 	parameters: {
 		type: "OBJECT",
 		properties: {
@@ -747,6 +737,11 @@ export const sendWorkspaceFileTool: AgentTool<
 				type: "STRING",
 				description:
 					"Name of the existing file in the workspace to send to the user (e.g. 'analysis.xlsx', 'chart.png', 'summary.pdf').",
+			},
+			caption: {
+				type: "STRING",
+				description:
+					"Optional caption or summary to accompany this file in Telegram.",
 			},
 		},
 		required: ["filename"],

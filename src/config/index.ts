@@ -132,7 +132,7 @@ export const CONFIG = {
 			? configJson.max_identical_tool_calls
 			: process.env.MAX_IDENTICAL_TOOL_CALLS
 				? parseInt(process.env.MAX_IDENTICAL_TOOL_CALLS, 10)
-				: 2,
+				: 1,
 	MAX_TOOL_FAILURES_PER_TOOL:
 		typeof configJson.max_tool_failures_per_tool === "number"
 			? configJson.max_tool_failures_per_tool

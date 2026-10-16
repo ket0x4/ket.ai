@@ -3,10 +3,7 @@ import { ToolTraceLogger } from "../utils/toolTrace";
 import { type AgentEventHandler, mergeAgentEventHandlers } from "./events";
 import type { RawFunctionCall } from "./functionCalls";
 import { toolRegistry } from "./registry";
-import {
-	extractMediaArtifactsFromResult,
-	sanitizeToolResultForLLM,
-} from "./sanitizer";
+import { sanitizeToolResultForLLM } from "./sanitizer";
 import type { ToolExecutionContext } from "./types";
 
 export interface ToolExecutionOptions {
@@ -15,6 +12,7 @@ export interface ToolExecutionOptions {
 	traceId?: string;
 	signal?: AbortSignal;
 	onEvent?: AgentEventHandler;
+	sentFiles?: Set<string>;
 }
 
 function buildFunctionResponse(
@@ -38,7 +36,6 @@ function buildFunctionResponse(
 async function executeSingleToolCall(
 	fc: RawFunctionCall,
 	context: ToolExecutionContext,
-	emit: AgentEventHandler,
 ): Promise<Record<string, unknown>> {
 	const name = fc.name;
 	const args: Record<string, unknown> = { ...(fc.args || {}) };
@@ -66,11 +63,6 @@ async function executeSingleToolCall(
 	}
 
 	const durationMs = Date.now() - startTime;
-
-	const artifacts = extractMediaArtifactsFromResult(result);
-	if (artifacts.length > 0) {
-		await emit({ type: "media-generated", media: artifacts });
-	}
 
 	const snippet =
 		typeof result === "string"
@@ -118,6 +110,7 @@ export async function executeFunctionCallsInParallel(
 		step,
 		traceId: options.traceId,
 		signal: options.signal,
+		sentFiles: options.sentFiles,
 	};
 
 	const toolPromises = functionCalls.map((fc) => {
@@ -130,7 +123,7 @@ export async function executeFunctionCallsInParallel(
 				void emit({ type: "media-generated", media: [artifact] });
 			},
 		};
-		return executeSingleToolCall(fc, toolContext, emit);
+		return executeSingleToolCall(fc, toolContext);
 	});
 
 	return Promise.all(toolPromises);

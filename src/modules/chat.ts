@@ -1,6 +1,9 @@
 import type { Bot, Context } from "grammy";
 import { mergeAgentEventHandlers } from "../agent/index";
-import { createToolNotifier, sendSingleArtifact } from "../bot/ui/index";
+import {
+	createToolNotifier,
+	deliverResponseWithArtifacts,
+} from "../bot/ui/index";
 import { CONFIG } from "../config";
 import { Repository } from "../db/repository/index";
 import { startGeneration } from "../services/bot/generation";
@@ -26,7 +29,6 @@ import {
 	getAudioMimeType,
 	isDownloadError,
 } from "../utils/mediaDownloader";
-import { sendLongMessage } from "../utils/message";
 
 const COOLDOWN_SECONDS = 300; // 5 minutes cooldown between random replies
 
@@ -328,19 +330,13 @@ async function generateAndSendReply(
 		generation.finish();
 	}
 
-	// Send generated artifacts (Photos, Spreadsheets, PDF reports, Videos, Audio)
-	for (const art of generatedArtifacts) {
-		await sendSingleArtifact(ctx, art, replyToMessageId);
-	}
-
-	await sendLongMessage(
+	await deliverResponseWithArtifacts(
 		ctx,
 		reply,
-		replyToMessageId ? { reply_to_message_id: replyToMessageId } : undefined,
+		generatedArtifacts,
+		notifier,
+		replyToMessageId,
 	);
-
-	// Delete the temporary status message after final answer is sent
-	await notifier.cleanup();
 }
 
 function checkDirectInteraction(

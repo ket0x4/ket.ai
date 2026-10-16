@@ -259,6 +259,16 @@ function compactContents(
 }
 
 function compactEntry(entry: Record<string, unknown>): Record<string, unknown> {
+	if (
+		typeof entry.content === "string" &&
+		entry.content.length > COMPACT_TEXT_PART_LIMIT
+	) {
+		return {
+			...entry,
+			content: `${entry.content.slice(0, COMPACT_TEXT_PART_LIMIT)}\n[... earlier text compacted ...]`,
+		};
+	}
+
 	const parts = Array.isArray(entry.parts)
 		? (entry.parts as Array<Record<string, unknown>>)
 		: null;
@@ -685,7 +695,12 @@ interface LoopContext {
 function resolveLoopContext(options: AgentLoopOptions): LoopContext {
 	const traceId = options.traceId || generateTraceId();
 	const sessionId = options.sessionId || options.chatId || "default";
-	return { traceId, sessionId, stepOptions: { ...options, traceId } };
+	const sentFiles = options.sentFiles || new Set<string>();
+	return {
+		traceId,
+		sessionId,
+		stepOptions: { ...options, traceId, sentFiles },
+	};
 }
 
 /**

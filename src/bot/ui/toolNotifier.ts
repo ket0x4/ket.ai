@@ -4,9 +4,11 @@ import type { ToolProgressUpdate } from "../../agent/types";
 import { CONFIG } from "../../config";
 import logger from "../../utils/logger";
 
-interface ToolNotifier {
+export interface ToolNotifier {
 	onEvent: AgentEventHandler;
 	cleanup: () => Promise<void>;
+	getStatusMessageId: () => number | undefined;
+	markCleanedWithoutDeletion: () => void;
 }
 
 function normalizeLanguageName(raw?: unknown): string {
@@ -205,6 +207,15 @@ export function createToolNotifier(
 			}
 			// "media-generated" events are handled by the caller (artifact delivery).
 		},
+		getStatusMessageId: () => statusMessageId,
+		markCleanedWithoutDeletion: () => {
+			isCleanedUp = true;
+			if (throttleTimer) {
+				clearTimeout(throttleTimer);
+				throttleTimer = null;
+			}
+			statusMessageId = undefined;
+		},
 		cleanup: async () => {
 			isCleanedUp = true;
 			if (throttleTimer) {
@@ -215,6 +226,7 @@ export function createToolNotifier(
 				await ctx.api.deleteMessage(ctx.chat.id, statusMessageId).catch((e) => {
 					logger.warn(`${logPrefix} Failed to delete status message:`, e);
 				});
+				statusMessageId = undefined;
 			}
 		},
 	};

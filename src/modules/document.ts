@@ -1,6 +1,9 @@
 import type { Bot, Context } from "grammy";
 import { mergeAgentEventHandlers } from "../agent/index";
-import { createToolNotifier, sendSingleArtifact } from "../bot/ui/index";
+import {
+	createToolNotifier,
+	deliverResponseWithArtifacts,
+} from "../bot/ui/index";
 import { CONFIG } from "../config";
 import { Repository } from "../db/repository/index";
 import { withChatLock, withTyping } from "../services/bot/index";
@@ -16,7 +19,6 @@ import {
 	downloadTelegramFile,
 	isDownloadError,
 } from "../utils/mediaDownloader";
-import { sendLongMessage } from "../utils/message";
 
 async function executeDocumentReplyWorkflow(
 	ctx: Context,
@@ -89,14 +91,13 @@ async function executeDocumentReplyWorkflow(
 			}),
 		});
 
-		// Send generated media artifacts (plots, edited files, audio, video)
-		for (const art of generatedArtifacts) {
-			await sendSingleArtifact(ctx, art, msg.message_id);
-		}
-
-		await sendLongMessage(ctx, reply, {
-			reply_to_message_id: msg.message_id,
-		});
+		await deliverResponseWithArtifacts(
+			ctx,
+			reply,
+			generatedArtifacts,
+			notifier,
+			msg.message_id,
+		);
 
 		checkAndRunBackgroundMemoryExtraction(chatIdStr).catch(() => {});
 	} catch (err) {

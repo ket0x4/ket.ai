@@ -17,11 +17,12 @@ import {
 	buildHistoryList,
 	cleanUserText,
 	getSystemInstruction,
+	resolveMessageFallback,
 	stripEmoji,
 } from "../gemini/utils";
 import { geminiProvider } from "./geminiProvider";
 import { openAiProvider } from "./openAiProvider";
-import type { LlmProvider } from "./types";
+import type { ChatMessage, LlmProvider } from "./types";
 
 export type { GeneratedMediaArtifact } from "../../agent/index";
 
@@ -172,7 +173,7 @@ function buildInputPayload(
 
 	if (options.document) {
 		inputPayload.attached_document = buildDocumentAttachment(options.document);
-		const docGuidance = `Document '${options.document.fileName}' is available in your persistent workspace. You can inspect it, summarize it, execute it with execute_code (Python/Bash/Bun), or edit it and send it to the user with send_workspace_file or write_workspace_file (with sendToUser: true).`;
+		const docGuidance = `Document '${options.document.fileName}' is available in your persistent workspace. You can inspect it, summarize it, execute it with execute_code (Python/Bash/Bun), or edit it with edit_workspace_file/write_workspace_file and deliver it to the user with send_workspace_file.`;
 		inputPayload.instruction = inputPayload.instruction
 			? `${inputPayload.instruction} ${docGuidance}`
 			: docGuidance;
@@ -295,11 +296,32 @@ async function handleJsonReply(
 
 		return "";
 	} catch {
+		const looseReply = tryExtractReplyFromJsonLoose(cleanedText);
+		if (looseReply) return looseReply;
+
 		logger.warn(
 			`[LLM:${traceId}] Parse error on model JSON response. Using cleaned plain text. Raw text: "${rawText}"`,
 		);
 		return cleanedText;
 	}
+}
+
+function tryExtractReplyFromJsonLoose(text: string): string | null {
+	const match = text.match(
+		/"(?:reply|text|message|answer|response|content|output|result)"\s*:\s*"([\s\S]*?)"(?:\s*,\s*"|\s*})/i,
+	);
+	if (match?.[1]) {
+		try {
+			return JSON.parse(`"${match[1]}"`);
+		} catch {
+			return match[1]
+				.replace(/\\n/g, "\n")
+				.replace(/\\"/g, '"')
+				.replace(/\\\\/g, "\\")
+				.trim();
+		}
+	}
+	return null;
 }
 
 function tryExtractJsonString(text: string): string | null {
@@ -453,27 +475,201 @@ function resolveGenerationFailure(
 	return fallbackError;
 }
 
+function formatMemoriesSection(memories: unknown[]): string | undefined {
+	if (!memories || memories.length === 0) return undefined;
+	const facts = memories
+		.map((m) => {
+			if (typeof m === "string") return m.trim();
+			if (typeof m === "object" && m !== null) {
+				const fact =
+					(m as { fact?: string; text?: string }).fact ||
+					(m as { fact?: string; text?: string }).text;
+				if (fact) return fact.trim();
+			}
+			return "";
+		})
+		.filter(Boolean);
+	if (facts.length === 0) return undefined;
+	return `### RELEVANT USER & CHAT FACTS ###\n${facts.map((f) => `- ${f}`).join("\n")}`;
+}
+
+function buildConversationalContextSections(
+	topicSummary: string | null,
+	options: GenerateResponseOptions,
+	memories: unknown[],
+): string[] {
+	const sections: string[] = [];
+
+	if (
+		topicSummary &&
+		topicSummary !== "General chat is going on, no specific topic."
+	) {
+		sections.push(`### ACTIVE CONVERSATION TOPIC ###\n${topicSummary}`);
+	}
+
+	const memorySection = formatMemoriesSection(memories);
+	if (memorySection) {
+		sections.push(memorySection);
+	}
+
+	if (options.instruction) {
+		sections.push(`### SPECIFIC INSTRUCTION ###\n${options.instruction}`);
+	}
+
+	if (options.document) {
+		sections.push(
+			`### ATTACHED DOCUMENT ###\nDocument '${options.document.fileName}' (${options.document.sizeBytes} bytes) is saved in your persistent sandbox workspace. You can read, run, edit, or summarize it using your workspace tools.`,
+		);
+	}
+
+	return sections;
+}
+
+function formatParentPreviewText(text?: string | null): string {
+	if (!text) return "[Media]";
+	return text.length > 40 ? `${text.slice(0, 37)}...` : text;
+}
+
+function resolveReplyPrefix(
+	replyToId: number | undefined,
+	msgMap: Map<number, MessageRow>,
+): string {
+	if (!replyToId) return "";
+	const parent = msgMap.get(replyToId);
+	if (!parent) return "";
+	const parentSender = parent.is_bot_reply
+		? "You (ket.ai)"
+		: parent.first_name || "User";
+	const preview = formatParentPreviewText(parent.text);
+	return `[Replying to ${parentSender}: "${preview}"]\n`;
+}
+
+function buildHistoricalUserMessage(
+	msg: MessageRow,
+	msgMap: Map<number, MessageRow>,
+): ChatMessage {
+	const senderName =
+		msg.first_name || (msg.user_id ? `User_${msg.user_id}` : "User");
+	const clean = cleanUserText(msg.text) || resolveMessageFallback(msg);
+	const prefix = resolveReplyPrefix(msg.reply_to_message_id, msgMap);
+	return { role: "user", content: `${prefix}${senderName}: ${clean}` };
+}
+
+function buildActiveUserMessage(
+	options: GenerateResponseOptions,
+	lastMsg: MessageRow | undefined,
+): ChatMessage {
+	if (options.targetMessage) {
+		const sender = options.targetMessage.userName || "User";
+		const text =
+			cleanUserText(options.targetMessage.text) || options.mediaFallbackText;
+		let content = `${sender}: ${text}`;
+		if (options.targetMessage.replyTo) {
+			const preview = formatParentPreviewText(
+				options.targetMessage.replyTo.text,
+			);
+			content = `[Replying to ${options.targetMessage.replyTo.senderName}: "${preview}"]\n${content}`;
+		}
+		return { role: "user", content, media: options.media };
+	}
+
+	const sender = resolveSenderDescription(lastMsg);
+	const lastMessageText = resolveLastMessageText(
+		lastMsg,
+		options.mediaFallbackText,
+	);
+	return {
+		role: "user",
+		content: `${sender}: ${lastMessageText}`,
+		media: options.media,
+	};
+}
+
+function buildSpontaneousMessages(
+	lastMsg: MessageRow | undefined,
+	mediaFallbackText: string,
+): ChatMessage[] {
+	const messages: ChatMessage[] = [];
+	if (lastMsg) {
+		const senderName = lastMsg.is_bot_reply
+			? "You (ket.ai)"
+			: lastMsg.first_name || "User";
+		const lastText = resolveLastMessageText(lastMsg, mediaFallbackText);
+		messages.push({
+			role: lastMsg.is_bot_reply ? "assistant" : "user",
+			content: `${senderName}: ${lastText}`,
+		});
+	}
+	messages.push({
+		role: "user",
+		content:
+			"You observe the ongoing chat above. Chime in naturally with a short, witty, or helpful spontaneous comment as ket.ai.",
+	});
+	return messages;
+}
+
+function buildConversationalMessages(
+	history: MessageRow[],
+	options: GenerateResponseOptions,
+): ChatMessage[] {
+	const messages: ChatMessage[] = [];
+	const lastMsg = history[history.length - 1];
+	const msgMap = new Map<number, MessageRow>();
+	for (const m of history) {
+		msgMap.set(m.message_id, m);
+	}
+
+	const historySubset =
+		history.length > 1 ? history.slice(0, history.length - 1) : [];
+
+	for (const msg of historySubset) {
+		if (msg.is_bot_reply) {
+			messages.push({
+				role: "assistant",
+				content: msg.text || options.mediaFallbackText,
+			});
+		} else {
+			messages.push(buildHistoricalUserMessage(msg, msgMap));
+		}
+	}
+
+	if (options.isSpontaneous) {
+		messages.push(
+			...buildSpontaneousMessages(lastMsg, options.mediaFallbackText),
+		);
+		return messages;
+	}
+
+	messages.push(buildActiveUserMessage(options, lastMsg));
+	return messages;
+}
+
 function buildGenConfig(
 	personaPrompt: string | undefined,
 	replyDescription: string,
+	contextSections?: string[],
 ): Record<string, unknown> {
 	const isAgentic = toolRegistry.count > 0;
+	const isConversationalProvider = CONFIG.LLM_PROVIDER === "openai";
 	const systemInstruction = getSystemInstruction(
 		personaPrompt,
 		toolRegistry.getAllTools().map((t) => t.name),
+		contextSections,
 	);
 
 	const genConfig: Record<string, unknown> = {
 		systemInstruction,
 		maxOutputTokens: isAgentic
-			? CONFIG.MAX_TOOL_OUTPUT_TOKENS && CONFIG.MAX_TOOL_OUTPUT_TOKENS > 0
-				? CONFIG.MAX_TOOL_OUTPUT_TOKENS
-				: undefined
+			? isConversationalProvider
+				? 4096
+				: CONFIG.MAX_TOOL_OUTPUT_TOKENS && CONFIG.MAX_TOOL_OUTPUT_TOKENS > 0
+					? CONFIG.MAX_TOOL_OUTPUT_TOKENS
+					: undefined
 			: 2048,
 		tools: isAgentic ? toolRegistry.getFunctionDeclarations() : undefined,
 	};
 
-	if (!isAgentic) {
+	if (!isAgentic && !isConversationalProvider) {
 		genConfig.responseMimeType = "application/json";
 		genConfig.responseSchema = {
 			type: "OBJECT",
@@ -550,15 +746,35 @@ export const LlmService = {
 				targetUserId,
 			);
 
-			const inputPayload = buildInputPayload(
-				history,
-				topicSummary,
-				options,
-				memories,
-			);
+			const isConversationalProvider = CONFIG.LLM_PROVIDER === "openai";
+			let contents: Array<Record<string, unknown>>;
+			let genConfig: Record<string, unknown>;
 
-			const contents = buildInitialContents(inputPayload, options.media);
-			const genConfig = buildGenConfig(personaPrompt, options.replyDescription);
+			if (isConversationalProvider) {
+				const contextSections = buildConversationalContextSections(
+					topicSummary,
+					options,
+					memories,
+				);
+				contents = buildConversationalMessages(
+					history,
+					options,
+				) as unknown as Array<Record<string, unknown>>;
+				genConfig = buildGenConfig(
+					personaPrompt,
+					options.replyDescription,
+					contextSections,
+				);
+			} else {
+				const inputPayload = buildInputPayload(
+					history,
+					topicSummary,
+					options,
+					memories,
+				);
+				contents = buildInitialContents(inputPayload, options.media);
+				genConfig = buildGenConfig(personaPrompt, options.replyDescription);
+			}
 
 			const responseText = await runAgentLoop(contents, genConfig, {
 				chatId: chatIdStr,

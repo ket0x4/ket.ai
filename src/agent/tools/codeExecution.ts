@@ -54,6 +54,7 @@ interface CodeExecutionResult {
 	exit_code: number;
 	execution_time_ms: number;
 	installed_packages?: string[];
+	detected_files?: string[];
 	artifacts?: CodeExecutionArtifact[];
 	images?: CodeExecutionImage[];
 	error_hint?: string;
@@ -79,7 +80,7 @@ function buildSystemNote(data: {
 		const fileList = allArtifacts
 			.map((art) => `${art.filename} (${art.type || "file"})`)
 			.join(", ");
-		systemNote += ` Generated artifact(s) [${fileList}] will be automatically delivered/displayed to the user in Telegram. Briefly describe or summarize what was created in your reply.`;
+		systemNote += ` Generated workspace file(s): [${fileList}]. To deliver any of these files to the user, call send_workspace_file({ filename, caption? }).`;
 	}
 
 	if (data.errorHint) {
@@ -127,11 +128,11 @@ async function fetchSandboxExecution(
 function formatSandboxResult(
 	data: RawSandboxExecutionResponse,
 ): CodeExecutionResult {
-	const artifacts = data.artifacts || data.images || [];
-	const images = data.images || artifacts.filter((a) => a.type === "image");
+	const allArtifacts = data.artifacts || data.images || [];
+	const detectedFiles = allArtifacts.map((a) => a.filename);
 
 	logger.info(
-		`[CodeExecutionTool] Sandbox executed in ${data.executionTimeMs}ms with exit code ${data.exitCode} (artifacts: ${artifacts.length}, images: ${images.length})`,
+		`[CodeExecutionTool] Sandbox executed in ${data.executionTimeMs}ms with exit code ${data.exitCode} (detected workspace files: ${detectedFiles.length})`,
 	);
 
 	return {
@@ -143,13 +144,12 @@ function formatSandboxResult(
 		exit_code: data.exitCode,
 		execution_time_ms: data.executionTimeMs,
 		installed_packages: data.installedPackages,
-		artifacts,
-		images,
+		detected_files: detectedFiles.length > 0 ? detectedFiles : undefined,
 		error_hint: data.errorHint,
 		truncated: data.truncated,
 		error: data.error,
 		notes: data.notes,
-		system_note: buildSystemNote({ ...data, artifacts, images }),
+		system_note: buildSystemNote(data),
 	};
 }
 

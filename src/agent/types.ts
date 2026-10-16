@@ -22,6 +22,7 @@ export interface GeneratedMediaArtifact {
 	buffer: Buffer;
 	type: ArtifactMediaType;
 	sizeBytes: number;
+	caption?: string;
 }
 
 export interface ToolProgressUpdate {
@@ -37,6 +38,7 @@ export interface ToolExecutionContext {
 	step?: number;
 	traceId?: string;
 	signal?: AbortSignal;
+	sentFiles?: Set<string>;
 	onProgress?: (progress: ToolProgressUpdate) => void;
 	emitArtifact?: (artifact: GeneratedMediaArtifact) => void;
 }

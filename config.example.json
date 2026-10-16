@@ -17,7 +17,7 @@
 	"sandbox_url": "http://localhost:8080",
 	"sandbox_timeout_ms": 45000,
 	"max_agent_steps": 3,
-	"max_identical_tool_calls": 2,
+	"max_identical_tool_calls": 1,
 	"max_tool_failures_per_tool": 3,
 	"agent_context_max_chars": 80000,
 	"gemini_min_request_interval_ms": 3500,

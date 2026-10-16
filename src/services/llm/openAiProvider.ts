@@ -188,7 +188,8 @@ function extractOpenAiToolCalls(
 ): RawFunctionCall[] {
 	if (!choice?.message?.tool_calls) return [];
 	const toolCalls: RawFunctionCall[] = [];
-	for (const tc of choice.message.tool_calls) {
+	for (let i = 0; i < choice.message.tool_calls.length; i++) {
+		const tc = choice.message.tool_calls[i];
 		if (tc.type === "function") {
 			let parsedArgs: Record<string, unknown> = {};
 			try {
@@ -198,14 +199,113 @@ function extractOpenAiToolCalls(
 			} catch {
 				parsedArgs = { raw: tc.function.arguments };
 			}
+			const effectiveId =
+				tc.id?.trim() || `call_${i}_${tc.function.name || "fn"}_${Date.now()}`;
 			toolCalls.push({
-				id: tc.id,
+				id: effectiveId,
 				name: tc.function.name,
 				args: parsedArgs,
 			});
 		}
 	}
 	return toolCalls;
+}
+
+function tryExtractArraySlice(cleaned: string): unknown | null {
+	const first = cleaned.indexOf("[");
+	const last = cleaned.lastIndexOf("]");
+	if (first !== -1 && last > first) {
+		try {
+			return JSON.parse(cleaned.slice(first, last + 1));
+		} catch {}
+	}
+	return null;
+}
+
+function tryExtractObjectSlice(cleaned: string): unknown | null {
+	const first = cleaned.indexOf("{");
+	const last = cleaned.lastIndexOf("}");
+	if (first !== -1 && last > first) {
+		try {
+			return JSON.parse(cleaned.slice(first, last + 1));
+		} catch {}
+	}
+	return null;
+}
+
+function extractFirstArrayValue(obj: unknown): unknown | null {
+	if (!obj || typeof obj !== "object" || Array.isArray(obj)) return null;
+	for (const val of Object.values(obj as Record<string, unknown>)) {
+		if (Array.isArray(val)) return val;
+	}
+	return null;
+}
+
+function tryRelaxedJsonParse(cleaned: string): unknown | null {
+	try {
+		const relaxed = cleaned.replace(/,\s*([}\]])/g, "$1");
+		return JSON.parse(relaxed);
+	} catch {
+		return null;
+	}
+}
+
+function tryExtractDirectJson(
+	cleaned: string,
+	isArrayExpected: boolean,
+): unknown | null {
+	try {
+		const parsed = JSON.parse(cleaned);
+		if (isArrayExpected) {
+			const nested = extractFirstArrayValue(parsed);
+			if (nested) return nested;
+		}
+		return parsed;
+	} catch {
+		return null;
+	}
+}
+
+function tryExtractObjectOrArraySlice(
+	cleaned: string,
+	isArrayExpected: boolean,
+): unknown | null {
+	if (isArrayExpected) {
+		const arrSlice = tryExtractArraySlice(cleaned);
+		if (arrSlice) return arrSlice;
+	}
+	const objSlice = tryExtractObjectSlice(cleaned);
+	if (objSlice) {
+		if (isArrayExpected) {
+			const nested = extractFirstArrayValue(objSlice);
+			if (nested) return nested;
+		}
+		return objSlice;
+	}
+	return null;
+}
+
+function parseStructuredJson<T>(rawText: string, isArrayExpected = false): T {
+	if (!rawText) return (isArrayExpected ? [] : {}) as T;
+
+	const cleaned = rawText
+		.replace(/^```(?:json)?\s*/i, "")
+		.replace(/\s*```$/i, "")
+		.trim();
+
+	const direct = tryExtractDirectJson(cleaned, isArrayExpected);
+	if (direct !== null) return direct as T;
+
+	const sliced = tryExtractObjectOrArraySlice(cleaned, isArrayExpected);
+	if (sliced !== null) return sliced as T;
+
+	const relaxed = tryRelaxedJsonParse(cleaned);
+	if (relaxed !== null) return relaxed as T;
+
+	logger.warn(
+		`[OpenAI] Failed to parse structured JSON from text: "${rawText.slice(0, 200)}"`,
+	);
+	return (isArrayExpected ? [] : {}) as T;
 }
 
 class OpenAiProvider implements LlmProvider {
@@ -244,11 +344,17 @@ class OpenAiProvider implements LlmProvider {
 		);
 		const tools = convertTools(options?.tools);
 
+		// Safe token limit for local models / OpenAI provider to prevent context OOM / 400 errors
+		const safeMaxTokens = Math.min(
+			options?.maxTokens && options.maxTokens > 0 ? options.maxTokens : 2048,
+			4096,
+		);
+
 		const params: OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming =
 			{
 				model: CONFIG.OPENAI_MODEL,
 				messages: openAiMessages,
-				max_tokens: options?.maxTokens || 2048,
+				max_tokens: safeMaxTokens,
 			};
 
 		if (tools) {
@@ -274,42 +380,63 @@ class OpenAiProvider implements LlmProvider {
 
 	async generateStructured<T>(
 		prompt: string,
-		_schema: Record<string, unknown>,
+		schema?: Record<string, unknown>,
 		systemInstruction?: string,
 		signal?: AbortSignal,
 	): Promise<T> {
 		const client = this.getClient();
 		const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [];
 
-		if (systemInstruction) {
-			messages.push({
-				role: "system",
-				content: `${systemInstruction}\nOutput strictly valid JSON.`,
-			});
-		} else {
-			messages.push({
-				role: "system",
-				content: "Output strictly valid JSON.",
-			});
+		let schemaDescription = "";
+		if (schema && typeof schema === "object") {
+			try {
+				schemaDescription = `\nRequired JSON Schema:\n${JSON.stringify(normalizeSchema(schema), null, 2)}`;
+			} catch {
+				schemaDescription = "";
+			}
 		}
 
+		const isArraySchema =
+			schema &&
+			typeof schema === "object" &&
+			(schema.type === "ARRAY" ||
+				(schema as { type?: string }).type === "array");
+
+		const systemPrompt = [
+			systemInstruction || "You are an accurate, structured JSON generator.",
+			isArraySchema
+				? "Output strictly a valid JSON array matching the requested schema. Return ONLY JSON without markdown backticks."
+				: "Output strictly valid JSON matching the requested schema. Return ONLY JSON without markdown backticks.",
+			schemaDescription,
+		]
+			.filter(Boolean)
+			.join("\n\n");
+
+		messages.push({
+			role: "system",
+			content: systemPrompt,
+		});
+
 		messages.push({ role: "user", content: prompt });
+
+		const responseFormat:
+			| OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming["response_format"]
+			| undefined = isArraySchema ? undefined : { type: "json_object" };
 
 		const completion = await runWithRetry(() =>
 			client.chat.completions.create(
 				{
 					model: CONFIG.OPENAI_MODEL,
 					messages,
-					response_format: { type: "json_object" },
+					...(responseFormat && { response_format: responseFormat }),
 					max_tokens: 2048,
 				},
 				{ signal },
 			),
 		);
 
-		const rawText = completion.choices[0]?.message?.content?.trim() || "{}";
-		const cleaned = rawText.replace(/^```(?:json)?\n?|\n?```$/g, "").trim();
-		return JSON.parse(cleaned) as T;
+		const rawText = completion.choices[0]?.message?.content?.trim() || "";
+		return parseStructuredJson<T>(rawText, Boolean(isArraySchema));
 	}
 }
 
