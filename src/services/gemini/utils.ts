@@ -344,13 +344,16 @@ function isTransientError(error: unknown): boolean {
 	const errorMessage = err?.message || String(error);
 	const status = err?.status || 0;
 
+	// 429 = rate limited; any 5xx = server overload / dependency failure.
+	// Google's guidance is to retry both with exponential backoff.
 	return (
-		status === 503 ||
 		status === 429 ||
-		errorMessage.includes("503") ||
+		status >= 500 ||
 		errorMessage.includes("429") ||
+		errorMessage.includes("503") ||
 		errorMessage.includes("UNAVAILABLE") ||
 		errorMessage.includes("RESOURCE_EXHAUSTED") ||
+		errorMessage.includes("INTERNAL") ||
 		errorMessage.includes("high demand") ||
 		errorMessage.includes("Quota exceeded")
 	);

@@ -213,6 +213,28 @@ describe("SmartRetry", () => {
 		expect(attempts).toBe(2);
 	});
 
+	test("should retry 5xx INTERNAL errors with runWithRetry", async () => {
+		let attempts = 0;
+		const result = await runWithRetry(
+			async () => {
+				attempts++;
+				if (attempts < 2) {
+					const err = new Error(
+						'{"error":{"code":500,"message":"Internal error encountered.","status":"INTERNAL"}}',
+					) as Error & { status?: number };
+					err.status = 500;
+					throw err;
+				}
+				return "success";
+			},
+			3,
+			10,
+		);
+
+		expect(result).toBe("success");
+		expect(attempts).toBe(2);
+	});
+
 	test("GeminiRateLimiter should enforce pacing interval between calls", async () => {
 		const limiter = new GeminiRateLimiter(50);
 		const start = Date.now();
