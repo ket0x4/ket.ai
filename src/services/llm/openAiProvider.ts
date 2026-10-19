@@ -1,5 +1,5 @@
 import OpenAI from "openai";
-import type { RawFunctionCall } from "../../agent/functionCalls";
+import { extractFunctionCalls } from "../../agent/functionCalls";
 import type { FunctionDeclaration } from "../../agent/types";
 import { CONFIG } from "../../config";
 import logger from "../../utils/logger";
@@ -10,9 +10,14 @@ import type {
 	LlmProvider,
 } from "./types";
 
+const normalizedSchemaCache = new WeakMap<object, Record<string, unknown>>();
+
 function normalizeSchema(schema: unknown): unknown {
 	if (!schema || typeof schema !== "object") return schema;
 	if (Array.isArray(schema)) return schema.map(normalizeSchema);
+
+	const cached = normalizedSchemaCache.get(schema);
+	if (cached) return cached;
 
 	const obj = { ...(schema as Record<string, unknown>) };
 	if (typeof obj.type === "string") {
@@ -30,6 +35,7 @@ function normalizeSchema(schema: unknown): unknown {
 	if (obj.items) {
 		obj.items = normalizeSchema(obj.items);
 	}
+	normalizedSchemaCache.set(schema, obj);
 	return obj;
 }
 
@@ -181,34 +187,6 @@ async function runWithRetry<T>(
 		}
 	}
 	throw lastError;
-}
-
-function extractOpenAiToolCalls(
-	choice?: OpenAI.Chat.Completions.ChatCompletion.Choice,
-): RawFunctionCall[] {
-	if (!choice?.message?.tool_calls) return [];
-	const toolCalls: RawFunctionCall[] = [];
-	for (let i = 0; i < choice.message.tool_calls.length; i++) {
-		const tc = choice.message.tool_calls[i];
-		if (tc.type === "function") {
-			let parsedArgs: Record<string, unknown> = {};
-			try {
-				parsedArgs = tc.function.arguments
-					? JSON.parse(tc.function.arguments)
-					: {};
-			} catch {
-				parsedArgs = { raw: tc.function.arguments };
-			}
-			const effectiveId =
-				tc.id?.trim() || `call_${i}_${tc.function.name || "fn"}_${Date.now()}`;
-			toolCalls.push({
-				id: effectiveId,
-				name: tc.function.name,
-				args: parsedArgs,
-			});
-		}
-	}
-	return toolCalls;
 }
 
 function tryExtractArraySlice(cleaned: string): unknown | null {
@@ -374,7 +352,7 @@ class OpenAiProvider implements LlmProvider {
 
 		const choice = completion.choices[0];
 		const text = choice?.message?.content?.trim() || "";
-		const toolCalls = extractOpenAiToolCalls(choice);
+		const toolCalls = extractFunctionCalls({ choices: completion.choices });
 		return { text, toolCalls, choices: completion.choices };
 	}
 

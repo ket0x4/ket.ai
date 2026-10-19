@@ -651,17 +651,14 @@ function buildGenConfig(
 	replyDescription: string,
 	contextSections?: string[],
 ): Record<string, unknown> {
-	const allTools = toolRegistry.getAllTools();
-	const isAgentic = allTools.length > 0;
+	const declarations = toolRegistry.getFunctionDeclarations();
+	const isAgentic = declarations.length > 0;
 	const isConversationalProvider = CONFIG.LLM_PROVIDER === "openai";
 	const systemInstruction = getSystemInstruction(
 		personaPrompt,
-		allTools.map((t) => t.name),
+		declarations.map((t) => t.name),
 		contextSections,
 	);
-	const declarations = isAgentic
-		? toolRegistry.getFunctionDeclarations()
-		: undefined;
 
 	const genConfig: Record<string, unknown> = {
 		systemInstruction,
@@ -672,7 +669,7 @@ function buildGenConfig(
 					? CONFIG.MAX_TOOL_OUTPUT_TOKENS
 					: 8192
 			: 1024,
-		tools: declarations
+		tools: isAgentic
 			? isConversationalProvider
 				? declarations
 				: [{ functionDeclarations: declarations }]

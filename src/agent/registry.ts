@@ -54,15 +54,17 @@ class ToolRegistry {
 		return removed;
 	}
 
+	private isToolActive(tool?: AgentTool): tool is AgentTool {
+		return Boolean(tool && (!tool.isEnabled || tool.isEnabled()));
+	}
+
 	/**
 	 * A tool is available when it is registered and its own `isEnabled` gate
 	 * (if any) allows it. Enablement lives on each tool so the registry never
 	 * hardcodes tool names.
 	 */
 	public isEnabled(name: string): boolean {
-		const tool = this.tools.get(name);
-		if (!tool) return false;
-		return tool.isEnabled ? Boolean(tool.isEnabled()) : true;
+		return this.isToolActive(this.tools.get(name));
 	}
 
 	public hasTool(name: string): boolean {
@@ -70,17 +72,26 @@ class ToolRegistry {
 	}
 
 	public getTool(name: string): AgentTool | undefined {
-		return this.isEnabled(name) ? this.tools.get(name) : undefined;
+		const tool = this.tools.get(name);
+		return this.isToolActive(tool) ? tool : undefined;
 	}
 
 	public getAllTools(): AgentTool[] {
-		return Array.from(this.tools.values()).filter((t) =>
-			this.isEnabled(t.name),
-		);
+		const enabled: AgentTool[] = [];
+		for (const tool of this.tools.values()) {
+			if (this.isToolActive(tool)) {
+				enabled.push(tool);
+			}
+		}
+		return enabled;
 	}
 
 	public get count(): number {
-		return this.getAllTools().length;
+		let total = 0;
+		for (const tool of this.tools.values()) {
+			if (this.isToolActive(tool)) total++;
+		}
+		return total;
 	}
 
 	public getFunctionDeclarations(): FunctionDeclaration[] {

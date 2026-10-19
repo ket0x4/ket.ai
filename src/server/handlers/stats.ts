@@ -1,6 +1,10 @@
 import fs from "node:fs";
 import type { AuthContext } from "../../../web/src/types";
-import { CONFIG, updateBotSettings } from "../../config/index";
+import {
+	type BotSettingsUpdate,
+	CONFIG,
+	updateBotSettings,
+} from "../../config/index";
 import { db } from "../../db/index";
 import { Repository } from "../../db/repository";
 import { formatChatTitle } from "../../utils/chatTitle";
@@ -213,18 +217,7 @@ export async function handleSettings(
 
 	if (req.method === "PATCH") {
 		try {
-			const body = (await req.json()) as {
-				llm_provider?: "gemini" | "openai";
-				gemini_model?: string;
-				openai_model?: string;
-				openai_base_url?: string;
-				openai_api_key?: string;
-				default_reply_probability?: number;
-				chat_history_limit?: number;
-				enable_web_search?: boolean;
-				max_agent_steps?: number;
-				log_level?: "debug" | "info" | "warn" | "error";
-			};
+			const body = (await req.json()) as BotSettingsUpdate;
 			updateBotSettings(body);
 			return jsonResponse({
 				success: true,

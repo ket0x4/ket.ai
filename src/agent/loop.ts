@@ -31,6 +31,7 @@ const COMPACT_TEXT_PART_LIMIT = 1500;
 const COMPACT_TOOL_RESULT_LIMIT = 800;
 const COMPACT_TOOL_FIELD_LIMIT = 400;
 const COMPACT_KEEP_RECENT_TURNS = 4;
+const COMPACTED_MARKER = "[...compacted...]";
 
 const TRUNCATED_RESULT_FIELDS = [
 	"stdout",
@@ -234,7 +235,7 @@ function shrinkToolResultObject(
 			(TRUNCATED_RESULT_FIELDS as readonly string[]).includes(k) &&
 			v.length > COMPACT_TOOL_FIELD_LIMIT
 		) {
-			out[k] = `${v.slice(0, COMPACT_TOOL_FIELD_LIMIT)}...[compacted]`;
+			out[k] = `${v.slice(0, COMPACT_TOOL_FIELD_LIMIT)}...${COMPACTED_MARKER}`;
 		} else {
 			out[k] = v;
 		}
@@ -246,9 +247,9 @@ function compactFunctionResponsePart(
 	part: Record<string, unknown>,
 ): Record<string, unknown> {
 	const functionResponse = part.functionResponse as
-		| { response?: { result?: unknown } }
+		| { response?: { result?: unknown }; _compacted?: boolean }
 		| undefined;
-	if (!functionResponse) return part;
+	if (!functionResponse || functionResponse._compacted) return part;
 
 	let serialized = "";
 	try {
@@ -262,30 +263,37 @@ function compactFunctionResponsePart(
 	const compactedResult =
 		rawResult && typeof rawResult === "object" && !Array.isArray(rawResult)
 			? shrinkToolResultObject(rawResult as Record<string, unknown>)
-			: `${serialized.slice(0, COMPACT_TOOL_FIELD_LIMIT)}...[compacted]`;
+			: `${serialized.slice(0, COMPACT_TOOL_FIELD_LIMIT)}...${COMPACTED_MARKER}`;
 
 	return {
 		...part,
 		functionResponse: {
 			...functionResponse,
+			_compacted: true,
 			response: { result: compactedResult },
 		},
 	};
+}
+
+function compactTextValue(text: string): string {
+	if (
+		text.length <= COMPACT_TEXT_PART_LIMIT ||
+		text.endsWith(COMPACTED_MARKER)
+	) {
+		return text;
+	}
+	return `${text.slice(0, COMPACT_TEXT_PART_LIMIT)}\n${COMPACTED_MARKER}`;
 }
 
 function compactEntry(
 	entry: Record<string, unknown>,
 	shrinkText: boolean,
 ): Record<string, unknown> {
-	if (
-		shrinkText &&
-		typeof entry.content === "string" &&
-		entry.content.length > COMPACT_TEXT_PART_LIMIT
-	) {
-		return {
-			...entry,
-			content: `${entry.content.slice(0, COMPACT_TEXT_PART_LIMIT)}\n[...compacted...]`,
-		};
+	if (shrinkText && typeof entry.content === "string") {
+		const nextContent = compactTextValue(entry.content);
+		return nextContent === entry.content
+			? entry
+			: { ...entry, content: nextContent };
 	}
 
 	const parts = Array.isArray(entry.parts)
@@ -295,20 +303,43 @@ function compactEntry(
 
 	const compactedParts = parts.map((part) => {
 		if (!part || typeof part !== "object") return part;
-		if (
-			shrinkText &&
-			typeof part.text === "string" &&
-			part.text.length > COMPACT_TEXT_PART_LIMIT
-		) {
-			return {
-				...part,
-				text: `${part.text.slice(0, COMPACT_TEXT_PART_LIMIT)}\n[...compacted...]`,
-			};
+		if (shrinkText && typeof part.text === "string") {
+			const nextText = compactTextValue(part.text);
+			return nextText === part.text ? part : { ...part, text: nextText };
 		}
 		return compactFunctionResponsePart(part);
 	});
 
 	return { ...entry, parts: compactedParts };
+}
+
+function estimatePartChars(part: Record<string, unknown>): number {
+	if (typeof part.text === "string") return part.text.length;
+	if (part.inlineData) return 256; // Avoid stringifying base64 media buffers
+	try {
+		return JSON.stringify(part).length;
+	} catch {
+		return 0;
+	}
+}
+
+function estimateContentsChars(
+	contents: Array<Record<string, unknown>>,
+): number {
+	let total = 0;
+	for (const entry of contents) {
+		if (typeof entry.content === "string") {
+			total += entry.content.length;
+		}
+		if (Array.isArray(entry.parts)) {
+			for (const part of entry.parts) {
+				if (part && typeof part === "object") {
+					total += estimatePartChars(part as Record<string, unknown>);
+				}
+			}
+		}
+	}
+	return total;
 }
 
 /**
@@ -322,14 +353,7 @@ function compactContents(
 ): Array<Record<string, unknown>> {
 	if (contents.length <= keepRecentTurns + 1) return contents;
 
-	let size = 0;
-	try {
-		size = JSON.stringify(contents).length;
-	} catch {
-		return contents;
-	}
-
-	const shrinkText = size > maxChars;
+	const shrinkText = estimateContentsChars(contents) > maxChars;
 	const cutoff = Math.max(1, contents.length - keepRecentTurns);
 	for (let i = 1; i < cutoff; i++) {
 		contents[i] = compactEntry(contents[i], shrinkText);
@@ -521,10 +545,18 @@ async function processToolStep(
 	const firstCandidate = response.candidates?.[0] as
 		| { content?: Record<string, unknown> }
 		| undefined;
+	const fallbackParts: Array<Record<string, unknown>> = [];
+	const preambleText = extractResponseText(response);
+	if (preambleText) {
+		fallbackParts.push({ text: preambleText });
+	}
+	for (const fc of functionCalls) {
+		fallbackParts.push({ functionCall: fc });
+	}
 	contents.push(
 		firstCandidate?.content ?? {
 			role: "model",
-			parts: functionCalls.map((fc) => ({ functionCall: fc })),
+			parts: fallbackParts,
 		},
 	);
 
@@ -606,6 +638,18 @@ function normalizeGeminiTools(rawTools: unknown): unknown {
 	return [{ functionDeclarations: rawTools }];
 }
 
+function resolveOpenAiTools(rawTools: unknown) {
+	if (Array.isArray(rawTools) && rawTools.length > 0) {
+		const first = rawTools[0] as Record<string, unknown> | undefined;
+		if (first && Array.isArray(first.functionDeclarations)) {
+			return first.functionDeclarations;
+		}
+		return rawTools;
+	}
+	const declarations = toolRegistry.getFunctionDeclarations();
+	return declarations.length > 0 ? declarations : undefined;
+}
+
 async function callModelForStep(
 	compactedContents: Array<Record<string, unknown>>,
 	genConfig: Record<string, unknown>,
@@ -614,10 +658,7 @@ async function callModelForStep(
 ): Promise<ModelStepResponse> {
 	if (CONFIG.LLM_PROVIDER === "openai") {
 		const chatMessages = convertContentsToChatMessages(compactedContents);
-		const tools =
-			toolRegistry.count > 0
-				? toolRegistry.getFunctionDeclarations()
-				: undefined;
+		const tools = resolveOpenAiTools(genConfig.tools);
 		const isJson = !tools && genConfig.responseMimeType === "application/json";
 		return await openAiProvider.chat(chatMessages, {
 			systemInstruction: genConfig.systemInstruction as string | undefined,

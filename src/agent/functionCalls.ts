@@ -23,6 +23,18 @@ export interface ModelResponseLike {
 	choices?: unknown[];
 }
 
+function parseToolCallArgs(rawArgs?: string): Record<string, unknown> {
+	if (!rawArgs) return {};
+	try {
+		const parsed = JSON.parse(rawArgs);
+		return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+			? (parsed as Record<string, unknown>)
+			: { value: parsed };
+	} catch {
+		return { raw: rawArgs };
+	}
+}
+
 export function extractFunctionCalls(
 	response: ModelResponseLike,
 ): RawFunctionCall[] {
@@ -35,30 +47,27 @@ export function extractFunctionCalls(
 				message?: {
 					tool_calls?: Array<{
 						id?: string;
+						type?: string;
 						function?: { name?: string; arguments?: string };
 					}>;
 				};
 		  }
 		| undefined;
 
-	if (firstChoice?.message?.tool_calls) {
-		return firstChoice.message.tool_calls
-			.filter((tc) => tc.function?.name)
-			.map((tc) => {
-				let parsedArgs: Record<string, unknown> = {};
-				try {
-					parsedArgs = tc.function?.arguments
-						? JSON.parse(tc.function.arguments)
-						: {};
-				} catch {
-					parsedArgs = { raw: tc.function?.arguments };
-				}
-				return {
-					id: tc.id,
-					name: tc.function?.name || "",
-					args: parsedArgs,
-				};
+	const rawToolCalls = firstChoice?.message?.tool_calls;
+	if (Array.isArray(rawToolCalls) && rawToolCalls.length > 0) {
+		const calls: RawFunctionCall[] = [];
+		for (let i = 0; i < rawToolCalls.length; i++) {
+			const tc = rawToolCalls[i];
+			const name = tc?.function?.name;
+			if (!name) continue;
+			calls.push({
+				id: tc.id?.trim() || `call_${i}_${name}_${Date.now()}`,
+				name,
+				args: parseToolCallArgs(tc.function?.arguments),
 			});
+		}
+		return calls;
 	}
 
 	const firstCandidate = response.candidates?.[0] as

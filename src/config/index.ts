@@ -45,201 +45,196 @@ const CONFIG_FILE_PATH = "config.json";
 
 if (existsSync(CONFIG_FILE_PATH)) {
 	try {
-		const raw = readFileSync(CONFIG_FILE_PATH, "utf-8");
-		configJson = JSON.parse(raw);
+		configJson = JSON.parse(readFileSync(CONFIG_FILE_PATH, "utf-8"));
 	} catch (e) {
 		console.error("Error reading or parsing config.json:", e);
 	}
 }
 
+const env = process.env;
+
+function str(val: string | undefined, envKey: string, fallback = ""): string {
+	return val || env[envKey] || fallback;
+}
+
+function num(
+	val: number | undefined,
+	envKey: string | undefined,
+	fallback: number,
+): number {
+	if (typeof val === "number" && !Number.isNaN(val)) return val;
+	const raw = envKey ? env[envKey] : undefined;
+	if (raw !== undefined && raw !== "") {
+		const parsed = Number(raw);
+		if (!Number.isNaN(parsed)) return parsed;
+	}
+	return fallback;
+}
+
+function bool(
+	val: boolean | undefined,
+	envKey: string,
+	fallback = true,
+): boolean {
+	if (typeof val === "boolean") return val;
+	if (env[envKey] !== undefined) return env[envKey] !== "false";
+	return fallback;
+}
+
+const DEFAULT_MESSAGES = {
+	unauthorized_group_reply:
+		"I don't have permission to talk in this group, I'm out! Contact my owner to add me.",
+	private_chat_unauthorized:
+		"Hey I only chat in groups approved by my owner. You can contact my owner to add me to your own group.",
+	gemini_empty_reply_fallback: "I didn't know what to say.",
+	gemini_error_reply_fallback: "My mind went blank, let's talk later.",
+	gemini_empty_image_fallback:
+		"Nice picture, but I didn't know what to say about it.",
+	gemini_error_image_fallback:
+		"Couldn't check the photo, must have gotten something in my eye.",
+	image_download_failed: "Couldn't download the photo, Telegram blocked it.",
+	image_processing_failed:
+		"Got confused while looking at the photo, try again later.",
+	not_authorized_command: "Only group admins or my owner can use this command!",
+	tool_status_web_search: "Spawning subagent...",
+	tool_status_code_execution: "⚡ Executing code in sandbox...",
+};
+
+function resolveMessages(
+	overrides?: Partial<Record<string, string>>,
+): typeof DEFAULT_MESSAGES {
+	const resolved = { ...DEFAULT_MESSAGES };
+	if (!overrides) return resolved;
+	for (const key of Object.keys(DEFAULT_MESSAGES) as Array<
+		keyof typeof DEFAULT_MESSAGES
+	>) {
+		if (overrides[key]) resolved[key] = overrides[key] as string;
+	}
+	return resolved;
+}
+
 export const CONFIG = {
-	TELEGRAM_BOT_TOKEN:
-		configJson.telegram_bot_token || process.env.TELEGRAM_BOT_TOKEN || "",
-	LLM_PROVIDER: (
-		configJson.llm_provider ||
-		process.env.LLM_PROVIDER ||
-		"gemini"
+	TELEGRAM_BOT_TOKEN: str(configJson.telegram_bot_token, "TELEGRAM_BOT_TOKEN"),
+	LLM_PROVIDER: str(
+		configJson.llm_provider,
+		"LLM_PROVIDER",
+		"gemini",
 	).toLowerCase() as "gemini" | "openai",
-	GEMINI_API_KEY: configJson.gemini_api_key || process.env.GEMINI_API_KEY || "",
-	GEMINI_MODEL:
-		configJson.gemini_model || process.env.GEMINI_MODEL || "gemini-3.8-flash",
-	OPENAI_API_KEY: configJson.openai_api_key || process.env.OPENAI_API_KEY || "",
-	OPENAI_BASE_URL:
-		configJson.openai_base_url ||
-		process.env.OPENAI_BASE_URL ||
+	GEMINI_API_KEY: str(configJson.gemini_api_key, "GEMINI_API_KEY"),
+	GEMINI_MODEL: str(
+		configJson.gemini_model,
+		"GEMINI_MODEL",
+		"gemini-3.8-flash",
+	),
+	OPENAI_API_KEY: str(configJson.openai_api_key, "OPENAI_API_KEY"),
+	OPENAI_BASE_URL: str(
+		configJson.openai_base_url,
+		"OPENAI_BASE_URL",
 		"http://localhost:8080/v1",
-	OPENAI_MODEL:
-		configJson.openai_model || process.env.OPENAI_MODEL || "default",
-	CHAT_HISTORY_LIMIT:
-		typeof configJson.chat_history_limit === "number"
-			? configJson.chat_history_limit
-			: 20,
-	IMAGE_HISTORY_LIMIT:
-		typeof configJson.image_history_limit === "number"
-			? configJson.image_history_limit
-			: 5,
-	DEFAULT_REPLY_PROBABILITY:
-		typeof configJson.default_reply_probability === "number"
-			? configJson.default_reply_probability
-			: 0.05,
-	DB_PATH: configJson.db_path || process.env.DB_PATH || "bot.db",
+	),
+	OPENAI_MODEL: str(configJson.openai_model, "OPENAI_MODEL", "default"),
+	CHAT_HISTORY_LIMIT: num(
+		configJson.chat_history_limit,
+		"CHAT_HISTORY_LIMIT",
+		20,
+	),
+	IMAGE_HISTORY_LIMIT: num(
+		configJson.image_history_limit,
+		"IMAGE_HISTORY_LIMIT",
+		5,
+	),
+	DEFAULT_REPLY_PROBABILITY: num(
+		configJson.default_reply_probability,
+		"DEFAULT_REPLY_PROBABILITY",
+		0.05,
+	),
+	DB_PATH: str(configJson.db_path, "DB_PATH", "bot.db"),
 	BOT_OWNER_ID:
 		configJson.bot_owner_id ||
-		(process.env.BOT_OWNER_ID
-			? parseInt(process.env.BOT_OWNER_ID, 10)
-			: undefined),
+		(env.BOT_OWNER_ID ? Number.parseInt(env.BOT_OWNER_ID, 10) : undefined),
 	ALLOWED_CHAT_IDS: Array.isArray(configJson.allowed_chat_ids)
-		? configJson.allowed_chat_ids.map((id: number | string) => id.toString())
-		: process.env.ALLOWED_CHAT_IDS
-			? process.env.ALLOWED_CHAT_IDS.split(",").map((id) => id.trim())
+		? configJson.allowed_chat_ids.map((id) => id.toString())
+		: env.ALLOWED_CHAT_IDS
+			? env.ALLOWED_CHAT_IDS.split(",").map((id) => id.trim())
 			: [],
-	ENABLE_WEB_SEARCH:
-		typeof configJson.enable_web_search === "boolean"
-			? configJson.enable_web_search
-			: process.env.ENABLE_WEB_SEARCH !== "false",
-	ENABLE_CODE_EXECUTION:
-		typeof configJson.enable_code_execution === "boolean"
-			? configJson.enable_code_execution
-			: process.env.ENABLE_CODE_EXECUTION !== "false",
+	ENABLE_WEB_SEARCH: bool(configJson.enable_web_search, "ENABLE_WEB_SEARCH"),
+	ENABLE_CODE_EXECUTION: bool(
+		configJson.enable_code_execution,
+		"ENABLE_CODE_EXECUTION",
+	),
 	SANDBOX_URL:
-		process.env.SANDBOX_URL ||
-		configJson.sandbox_url ||
-		"http://localhost:8080",
-	SANDBOX_TIMEOUT_MS:
-		typeof configJson.sandbox_timeout_ms === "number"
-			? configJson.sandbox_timeout_ms
-			: process.env.SANDBOX_TIMEOUT_MS
-				? parseInt(process.env.SANDBOX_TIMEOUT_MS, 10)
-				: 45000,
-	MAX_AGENT_STEPS:
-		typeof configJson.max_agent_steps === "number"
-			? configJson.max_agent_steps
-			: process.env.MAX_AGENT_STEPS
-				? parseInt(process.env.MAX_AGENT_STEPS, 10)
-				: 50,
-	MAX_TOOL_OUTPUT_TOKENS:
-		typeof configJson.max_tool_output_tokens === "number"
-			? configJson.max_tool_output_tokens
-			: process.env.MAX_TOOL_OUTPUT_TOKENS
-				? parseInt(process.env.MAX_TOOL_OUTPUT_TOKENS, 10)
-				: 8192,
-	ENABLE_AGENT_THINKING:
-		typeof configJson.enable_agent_thinking === "boolean"
-			? configJson.enable_agent_thinking
-			: process.env.ENABLE_AGENT_THINKING !== "false",
-	MAX_IDENTICAL_TOOL_CALLS:
-		typeof configJson.max_identical_tool_calls === "number"
-			? configJson.max_identical_tool_calls
-			: process.env.MAX_IDENTICAL_TOOL_CALLS
-				? parseInt(process.env.MAX_IDENTICAL_TOOL_CALLS, 10)
-				: 1,
-	MAX_TOOL_FAILURES_PER_TOOL:
-		typeof configJson.max_tool_failures_per_tool === "number"
-			? configJson.max_tool_failures_per_tool
-			: process.env.MAX_TOOL_FAILURES_PER_TOOL
-				? parseInt(process.env.MAX_TOOL_FAILURES_PER_TOOL, 10)
-				: 3,
-	AGENT_CONTEXT_MAX_CHARS:
-		typeof configJson.agent_context_max_chars === "number"
-			? configJson.agent_context_max_chars
-			: process.env.AGENT_CONTEXT_MAX_CHARS
-				? parseInt(process.env.AGENT_CONTEXT_MAX_CHARS, 10)
-				: 28000,
-	ENABLE_FETCH_URL:
-		typeof configJson.enable_fetch_url === "boolean"
-			? configJson.enable_fetch_url
-			: process.env.ENABLE_FETCH_URL !== "false",
-	GEMINI_MIN_REQUEST_INTERVAL_MS:
-		typeof configJson.gemini_min_request_interval_ms === "number"
-			? configJson.gemini_min_request_interval_ms
-			: process.env.GEMINI_MIN_REQUEST_INTERVAL_MS
-				? parseInt(process.env.GEMINI_MIN_REQUEST_INTERVAL_MS, 10)
-				: 3500,
-	AGENT_TIMEOUT_MS:
-		typeof configJson.agent_timeout_ms === "number"
-			? configJson.agent_timeout_ms
-			: process.env.AGENT_TIMEOUT_MS
-				? parseInt(process.env.AGENT_TIMEOUT_MS, 10)
-				: 180000,
-	RATE_LIMIT_MESSAGES_PER_MINUTE:
-		typeof configJson.rate_limit_messages_per_minute === "number"
-			? configJson.rate_limit_messages_per_minute
-			: process.env.RATE_LIMIT_MESSAGES_PER_MINUTE
-				? parseInt(process.env.RATE_LIMIT_MESSAGES_PER_MINUTE, 10)
-				: 20,
-	RATE_LIMIT_GENERATIONS_PER_MINUTE:
-		typeof configJson.rate_limit_generations_per_minute === "number"
-			? configJson.rate_limit_generations_per_minute
-			: process.env.RATE_LIMIT_GENERATIONS_PER_MINUTE
-				? parseInt(process.env.RATE_LIMIT_GENERATIONS_PER_MINUTE, 10)
-				: 6,
-	RATE_LIMIT_API_PER_MINUTE:
-		typeof configJson.rate_limit_api_per_minute === "number"
-			? configJson.rate_limit_api_per_minute
-			: process.env.RATE_LIMIT_API_PER_MINUTE
-				? parseInt(process.env.RATE_LIMIT_API_PER_MINUTE, 10)
-				: 120,
-	INIT_DATA_MAX_AGE_SECONDS:
-		typeof configJson.init_data_max_age_seconds === "number"
-			? configJson.init_data_max_age_seconds
-			: process.env.INIT_DATA_MAX_AGE_SECONDS
-				? parseInt(process.env.INIT_DATA_MAX_AGE_SECONDS, 10)
-				: 86400,
-	LOG_LEVEL: (
-		configJson.log_level ||
-		process.env.LOG_LEVEL ||
-		"info"
-	).toLowerCase() as "debug" | "info" | "warn" | "error",
-	LOG_DIR: configJson.log_dir || process.env.LOG_DIR || "logs",
-	LOG_MAX_SIZE_MB:
-		typeof configJson.log_max_size_mb === "number"
-			? configJson.log_max_size_mb
-			: process.env.LOG_MAX_SIZE_MB
-				? parseFloat(process.env.LOG_MAX_SIZE_MB)
-				: 5,
-	WEB_PORT:
-		typeof configJson.web_port === "number"
-			? configJson.web_port
-			: process.env.PORT
-				? parseInt(process.env.PORT, 10)
-				: process.env.WEB_PORT
-					? parseInt(process.env.WEB_PORT, 10)
-					: 3000,
-	WEB_APP_URL: configJson.web_app_url || process.env.WEB_APP_URL || "",
-	MESSAGES: {
-		unauthorized_group_reply:
-			configJson.messages?.unauthorized_group_reply ||
-			"I don't have permission to talk in this group, I'm out! Contact my owner to add me.",
-		private_chat_unauthorized:
-			configJson.messages?.private_chat_unauthorized ||
-			"Hey I only chat in groups approved by my owner. You can contact my owner to add me to your own group.",
-		gemini_empty_reply_fallback:
-			configJson.messages?.gemini_empty_reply_fallback ||
-			"I didn't know what to say.",
-		gemini_error_reply_fallback:
-			configJson.messages?.gemini_error_reply_fallback ||
-			"My mind went blank, let's talk later.",
-		gemini_empty_image_fallback:
-			configJson.messages?.gemini_empty_image_fallback ||
-			"Nice picture, but I didn't know what to say about it.",
-		gemini_error_image_fallback:
-			configJson.messages?.gemini_error_image_fallback ||
-			"Couldn't check the photo, must have gotten something in my eye.",
-		image_download_failed:
-			configJson.messages?.image_download_failed ||
-			"Couldn't download the photo, Telegram blocked it.",
-		image_processing_failed:
-			configJson.messages?.image_processing_failed ||
-			"Got confused while looking at the photo, try again later.",
-		not_authorized_command:
-			configJson.messages?.not_authorized_command ||
-			"Only group admins or my owner can use this command!",
-		tool_status_web_search:
-			configJson.messages?.tool_status_web_search || "Spawning subagent...",
-		tool_status_code_execution:
-			configJson.messages?.tool_status_code_execution ||
-			"⚡ Executing code in sandbox...",
-	},
+		env.SANDBOX_URL || configJson.sandbox_url || "http://localhost:8080",
+	SANDBOX_TIMEOUT_MS: num(
+		configJson.sandbox_timeout_ms,
+		"SANDBOX_TIMEOUT_MS",
+		45000,
+	),
+	MAX_AGENT_STEPS: num(configJson.max_agent_steps, "MAX_AGENT_STEPS", 50),
+	MAX_TOOL_OUTPUT_TOKENS: num(
+		configJson.max_tool_output_tokens,
+		"MAX_TOOL_OUTPUT_TOKENS",
+		8192,
+	),
+	ENABLE_AGENT_THINKING: bool(
+		configJson.enable_agent_thinking,
+		"ENABLE_AGENT_THINKING",
+	),
+	MAX_IDENTICAL_TOOL_CALLS: num(
+		configJson.max_identical_tool_calls,
+		"MAX_IDENTICAL_TOOL_CALLS",
+		1,
+	),
+	MAX_TOOL_FAILURES_PER_TOOL: num(
+		configJson.max_tool_failures_per_tool,
+		"MAX_TOOL_FAILURES_PER_TOOL",
+		3,
+	),
+	AGENT_CONTEXT_MAX_CHARS: num(
+		configJson.agent_context_max_chars,
+		"AGENT_CONTEXT_MAX_CHARS",
+		28000,
+	),
+	ENABLE_FETCH_URL: bool(configJson.enable_fetch_url, "ENABLE_FETCH_URL"),
+	GEMINI_MIN_REQUEST_INTERVAL_MS: num(
+		configJson.gemini_min_request_interval_ms,
+		"GEMINI_MIN_REQUEST_INTERVAL_MS",
+		3500,
+	),
+	AGENT_TIMEOUT_MS: num(
+		configJson.agent_timeout_ms,
+		"AGENT_TIMEOUT_MS",
+		180000,
+	),
+	RATE_LIMIT_MESSAGES_PER_MINUTE: num(
+		configJson.rate_limit_messages_per_minute,
+		"RATE_LIMIT_MESSAGES_PER_MINUTE",
+		20,
+	),
+	RATE_LIMIT_GENERATIONS_PER_MINUTE: num(
+		configJson.rate_limit_generations_per_minute,
+		"RATE_LIMIT_GENERATIONS_PER_MINUTE",
+		6,
+	),
+	RATE_LIMIT_API_PER_MINUTE: num(
+		configJson.rate_limit_api_per_minute,
+		"RATE_LIMIT_API_PER_MINUTE",
+		120,
+	),
+	INIT_DATA_MAX_AGE_SECONDS: num(
+		configJson.init_data_max_age_seconds,
+		"INIT_DATA_MAX_AGE_SECONDS",
+		86400,
+	),
+	LOG_LEVEL: str(configJson.log_level, "LOG_LEVEL", "info").toLowerCase() as
+		| "debug"
+		| "info"
+		| "warn"
+		| "error",
+	LOG_DIR: str(configJson.log_dir, "LOG_DIR", "logs"),
+	LOG_MAX_SIZE_MB: num(configJson.log_max_size_mb, "LOG_MAX_SIZE_MB", 5),
+	WEB_PORT: num(configJson.web_port, env.PORT ? "PORT" : "WEB_PORT", 3000),
+	WEB_APP_URL: str(configJson.web_app_url, "WEB_APP_URL"),
+	MESSAGES: resolveMessages(configJson.messages),
 };
 
 // Validate critical config — fail fast if essentials are missing
@@ -247,8 +242,7 @@ const missingKeys: string[] = [];
 if (!CONFIG.TELEGRAM_BOT_TOKEN) missingKeys.push("TELEGRAM_BOT_TOKEN");
 if (!CONFIG.GEMINI_API_KEY) missingKeys.push("GEMINI_API_KEY");
 
-const isTestEnv =
-	process.env.NODE_ENV === "test" || process.env.BUN_ENV === "test";
+const isTestEnv = env.NODE_ENV === "test" || env.BUN_ENV === "test";
 
 if (missingKeys.length > 0 && !isTestEnv) {
 	console.error(
@@ -268,10 +262,7 @@ if (
 	console.warn("WARNING: DEFAULT_REPLY_PROBABILITY should be between 0 and 1.");
 }
 
-/**
- * Updates bot configuration settings and persists changes to config.json.
- */
-export function updateBotSettings(settings: {
+export interface BotSettingsUpdate {
 	llm_provider?: "gemini" | "openai";
 	gemini_model?: string;
 	openai_model?: string;
@@ -286,64 +277,40 @@ export function updateBotSettings(settings: {
 	max_agent_steps?: number;
 	gemini_min_request_interval_ms?: number;
 	log_level?: "debug" | "info" | "warn" | "error";
-}): void {
-	if (settings.llm_provider !== undefined) {
-		CONFIG.LLM_PROVIDER = settings.llm_provider;
-		configJson.llm_provider = settings.llm_provider;
-	}
-	if (settings.gemini_model !== undefined) {
-		CONFIG.GEMINI_MODEL = settings.gemini_model;
-		configJson.gemini_model = settings.gemini_model;
-	}
-	if (settings.openai_model !== undefined) {
-		CONFIG.OPENAI_MODEL = settings.openai_model;
-		configJson.openai_model = settings.openai_model;
-	}
-	if (settings.openai_base_url !== undefined) {
-		CONFIG.OPENAI_BASE_URL = settings.openai_base_url;
-		configJson.openai_base_url = settings.openai_base_url;
-	}
-	if (settings.openai_api_key !== undefined) {
-		CONFIG.OPENAI_API_KEY = settings.openai_api_key;
-		configJson.openai_api_key = settings.openai_api_key;
-	}
-	if (settings.default_reply_probability !== undefined) {
-		CONFIG.DEFAULT_REPLY_PROBABILITY = settings.default_reply_probability;
-		configJson.default_reply_probability = settings.default_reply_probability;
-	}
-	if (settings.chat_history_limit !== undefined) {
-		CONFIG.CHAT_HISTORY_LIMIT = settings.chat_history_limit;
-		configJson.chat_history_limit = settings.chat_history_limit;
-	}
-	if (settings.enable_web_search !== undefined) {
-		CONFIG.ENABLE_WEB_SEARCH = settings.enable_web_search;
-		configJson.enable_web_search = settings.enable_web_search;
-	}
-	if (settings.enable_code_execution !== undefined) {
-		CONFIG.ENABLE_CODE_EXECUTION = settings.enable_code_execution;
-		configJson.enable_code_execution = settings.enable_code_execution;
-	}
-	if (settings.sandbox_url !== undefined) {
-		CONFIG.SANDBOX_URL = settings.sandbox_url;
-		configJson.sandbox_url = settings.sandbox_url;
-	}
-	if (settings.sandbox_timeout_ms !== undefined) {
-		CONFIG.SANDBOX_TIMEOUT_MS = settings.sandbox_timeout_ms;
-		configJson.sandbox_timeout_ms = settings.sandbox_timeout_ms;
-	}
-	if (settings.max_agent_steps !== undefined) {
-		CONFIG.MAX_AGENT_STEPS = settings.max_agent_steps;
-		configJson.max_agent_steps = settings.max_agent_steps;
-	}
-	if (settings.gemini_min_request_interval_ms !== undefined) {
-		CONFIG.GEMINI_MIN_REQUEST_INTERVAL_MS =
-			settings.gemini_min_request_interval_ms;
-		configJson.gemini_min_request_interval_ms =
-			settings.gemini_min_request_interval_ms;
-	}
-	if (settings.log_level !== undefined) {
-		CONFIG.LOG_LEVEL = settings.log_level;
-		configJson.log_level = settings.log_level;
+}
+
+const SETTINGS_KEY_MAP: Record<keyof BotSettingsUpdate, keyof typeof CONFIG> = {
+	llm_provider: "LLM_PROVIDER",
+	gemini_model: "GEMINI_MODEL",
+	openai_model: "OPENAI_MODEL",
+	openai_base_url: "OPENAI_BASE_URL",
+	openai_api_key: "OPENAI_API_KEY",
+	default_reply_probability: "DEFAULT_REPLY_PROBABILITY",
+	chat_history_limit: "CHAT_HISTORY_LIMIT",
+	enable_web_search: "ENABLE_WEB_SEARCH",
+	enable_code_execution: "ENABLE_CODE_EXECUTION",
+	sandbox_url: "SANDBOX_URL",
+	sandbox_timeout_ms: "SANDBOX_TIMEOUT_MS",
+	max_agent_steps: "MAX_AGENT_STEPS",
+	gemini_min_request_interval_ms: "GEMINI_MIN_REQUEST_INTERVAL_MS",
+	log_level: "LOG_LEVEL",
+};
+
+/**
+ * Updates bot configuration settings and persists changes to config.json.
+ */
+export function updateBotSettings(settings: BotSettingsUpdate): void {
+	const configRecord = CONFIG as Record<string, unknown>;
+	const jsonRecord = configJson as Record<string, unknown>;
+
+	for (const [jsonKey, configKey] of Object.entries(SETTINGS_KEY_MAP) as Array<
+		[keyof BotSettingsUpdate, keyof typeof CONFIG]
+	>) {
+		const value = settings[jsonKey];
+		if (value !== undefined) {
+			configRecord[configKey] = value;
+			jsonRecord[jsonKey] = value;
+		}
 	}
 
 	try {

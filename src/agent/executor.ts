@@ -50,24 +50,18 @@ async function executeSingleToolCall(
 		});
 	}
 
-	logger.info(`[Agent:${traceId}] Executing tool '${name}' at step ${step}...`);
 	const startTime = Date.now();
-
-	let result: unknown;
-	try {
-		result = await toolRegistry.executeTool(name, args, context);
-	} catch (err) {
-		const errorMsg = err instanceof Error ? err.message : String(err);
-		logger.error(`[Agent:${traceId}] Unhandled tool '${name}' error:`, err);
-		result = { error: errorMsg };
-	}
-
+	const rawResult = await toolRegistry.executeTool(name, args, context);
 	const durationMs = Date.now() - startTime;
 
+	// Sanitize output first (strips heavy base64, truncates oversized stdout)
+	// so trace snippet serialization never stringifies multi-megabyte buffers.
+	const llmSafeResult = sanitizeToolResultForLLM(rawResult);
 	const snippet =
-		typeof result === "string"
-			? result.substring(0, 300)
-			: JSON.stringify(result).substring(0, 300);
+		typeof llmSafeResult === "string"
+			? llmSafeResult.slice(0, 300)
+			: JSON.stringify(llmSafeResult ?? {}).slice(0, 300);
+
 	ToolTraceLogger.add({
 		chatId: chatIdStr,
 		traceId,
@@ -78,8 +72,6 @@ async function executeSingleToolCall(
 		step,
 	});
 
-	// Sanitize output for LLM (strips heavy base64, truncates oversized stdout)
-	const llmSafeResult = sanitizeToolResultForLLM(result);
 	return buildFunctionResponse(fc, llmSafeResult);
 }
 
