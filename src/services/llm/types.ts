@@ -17,7 +17,6 @@ export interface LlmChatOptions {
 	responseFormat?: "text" | "json";
 	jsonSchema?: Record<string, unknown>;
 	systemInstruction?: string;
-	isAgentic?: boolean;
 }
 
 export interface LlmChatResult {
@@ -29,10 +28,6 @@ export interface LlmChatResult {
 
 export interface LlmProvider {
 	readonly name: "gemini" | "openai";
-	chat(
-		messages: ChatMessage[],
-		options?: LlmChatOptions,
-	): Promise<LlmChatResult>;
 	generateStructured<T>(
 		prompt: string,
 		schema: Record<string, unknown>,

@@ -1,9 +1,11 @@
 import type { ArtifactMediaType } from "./types";
 
-const MAX_OUTPUT_CHARS = 6000;
-const MAX_OUTPUT_LINES = 150;
-const HEAD_LINES = 50;
-const TAIL_LINES = 25;
+const MAX_OUTPUT_CHARS = 4000;
+const MAX_OUTPUT_LINES = 120;
+const HEAD_LINES = 45;
+const TAIL_LINES = 20;
+
+const TEXT_FIELDS = ["stdout", "stderr", "content", "text"] as const;
 
 /**
  * Intelligently truncates oversized text output preserving the beginning and end.
@@ -19,7 +21,7 @@ function smartTruncateText(text: string): {
 		const head = lines.slice(0, HEAD_LINES).join("\n");
 		const tail = lines.slice(-TAIL_LINES).join("\n");
 		return {
-			text: `${head}\n\n[... Truncated ${lines.length - HEAD_LINES - TAIL_LINES} lines of output (${text.length} chars total) ...]\n\n${tail}`,
+			text: `${head}\n\n[... Truncated ${lines.length - HEAD_LINES - TAIL_LINES} lines (${text.length} chars) ...]\n\n${tail}`,
 			truncated: true,
 		};
 	}
@@ -28,7 +30,7 @@ function smartTruncateText(text: string): {
 		const headChars = Math.floor(MAX_OUTPUT_CHARS * 0.7);
 		const tailChars = Math.floor(MAX_OUTPUT_CHARS * 0.2);
 		return {
-			text: `${text.slice(0, headChars)}\n\n[... Truncated ${text.length - headChars - tailChars} characters ...]\n\n${text.slice(-tailChars)}`,
+			text: `${text.slice(0, headChars)}\n\n[... Truncated ${text.length - headChars - tailChars} chars ...]\n\n${text.slice(-tailChars)}`,
 			truncated: true,
 		};
 	}
@@ -47,15 +49,41 @@ export function inferArtifactType(
 	return "document";
 }
 
+function stripArtifactBuffers(items: unknown[]): unknown[] {
+	return items.map((item) => {
+		if (item && typeof item === "object") {
+			const { data, ...rest } = item as Record<string, unknown>;
+			return {
+				...rest,
+				has_data: Boolean(data),
+				data_size_bytes: typeof data === "string" ? data.length : undefined,
+			};
+		}
+		return item;
+	});
+}
+
+function stripEmptyFields(
+	obj: Record<string, unknown>,
+): Record<string, unknown> {
+	const cleaned: Record<string, unknown> = {};
+	for (const [k, v] of Object.entries(obj)) {
+		if (v === undefined || v === null || v === "") continue;
+		if (Array.isArray(v) && v.length === 0) continue;
+		cleaned[k] = v;
+	}
+	return cleaned;
+}
+
 /**
- * Sanitizes tool results before passing to Gemini LLM context:
- * 1. Strips heavy base64 buffers from artifacts / images to prevent context poisoning.
- * 2. Truncates oversized stdout / text fields with head-tail preservation.
+ * Sanitizes tool results before passing to LLM context:
+ * 1. Strips heavy base64 buffers from artifacts/images.
+ * 2. Truncates oversized text/stdout fields with head-tail preservation.
+ * 3. Drops empty/null fields to minimize token usage.
  */
 export function sanitizeToolResultForLLM(result: unknown): unknown {
 	if (typeof result === "string") {
-		const { text } = smartTruncateText(result);
-		return text;
+		return smartTruncateText(result).text;
 	}
 
 	if (!result || typeof result !== "object") {
@@ -65,53 +93,22 @@ export function sanitizeToolResultForLLM(result: unknown): unknown {
 	const obj = { ...(result as Record<string, unknown>) };
 
 	if (Array.isArray(obj.artifacts)) {
-		obj.artifacts = obj.artifacts.map((art) => {
-			if (art && typeof art === "object") {
-				const { data, ...rest } = art as Record<string, unknown>;
-				return {
-					...rest,
-					has_data: Boolean(data),
-					data_size_bytes: typeof data === "string" ? data.length : undefined,
-				};
-			}
-			return art;
-		});
+		obj.artifacts = stripArtifactBuffers(obj.artifacts);
 	}
-
 	if (Array.isArray(obj.images)) {
-		obj.images = obj.images.map((img) => {
-			if (img && typeof img === "object") {
-				const { data, ...rest } = img as Record<string, unknown>;
-				return {
-					...rest,
-					has_data: Boolean(data),
-					data_size_bytes: typeof data === "string" ? data.length : undefined,
-				};
+		obj.images = stripArtifactBuffers(obj.images);
+	}
+
+	for (const field of TEXT_FIELDS) {
+		const val = obj[field];
+		if (typeof val === "string") {
+			const { text, truncated } = smartTruncateText(val);
+			obj[field] = text;
+			if (truncated && field !== "stderr") {
+				obj.truncated = true;
 			}
-			return img;
-		});
-	}
-
-	if (typeof obj.stdout === "string") {
-		const { text, truncated } = smartTruncateText(obj.stdout);
-		obj.stdout = text;
-		if (truncated) {
-			obj.truncated = true;
 		}
 	}
 
-	if (typeof obj.stderr === "string") {
-		const { text } = smartTruncateText(obj.stderr);
-		obj.stderr = text;
-	}
-
-	if (typeof obj.content === "string") {
-		const { text, truncated } = smartTruncateText(obj.content);
-		obj.content = text;
-		if (truncated) {
-			obj.truncated = true;
-		}
-	}
-
-	return obj;
+	return stripEmptyFields(obj);
 }

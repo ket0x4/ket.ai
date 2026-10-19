@@ -1,6 +1,6 @@
 import { CONFIG } from "../config";
 import { ai } from "../services/gemini/client";
-import { runWithRetry } from "../services/gemini/utils";
+import { getThinkingConfig, runWithRetry } from "../services/gemini/utils";
 import { openAiProvider } from "../services/llm/openAiProvider";
 import type { ChatMessage } from "../services/llm/types";
 import logger from "../utils/logger";
@@ -9,26 +9,51 @@ import {
 	executeFunctionCallsInParallel,
 	type ToolExecutionOptions,
 } from "./executor";
-import { extractFunctionCalls, type RawFunctionCall } from "./functionCalls";
+import {
+	extractFunctionCalls,
+	type ModelResponseLike,
+	type RawFunctionCall,
+} from "./functionCalls";
 import { toolRegistry } from "./registry";
-import { getPlan } from "./tools/plan";
-import { AgentTraceLogger } from "./trace";
+
+type AgentLoopOptions = ToolExecutionOptions;
+
+const BLOCKING_FINISH_REASONS = new Set([
+	"SAFETY",
+	"RECITATION",
+	"BLOCKLIST",
+	"PROHIBITED_CONTENT",
+	"SPII",
+	"IMAGE_SAFETY",
+]);
+
+const COMPACT_TEXT_PART_LIMIT = 1500;
+const COMPACT_TOOL_RESULT_LIMIT = 800;
+const COMPACT_TOOL_FIELD_LIMIT = 400;
+const COMPACT_KEEP_RECENT_TURNS = 4;
+
+const TRUNCATED_RESULT_FIELDS = [
+	"stdout",
+	"stderr",
+	"content",
+	"text",
+	"summary",
+] as const;
 
 function convertToolParts(
 	toolParts: Array<Record<string, unknown>>,
 	text: string,
 ): ChatMessage[] {
-	const out: ChatMessage[] = [];
-	for (const tp of toolParts) {
+	const out: ChatMessage[] = toolParts.map((tp) => {
 		const result = (tp.response as { result?: unknown })?.result ?? tp.response;
-		out.push({
+		return {
 			role: "tool",
 			toolName: typeof tp.name === "string" ? tp.name : undefined,
 			toolCallId: typeof tp.id === "string" ? tp.id : undefined,
 			content:
 				typeof result === "string" ? result : JSON.stringify(result ?? {}),
-		});
-	}
+		};
+	});
 	if (text) {
 		out.push({ role: "user", content: text });
 	}
@@ -105,9 +130,7 @@ function convertSingleContentEntry(
 		? (entry.parts as Array<Record<string, unknown>>)
 		: [];
 
-	if (role === "user") {
-		return convertUserParts(parts);
-	}
+	if (role === "user") return convertUserParts(parts);
 	if (role === "model" || role === "assistant") {
 		return [convertModelParts(parts)];
 	}
@@ -120,60 +143,39 @@ function convertContentsToChatMessages(
 	return contents.flatMap(convertSingleContentEntry);
 }
 
-type AgentLoopOptions = ToolExecutionOptions;
-
-// Provider finish reasons that mean the model refused or was filtered rather
-// than simply choosing to answer without tools.
-const BLOCKING_FINISH_REASONS = new Set([
-	"SAFETY",
-	"RECITATION",
-	"BLOCKLIST",
-	"PROHIBITED_CONTENT",
-	"SPII",
-	"IMAGE_SAFETY",
-]);
-
-// Compaction thresholds: individual text parts and tool results older than the
-// most recent steps are shrunk to keep the running context bounded.
-const COMPACT_TEXT_PART_LIMIT = 2500;
-const COMPACT_TOOL_RESULT_LIMIT = 1500;
-const COMPACT_KEEP_RECENT_TURNS = 6;
-
 function generateTraceId(): string {
 	return `trace_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
 }
 
-interface NoToolCallOutcome {
-	text: string;
-	blocked: boolean;
+interface ModelStepResponse extends ModelResponseLike {
+	text?: string;
+	promptFeedback?: { blockReason?: unknown };
 }
 
-/**
- * Inspects a model turn that requested no tools: extracts text, logs provider
- * finish/block diagnostics, and reports whether the response was blocked.
- */
+function extractResponseText(response: ModelStepResponse): string {
+	if (response.text?.trim()) return response.text.trim();
+	const firstChoice = response.choices?.[0] as
+		| { message?: { content?: unknown } }
+		| undefined;
+	return typeof firstChoice?.message?.content === "string"
+		? firstChoice.message.content.trim()
+		: "";
+}
+
 function inspectNoToolCallResponse(
-	response: {
-		text?: string;
-		candidates?: Array<{ finishReason?: unknown }>;
-		promptFeedback?: { blockReason?: unknown };
-		choices?: Array<{
-			finish_reason?: unknown;
-			message?: { content?: unknown };
-		}>;
-	},
+	response: ModelStepResponse,
 	traceId: string,
 	step: number,
-): NoToolCallOutcome {
-	const text =
-		response.text?.trim() ||
-		(typeof response.choices?.[0]?.message?.content === "string"
-			? (response.choices[0].message.content as string).trim()
-			: "");
+): { text: string; blocked: boolean } {
+	const text = extractResponseText(response);
+	const firstCandidate = response.candidates?.[0] as
+		| { finishReason?: unknown }
+		| undefined;
+	const firstChoice = response.choices?.[0] as
+		| { finish_reason?: unknown }
+		| undefined;
 	const finishReason = String(
-		response.candidates?.[0]?.finishReason ??
-			response.choices?.[0]?.finish_reason ??
-			"",
+		firstCandidate?.finishReason ?? firstChoice?.finish_reason ?? "",
 	);
 	const blockReason = response.promptFeedback?.blockReason
 		? String(response.promptFeedback.blockReason)
@@ -193,26 +195,11 @@ function inspectNoToolCallResponse(
 		);
 	} else if (blocked) {
 		logger.warn(
-			`[Agent:${traceId}] Response flagged by the provider (finishReason=${finishReason || "unknown"}, blockReason=${blockReason ?? "none"}); using available text.`,
+			`[Agent:${traceId}] Response flagged by provider (finishReason=${finishReason || "unknown"}); using available text.`,
 		);
 	}
 
 	return { text, blocked };
-}
-
-/**
- * Stable identity for a tool call: name plus a canonicalized argument payload,
- * so re-issued identical calls can be detected and suppressed.
- */
-function fingerprintToolCall(fc: RawFunctionCall): string {
-	const args = fc.args ?? {};
-	let serialized: string;
-	try {
-		serialized = JSON.stringify(sortedKeys(args));
-	} catch {
-		serialized = JSON.stringify(args);
-	}
-	return `${fc.name}::${serialized}`;
 }
 
 function sortedKeys(value: unknown): unknown {
@@ -227,11 +214,106 @@ function sortedKeys(value: unknown): unknown {
 	return value;
 }
 
+function fingerprintToolCall(fc: RawFunctionCall): string {
+	const args = fc.args ?? {};
+	try {
+		return `${fc.name}::${JSON.stringify(sortedKeys(args))}`;
+	} catch {
+		return `${fc.name}::${JSON.stringify(args)}`;
+	}
+}
+
+function shrinkToolResultObject(
+	result: Record<string, unknown>,
+): Record<string, unknown> {
+	const out: Record<string, unknown> = {};
+	for (const [k, v] of Object.entries(result)) {
+		if (k === "system_note" || k === "results" || k === "matches") continue;
+		if (
+			typeof v === "string" &&
+			(TRUNCATED_RESULT_FIELDS as readonly string[]).includes(k) &&
+			v.length > COMPACT_TOOL_FIELD_LIMIT
+		) {
+			out[k] = `${v.slice(0, COMPACT_TOOL_FIELD_LIMIT)}...[compacted]`;
+		} else {
+			out[k] = v;
+		}
+	}
+	return out;
+}
+
+function compactFunctionResponsePart(
+	part: Record<string, unknown>,
+): Record<string, unknown> {
+	const functionResponse = part.functionResponse as
+		| { response?: { result?: unknown } }
+		| undefined;
+	if (!functionResponse) return part;
+
+	let serialized = "";
+	try {
+		serialized = JSON.stringify(functionResponse.response ?? {});
+	} catch {
+		return part;
+	}
+	if (serialized.length <= COMPACT_TOOL_RESULT_LIMIT) return part;
+
+	const rawResult = functionResponse.response?.result;
+	const compactedResult =
+		rawResult && typeof rawResult === "object" && !Array.isArray(rawResult)
+			? shrinkToolResultObject(rawResult as Record<string, unknown>)
+			: `${serialized.slice(0, COMPACT_TOOL_FIELD_LIMIT)}...[compacted]`;
+
+	return {
+		...part,
+		functionResponse: {
+			...functionResponse,
+			response: { result: compactedResult },
+		},
+	};
+}
+
+function compactEntry(
+	entry: Record<string, unknown>,
+	shrinkText: boolean,
+): Record<string, unknown> {
+	if (
+		shrinkText &&
+		typeof entry.content === "string" &&
+		entry.content.length > COMPACT_TEXT_PART_LIMIT
+	) {
+		return {
+			...entry,
+			content: `${entry.content.slice(0, COMPACT_TEXT_PART_LIMIT)}\n[...compacted...]`,
+		};
+	}
+
+	const parts = Array.isArray(entry.parts)
+		? (entry.parts as Array<Record<string, unknown>>)
+		: null;
+	if (!parts) return entry;
+
+	const compactedParts = parts.map((part) => {
+		if (!part || typeof part !== "object") return part;
+		if (
+			shrinkText &&
+			typeof part.text === "string" &&
+			part.text.length > COMPACT_TEXT_PART_LIMIT
+		) {
+			return {
+				...part,
+				text: `${part.text.slice(0, COMPACT_TEXT_PART_LIMIT)}\n[...compacted...]`,
+			};
+		}
+		return compactFunctionResponsePart(part);
+	});
+
+	return { ...entry, parts: compactedParts };
+}
+
 /**
- * Shrinks older tool results and oversized text parts so a long tool-running
- * conversation does not blow past the model's context window. The most recent
- * turns are always preserved intact; only the first (task payload) entry and
- * the newest turns are guaranteed to survive untouched.
+ * Proactively compacts tool results older than the most recent turns so multi-step
+ * loops do not re-send multi-kilobyte tool outputs on every subsequent step.
  */
 function compactContents(
 	contents: Array<Record<string, unknown>>,
@@ -246,96 +328,13 @@ function compactContents(
 	} catch {
 		return contents;
 	}
-	if (size <= maxChars) return contents;
 
+	const shrinkText = size > maxChars;
 	const cutoff = Math.max(1, contents.length - keepRecentTurns);
 	for (let i = 1; i < cutoff; i++) {
-		contents[i] = compactEntry(contents[i]);
+		contents[i] = compactEntry(contents[i], shrinkText);
 	}
-	logger.info(
-		`[Agent] Compacted context from ~${size} chars (kept last ${keepRecentTurns} turns).`,
-	);
 	return contents;
-}
-
-function compactEntry(entry: Record<string, unknown>): Record<string, unknown> {
-	if (
-		typeof entry.content === "string" &&
-		entry.content.length > COMPACT_TEXT_PART_LIMIT
-	) {
-		return {
-			...entry,
-			content: `${entry.content.slice(0, COMPACT_TEXT_PART_LIMIT)}\n[... earlier text compacted ...]`,
-		};
-	}
-
-	const parts = Array.isArray(entry.parts)
-		? (entry.parts as Array<Record<string, unknown>>)
-		: null;
-	if (!parts) return entry;
-
-	const compactedParts = parts.map((part) => {
-		if (!part || typeof part !== "object") return part;
-		if (
-			typeof part.text === "string" &&
-			part.text.length > COMPACT_TEXT_PART_LIMIT
-		) {
-			return {
-				...part,
-				text: `${part.text.slice(0, COMPACT_TEXT_PART_LIMIT)}\n[... earlier text compacted ...]`,
-			};
-		}
-		const functionResponse = part.functionResponse as
-			| { response?: unknown }
-			| undefined;
-		if (functionResponse) {
-			let serialized = "";
-			try {
-				serialized = JSON.stringify(functionResponse.response ?? {});
-			} catch {
-				serialized = "";
-			}
-			if (serialized.length > COMPACT_TOOL_RESULT_LIMIT) {
-				return {
-					...part,
-					functionResponse: {
-						...functionResponse,
-						response: {
-							result: {
-								note: "Earlier tool result compacted to save context.",
-								original_size: serialized.length,
-							},
-						},
-					},
-				};
-			}
-		}
-		return part;
-	});
-
-	return { ...entry, parts: compactedParts };
-}
-
-/**
- * Per-step guidance appended to the system instruction: run budget plus the
- * current working plan, so the model knows how much room it has and stays on
- * track on long tasks.
- */
-function buildStepGuidance(
-	step: number,
-	maxSteps: number,
-	plan: string[] = [],
-): string {
-	const remaining = Math.max(0, maxSteps - step);
-	let guidance = `\n\n### RUN BUDGET ###\nThis is step ${step} of ${maxSteps}. `;
-	guidance +=
-		remaining <= 1
-			? "This is your final step: stop calling tools and answer the user with what you have."
-			: `You have ${remaining} step(s) left. Do not repeat identical tool calls; combine work and converge on a final answer.`;
-	if (plan.length > 0) {
-		guidance += `\nCurrent plan:\n${plan.map((p, i) => `${i + 1}. ${p}`).join("\n")}`;
-	}
-	return guidance;
 }
 
 function buildSuppressedResponse(
@@ -366,16 +365,9 @@ function resultIsFailure(part: Record<string, unknown>): boolean {
 }
 
 function toolNameOf(part: Record<string, unknown>): string | undefined {
-	const functionResponse = part.functionResponse as
-		| { name?: string }
-		| undefined;
-	return functionResponse?.name;
+	return (part.functionResponse as { name?: string } | undefined)?.name;
 }
 
-/**
- * Runs a final tool-less model turn to summarize the work when the loop ended
- * after tool execution without producing any user-facing text.
- */
 async function generateFinalSummary(
 	contents: Array<Record<string, unknown>>,
 	genConfig: Record<string, unknown>,
@@ -385,34 +377,32 @@ async function generateFinalSummary(
 		const messages = convertContentsToChatMessages(contents);
 		const result = await openAiProvider.chat(messages, {
 			systemInstruction: genConfig.systemInstruction as string | undefined,
-			maxTokens: 2048,
+			maxTokens: 1024,
 			signal,
 		});
 		return result.text;
 	}
 
-	const finalGenConfig = {
-		...genConfig,
-		tools: undefined,
-		maxOutputTokens: 2048,
-		abortSignal: signal,
-	};
 	const finalResponse = await runWithRetry(() =>
 		ai.models.generateContent({
 			model: CONFIG.GEMINI_MODEL,
 			// biome-ignore lint/suspicious/noExplicitAny: SDK expects content structure
 			contents: contents as any,
-			// biome-ignore lint/suspicious/noExplicitAny: SDK expects config structure
-			config: finalGenConfig as any,
+			config: {
+				...genConfig,
+				tools: undefined,
+				maxOutputTokens: 1024,
+				thinkingConfig: getThinkingConfig(CONFIG.GEMINI_MODEL, {
+					isAgentic: false,
+				}),
+				abortSignal: signal,
+				// biome-ignore lint/suspicious/noExplicitAny: SDK expects config structure
+			} as any,
 		}),
 	);
 	return finalResponse.text?.trim() || "";
 }
 
-/**
- * When the loop exhausted its steps after running tools without producing text,
- * ask the model once more (tool-less) for a short summary. Errors are non-fatal.
- */
 async function finalizeAfterToolExecution(
 	contents: Array<Record<string, unknown>>,
 	genConfig: Record<string, unknown>,
@@ -426,14 +416,11 @@ async function finalizeAfterToolExecution(
 	}
 	try {
 		logger.info(
-			`[Agent:${traceId}] Tool execution finished at step limit. Generating final summary reply...`,
+			`[Agent:${traceId}] Generating final summary after tool execution...`,
 		);
 		return await generateFinalSummary(contents, genConfig, signal);
 	} catch (err) {
-		logger.warn(
-			`[Agent:${traceId}] Error generating final summary after tool execution:`,
-			err,
-		);
+		logger.warn(`[Agent:${traceId}] Error generating final summary:`, err);
 		return responseText;
 	}
 }
@@ -444,10 +431,6 @@ interface PartitionedToolCalls {
 	suppressed: Array<{ toolName: string; reason: string }>;
 }
 
-/**
- * Splits requested tool calls into those that should run and repeated identical
- * calls that must be suppressed, while tracking occurrence counts.
- */
 function partitionToolCalls(
 	functionCalls: RawFunctionCall[],
 	callCounts: Map<string, number>,
@@ -470,7 +453,7 @@ function partitionToolCalls(
 				fc,
 				buildSuppressedResponse(
 					fc,
-					"You already called this tool with identical arguments. Do not repeat it; use the result you already have or give your final answer now.",
+					"Identical tool call already executed. Use the previous result or answer now.",
 				),
 			);
 		} else {
@@ -481,22 +464,12 @@ function partitionToolCalls(
 	return { toRun, responses, suppressed };
 }
 
-interface FailureEscalation {
-	toolName: string;
-	count: number;
-	note: string;
-}
-
-/**
- * Tracks consecutive failures per tool and returns an escalation notice once a
- * tool has failed `MAX_TOOL_FAILURES_PER_TOOL` times in a row.
- */
 function trackFailures(
 	ranParts: Array<Record<string, unknown>>,
 	toRun: RawFunctionCall[],
 	failureCounts: Map<string, number>,
-): FailureEscalation[] {
-	const escalations: FailureEscalation[] = [];
+): string[] {
+	const notes: string[] = [];
 
 	ranParts.forEach((part, index) => {
 		const name = toolNameOf(part) || toRun[index]?.name || "unknown";
@@ -506,35 +479,29 @@ function trackFailures(
 		}
 		const failures = (failureCounts.get(name) || 0) + 1;
 		failureCounts.set(name, failures);
-		if (failures === CONFIG.MAX_TOOL_FAILURES_PER_TOOL) {
-			escalations.push({
-				toolName: name,
-				count: failures,
-				note: `Tool '${name}' has now failed ${failures} times in a row. Stop retrying it with the same approach: try a fundamentally different method, or explain the blocker and give your best answer with the information you already have.`,
-			});
+		if (failures >= CONFIG.MAX_TOOL_FAILURES_PER_TOOL) {
+			notes.push(
+				`Tool '${name}' failed ${failures}x in a row. Change approach or answer with available info.`,
+			);
 		}
 	});
 
-	return escalations;
+	return notes;
 }
 
 interface ToolStepInput {
 	contents: Array<Record<string, unknown>>;
 	functionCalls: RawFunctionCall[];
-	response: { candidates?: Array<{ content?: unknown }> };
+	response: ModelStepResponse;
 	stepOptions: AgentLoopOptions;
 	step: number;
+	maxSteps: number;
 	traceId: string;
 	callCounts: Map<string, number>;
 	failureCounts: Map<string, number>;
 	dispatch: (event: AgentEvent) => Promise<void>;
 }
 
-/**
- * Executes one tool step: records the model turn, suppresses duplicate calls,
- * runs the rest in parallel, tracks failures, and appends the tool responses
- * (plus any escalation notice) back into `contents`.
- */
 async function processToolStep(
 	input: ToolStepInput,
 ): Promise<{ aborted: boolean; ranAny: boolean }> {
@@ -544,17 +511,18 @@ async function processToolStep(
 		response,
 		stepOptions,
 		step,
+		maxSteps,
 		traceId,
 		callCounts,
 		failureCounts,
 		dispatch,
 	} = input;
 
-	const modelContent = response.candidates?.[0]?.content as
-		| Record<string, unknown>
+	const firstCandidate = response.candidates?.[0] as
+		| { content?: Record<string, unknown> }
 		| undefined;
 	contents.push(
-		modelContent ?? {
+		firstCandidate?.content ?? {
 			role: "model",
 			parts: functionCalls.map((fc) => ({ functionCall: fc })),
 		},
@@ -574,12 +542,6 @@ async function processToolStep(
 			step,
 			reason: entry.reason,
 		});
-		AgentTraceLogger.add({
-			traceId,
-			kind: "loop-detected",
-			step,
-			detail: `duplicate call suppressed: ${entry.toolName}`,
-		});
 	}
 
 	const ranParts =
@@ -590,33 +552,24 @@ async function processToolStep(
 		responses.set(fc, ranParts[index]);
 	});
 
-	const escalations = trackFailures(ranParts, toRun, failureCounts);
-	for (const escalation of escalations) {
-		AgentTraceLogger.add({
-			traceId,
-			kind: "loop-detected",
-			step,
-			detail: `repeated failures: ${escalation.toolName} x${escalation.count}`,
-		});
+	const notices = trackFailures(ranParts, toRun, failureCounts);
+	const remaining = maxSteps - step;
+	if (remaining <= 2) {
+		notices.push(
+			remaining === 0
+				? "Step budget reached."
+				: `${remaining} step(s) left. Converge on your final answer now.`,
+		);
 	}
 
 	const orderedParts = functionCalls
 		.map((fc) => responses.get(fc))
 		.filter((part): part is Record<string, unknown> => Boolean(part));
-	if (escalations.length > 0) {
-		orderedParts.push({
-			text: `### AGENT NOTICE ###\n${escalations.map((e) => e.note).join("\n")}`,
-		});
+	if (notices.length > 0) {
+		orderedParts.push({ text: `[Agent Notice] ${notices.join(" ")}` });
 	}
 	contents.push({ role: "user", parts: orderedParts });
 
-	AgentTraceLogger.add({
-		traceId,
-		kind: "step-complete",
-		step,
-		toolCount: toRun.length,
-		suppressedCount: suppressed.length,
-	});
 	await dispatch({
 		type: "step-complete",
 		step,
@@ -644,81 +597,19 @@ function makeEventDispatcher(
 	};
 }
 
-function buildStepConfig(
-	genConfig: Record<string, unknown>,
-	step: number,
-	maxSteps: number,
-	plan: string[],
-): Record<string, unknown> {
-	const base =
-		typeof genConfig.systemInstruction === "string"
-			? genConfig.systemInstruction
-			: "";
-	return {
-		...genConfig,
-		systemInstruction: `${base}${buildStepGuidance(step, maxSteps, plan)}`,
-	};
-}
-
-interface ModelStepResponse {
-	text?: string;
-	candidates?: Array<{ content?: unknown; finishReason?: unknown }>;
-	promptFeedback?: { blockReason?: unknown };
-	toolCalls?: RawFunctionCall[];
-	raw?: unknown;
-}
-
-interface NoToolCallTurn {
-	action: "retry" | "break";
-	text: string;
-}
-
-function resolveNoToolCallTurn(
-	response: ModelStepResponse,
-	traceId: string,
-	step: number,
-	alreadyRetried: boolean,
-): NoToolCallTurn {
-	const outcome = inspectNoToolCallResponse(response, traceId, step);
-	if (!outcome.text && outcome.blocked && !alreadyRetried) {
-		return { action: "retry", text: outcome.text };
+function normalizeGeminiTools(rawTools: unknown): unknown {
+	if (!Array.isArray(rawTools) || rawTools.length === 0) return undefined;
+	const first = rawTools[0] as Record<string, unknown> | undefined;
+	if (first && ("functionDeclarations" in first || "googleSearch" in first)) {
+		return rawTools;
 	}
-	return { action: "break", text: outcome.text };
-}
-
-interface LoopContext {
-	traceId: string;
-	sessionId: string;
-	stepOptions: AgentLoopOptions;
-}
-
-function resolveLoopContext(options: AgentLoopOptions): LoopContext {
-	const traceId = options.traceId || generateTraceId();
-	const sessionId = options.sessionId || options.chatId || "default";
-	const sentFiles = options.sentFiles || new Set<string>();
-	return {
-		traceId,
-		sessionId,
-		stepOptions: { ...options, traceId, sentFiles },
-	};
-}
-
-/**
- * Advances the duplicate-stall counter. A run that produced no fresh tool
- * executions twice in a row is treated as stuck and should end.
- */
-function nextStallCount(
-	stallCount: number,
-	ranAny: boolean,
-): { count: number; end: boolean } {
-	if (ranAny) return { count: 0, end: false };
-	const count = stallCount + 1;
-	return { count, end: count >= 2 };
+	return [{ functionDeclarations: rawTools }];
 }
 
 async function callModelForStep(
 	compactedContents: Array<Record<string, unknown>>,
-	stepConfig: Record<string, unknown>,
+	genConfig: Record<string, unknown>,
+	step: number,
 	signal?: AbortSignal,
 ): Promise<ModelStepResponse> {
 	if (CONFIG.LLM_PROVIDER === "openai") {
@@ -727,46 +618,71 @@ async function callModelForStep(
 			toolRegistry.count > 0
 				? toolRegistry.getFunctionDeclarations()
 				: undefined;
-		const isJson = !tools && stepConfig.responseMimeType === "application/json";
+		const isJson = !tools && genConfig.responseMimeType === "application/json";
 		return await openAiProvider.chat(chatMessages, {
-			systemInstruction: stepConfig.systemInstruction as string | undefined,
+			systemInstruction: genConfig.systemInstruction as string | undefined,
 			tools,
 			maxTokens:
-				typeof stepConfig.maxOutputTokens === "number"
-					? stepConfig.maxOutputTokens
+				typeof genConfig.maxOutputTokens === "number"
+					? genConfig.maxOutputTokens
 					: 2048,
 			responseFormat: isJson ? "json" : "text",
 			signal,
 		});
 	}
 
+	const tools = normalizeGeminiTools(genConfig.tools);
+	const thinkingConfig =
+		genConfig.thinkingConfig ??
+		getThinkingConfig(CONFIG.GEMINI_MODEL, {
+			isAgentic: step > 1,
+		});
+
 	return (await runWithRetry(() =>
 		ai.models.generateContent({
 			model: CONFIG.GEMINI_MODEL,
 			// biome-ignore lint/suspicious/noExplicitAny: SDK expects content structure
 			contents: compactedContents as any,
-			// biome-ignore lint/suspicious/noExplicitAny: SDK expects config structure
-			config: { ...stepConfig, abortSignal: signal } as any,
+			config: {
+				...genConfig,
+				tools,
+				thinkingConfig,
+				abortSignal: signal,
+				// biome-ignore lint/suspicious/noExplicitAny: SDK expects config structure
+			} as any,
 		}),
 	)) as ModelStepResponse;
 }
 
-/**
- * Drives the multi-turn agent loop: invoking the model, executing requested
- * tools in parallel, feeding results back, and honoring cancellation.
- *
- * Guards against two classic agent failure modes:
- *  - repeated identical tool calls (suppressed after `MAX_IDENTICAL_TOOL_CALLS`)
- *  - a tool failing over and over (`MAX_TOOL_FAILURES_PER_TOOL`)
- * and keeps the running context bounded via `compactContents`.
- */
+function resolveNoToolTurn(
+	response: ModelStepResponse,
+	traceId: string,
+	step: number,
+	alreadyRetried: boolean,
+): { retry: boolean; text: string } {
+	const outcome = inspectNoToolCallResponse(response, traceId, step);
+	return {
+		retry: !outcome.text && outcome.blocked && !alreadyRetried,
+		text: outcome.text,
+	};
+}
+
+function resolveLoopOptions(options: AgentLoopOptions): {
+	traceId: string;
+	stepOptions: AgentLoopOptions;
+} {
+	const traceId = options.traceId || generateTraceId();
+	const sentFiles = options.sentFiles || new Set<string>();
+	return { traceId, stepOptions: { ...options, traceId, sentFiles } };
+}
+
 export async function runAgentLoop(
 	contents: Array<Record<string, unknown>>,
 	genConfig: Record<string, unknown>,
 	options: AgentLoopOptions = {},
 ): Promise<string> {
 	const { signal } = options;
-	const { traceId, sessionId, stepOptions } = resolveLoopContext(options);
+	const { traceId, stepOptions } = resolveLoopOptions(options);
 	const maxSteps = CONFIG.MAX_AGENT_STEPS;
 	const dispatch = makeEventDispatcher(options.onEvent, traceId);
 
@@ -778,13 +694,6 @@ export async function runAgentLoop(
 	const callCounts = new Map<string, number>();
 	const failureCounts = new Map<string, number>();
 
-	AgentTraceLogger.add({
-		traceId,
-		kind: "step-start",
-		step: 0,
-		detail: "loop began",
-	});
-
 	for (let step = 1; step <= maxSteps; step++) {
 		if (signal?.aborted) {
 			logger.info(`[Agent:${traceId}] Aborted before step ${step}.`);
@@ -792,14 +701,6 @@ export async function runAgentLoop(
 		}
 
 		await dispatch({ type: "step-start", step, maxSteps });
-		AgentTraceLogger.add({ traceId, kind: "step-start", step });
-
-		const stepConfig = buildStepConfig(
-			genConfig,
-			step,
-			maxSteps,
-			getPlan(sessionId),
-		);
 
 		const compactedContents = compactContents(
 			contents,
@@ -807,20 +708,21 @@ export async function runAgentLoop(
 		);
 		const response = await callModelForStep(
 			compactedContents,
-			stepConfig,
+			genConfig,
+			step,
 			signal,
 		);
 
 		const functionCalls = extractFunctionCalls(response);
 		if (functionCalls.length === 0) {
-			const turn = resolveNoToolCallTurn(
+			const turn = resolveNoToolTurn(
 				response,
 				traceId,
 				step,
 				retriedBlockedResponse,
 			);
 			responseText = turn.text;
-			if (turn.action === "retry") {
+			if (turn.retry) {
 				retriedBlockedResponse = true;
 				continue;
 			}
@@ -830,7 +732,7 @@ export async function runAgentLoop(
 
 		executedTools = true;
 		logger.info(
-			`[Agent:${traceId}] Gemini requested ${functionCalls.length} tool call(s) at step ${step}`,
+			`[Agent:${traceId}] Model requested ${functionCalls.length} tool call(s) at step ${step}`,
 		);
 
 		const { aborted, ranAny } = await processToolStep({
@@ -839,42 +741,24 @@ export async function runAgentLoop(
 			response,
 			stepOptions,
 			step,
+			maxSteps,
 			traceId,
 			callCounts,
 			failureCounts,
 			dispatch,
 		});
 
-		if (aborted) {
-			logger.info(`[Agent:${traceId}] Aborted after step ${step}.`);
-			return responseText;
-		}
+		if (aborted) return responseText;
 
-		const stall = nextStallCount(stallCount, ranAny);
-		stallCount = stall.count;
-		if (stall.end) {
+		stallCount = ranAny ? 0 : stallCount + 1;
+		if (stallCount >= 2) {
 			logger.warn(
-				`[Agent:${traceId}] Model stalled on duplicate tool calls; ending loop early.`,
+				`[Agent:${traceId}] Stalled on duplicate tool calls; ending loop early.`,
 			);
-			AgentTraceLogger.add({
-				traceId,
-				kind: "loop-detected",
-				step,
-				detail: "stalled on duplicates; ending loop",
-			});
 			break;
 		}
 	}
 
-	AgentTraceLogger.add({
-		traceId,
-		kind: "final",
-		step: 0,
-		detail: responseText ? "text produced" : "summarizing",
-	});
-
-	// If the loop terminated after tool execution without a final text response,
-	// invoke the model one final time without tools to summarize and answer the user.
 	return finalizeAfterToolExecution(
 		contents,
 		genConfig,

@@ -60,8 +60,6 @@ function resolveToolStatusMessage(
 			return `🌐 Fetching ${typeof args.url === "string" ? args.url.slice(0, 45) : "web page"}...`;
 		case "search_workspace":
 			return `🔎 Searching workspace for "${typeof args.query === "string" ? args.query.slice(0, 30) : "..."}"...`;
-		case "update_plan":
-			return "🗒️ Updating task plan...";
 		case "edit_workspace_file":
 			return `✏️ Editing workspace file (${filename})...`;
 		case "read_workspace_file":

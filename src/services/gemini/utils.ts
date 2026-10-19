@@ -28,56 +28,12 @@ function loadSystemPrompt(): string {
 // Load once at module initialization
 cachedSystemPrompt = loadSystemPrompt();
 
-const FORMATTING_RULE =
-	"\n\n### FORMATTING RULE ###\nNever use emojis or emoticons in your responses. When presenting code, tool execution outputs, terminal logs, calculations, or structured data, always format them with clean Markdown code blocks (e.g. ```python, ```bash, ```text) or inline `code`. Use bold (*text*) for emphasis.";
-
-const WORKSPACE_FILE_RULE =
-	"\n\n### WORKSPACE, CODE EXECUTION & AGENTIC BEHAVIOR ###\n" +
-	"You have full access to an isolated Linux sandbox environment with persistent session files across turns:\n" +
-	"- Discovery & Inspection: Use `list_workspace_files` to see what files exist in the session workspace, `search_workspace` to locate a symbol/text across files, and `read_workspace_file` to inspect code, text, CSV headers, schemas, or script outputs.\n" +
-	"- Execution: Use `execute_code` (Python, TypeScript, JavaScript) or `execute_bash` (direct Bash commands: curl, jq, grep, ffmpeg, git, etc.) for computation, data analysis, or web automation.\n" +
-	"- Code Writing vs. Execution: When the user asks to write, explain, review, teach, or debug code, write clean code directly in Markdown code blocks (e.g. ```python) in your text reply. DO NOT call `execute_code` or `execute_bash` unless the user explicitly asks to run, execute, test, calculate, simulate, scrape, or produce files/charts.\n" +
-	"- Web Reads: Use `fetch_url` for quick page/JSON reads that need no JavaScript; use the sandbox (execute_code) for JS-heavy or authenticated scraping.\n" +
-	"- Planning: For any task needing more than one or two tool calls, call `update_plan` once with a short ordered list of steps, and update it if the plan changes.\n" +
-	"- Self-Correction & Reflection: If code execution produces an error (exit code != 0, SyntaxError, KeyError, ModuleNotFoundError, Timeout), DO NOT immediately give up or report failure to the user. Inspect stderr and error hints, fix the issue, and execute again within your loop. If a tool keeps failing, change approach rather than repeating the same call.\n" +
-	"- Editing: Use `edit_workspace_file` for targeted snippet replacements instead of rewriting whole files.\n" +
-	"- Output Delivery: Code execution does not automatically send files to the user. When asked to generate spreadsheets, charts, reports, or media, write them to the workspace and explicitly call `send_workspace_file` (with an optional caption) to deliver them directly to the Telegram user.\n" +
-	"- Code as Action: When fetching external data or web scraping, write small Python or Bash scripts to filter and extract only the relevant information to stdout.\n" +
-	"- Output Limits & Telegram Format: When generating code or invoking tools, write comprehensive, complete scripts without worrying about length. When delivering your final text response to the user, keep it concise, direct, and under 4000 characters to fit Telegram's message limit.";
-
-const GROUP_CHAT_RULE =
-	"\n\n### TELEGRAM GROUP CHAT RULES ###\n- You participate in a Telegram group with multiple users. Always observe who sent which message.\n- Messages labeled 'You (ket.ai)' or role assistant in recent messages are your own previous statements. Never contradict what you wrote earlier or claim you do not remember saying it.\n- When a message replies to another message, the user is answering, asking about, or commenting directly on that specific message. Formulate your reply with this parent message firmly in mind.\n- Never confuse the current sender with other users in the chat or with yourself. Always direct your response to the sender of the current message.";
-
-function buildCurrentDateRule(): string {
-	const date = new Date().toISOString().slice(0, 10);
-	return (
-		"\n\n### CURRENT DATE (authoritative) ###\n" +
-		`Today's date is ${date} (UTC). ` +
-		"Use it to judge freshness for news, prices, and current events, and to interpret relative dates like 'today', 'yesterday', or 'this week'."
-	);
-}
-
-const CODE_EXECUTION_TOOLS = new Set(["execute_code", "execute_bash"]);
-const WORKSPACE_TOOLS = new Set([
-	"list_workspace_files",
-	"read_workspace_file",
-	"write_workspace_file",
-	"send_workspace_file",
-	"reset_workspace",
-]);
-
 function buildToolAvailabilityRule(enabledTools: Iterable<string>): string {
 	const list = [...new Set(enabledTools)];
 	const available = list.length
 		? list.map((t) => `\`${t}\``).join(", ")
 		: "none";
-	return (
-		"\n\n### TOOL AVAILABILITY (authoritative) ###\n" +
-		`The only tools you can actually call right now are: ${available}. ` +
-		"Ignore any earlier mention of tools that are not in this list. " +
-		"Never claim to have run code, searched the web, or generated a file when the corresponding tool is unavailable. " +
-		"If the user asks for something that requires a disabled tool, briefly tell them it is temporarily unavailable."
-	);
+	return `\n\n### ACTIVE TOOLS (authoritative) ###\nToday's date: ${new Date().toISOString().slice(0, 10)} (UTC). Enabled tools: ${available}. Never claim to use a tool not in this list.`;
 }
 
 export function getSystemInstruction(
@@ -85,26 +41,12 @@ export function getSystemInstruction(
 	enabledTools?: Iterable<string>,
 	contextSections?: string[],
 ): string {
-	const toolSet = enabledTools ? new Set(enabledTools) : null;
-	const hasCode = toolSet
-		? [...CODE_EXECUTION_TOOLS].some((t) => toolSet.has(t))
-		: true;
-	const hasWorkspace = toolSet
-		? [...WORKSPACE_TOOLS].some((t) => toolSet.has(t))
-		: true;
-
 	const sections = [
 		cachedSystemPrompt,
-		buildCurrentDateRule(),
-		FORMATTING_RULE,
+		enabledTools
+			? buildToolAvailabilityRule(enabledTools)
+			: `\n\nToday's date: ${new Date().toISOString().slice(0, 10)} (UTC).`,
 	];
-	if (hasCode || hasWorkspace) {
-		sections.push(WORKSPACE_FILE_RULE);
-	}
-	sections.push(GROUP_CHAT_RULE);
-	if (toolSet) {
-		sections.push(buildToolAvailabilityRule(toolSet));
-	}
 	if (contextSections && contextSections.length > 0) {
 		for (const section of contextSections) {
 			if (section.trim()) {
@@ -117,7 +59,7 @@ export function getSystemInstruction(
 	if (!personaPrompt?.trim()) {
 		return base;
 	}
-	return `${base}\n\n### ACTIVE PERSONA INSTRUCTION ###\n${personaPrompt.trim()}\nStrictly adhere to this persona's tone, character, style, and rules in all replies.`;
+	return `${base}\n\n### ACTIVE PERSONA ###\n${personaPrompt.trim()}`;
 }
 
 // Matches emoji bases (\p{Extended_Pictographic}), regional-indicator flags,
@@ -139,27 +81,22 @@ function isGemma4Model(lower: string): boolean {
 }
 
 function getGemma4ThinkingConfig(isAgentic: boolean): Record<string, unknown> {
-	return { thinkingLevel: isAgentic ? "HIGH" : "MINIMAL" };
+	return { thinkingLevel: isAgentic ? "MEDIUM" : "MINIMAL" };
 }
 
 function getAgenticThinkingConfig(lower: string): Record<string, unknown> {
-	// Allocate thinking for code planning & error reflection
 	if (lower.includes("3") || lower.includes("gemini-3")) {
-		return { thinkingLevel: "MEDIUM" };
+		return { thinkingLevel: "LOW" };
 	}
 	if (lower.includes("2.5") && lower.includes("pro")) {
-		return { thinkingBudget: 2048 };
+		return { thinkingBudget: 1024 };
 	}
-	return { thinkingBudget: 1024 };
+	return { thinkingBudget: 512 };
 }
 
 function getDefaultThinkingConfig(lower: string): Record<string, unknown> {
-	// Non-agentic (regular chat responses): minimize thinking to preserve latency
 	if (lower.includes("2.5") && lower.includes("pro")) {
 		return { thinkingBudget: 128 };
-	}
-	if (lower.includes("3") && lower.includes("pro")) {
-		return { thinkingLevel: "LOW" };
 	}
 	if (lower.includes("3") || lower.includes("gemini-3")) {
 		return { thinkingLevel: "MINIMAL" };
@@ -168,8 +105,8 @@ function getDefaultThinkingConfig(lower: string): Record<string, unknown> {
 }
 
 /**
- * Returns thinkingConfig. When tools are active (isAgentic: true), allocates
- * a reasoning budget to enable planning, code verification, and self-correction.
+ * Returns thinkingConfig. Uses minimal thinking on single-shot chat turns and
+ * a bounded reasoning budget on multi-step tool turns.
  */
 export function getThinkingConfig(
 	modelName: string = CONFIG.GEMINI_MODEL,
@@ -491,11 +428,8 @@ export function buildHistoryList(
 			: cleanUserText(msg.text, botUsernameOverride) || fallback;
 
 		return {
-			message_id: msg.message_id,
-			user_id: msg.is_bot_reply ? undefined : msg.user_id,
 			sender,
-			reply_to_message_id: msg.reply_to_message_id || undefined,
-			reply_to_preview: replyPreview,
+			...(replyPreview && { reply_to: replyPreview }),
 			text: cleanText,
 		};
 	});

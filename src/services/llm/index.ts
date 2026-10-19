@@ -111,15 +111,12 @@ function buildCurrentMessageToReply(
 			cleanUserText(options.targetMessage.text) || options.mediaFallbackText;
 
 		const currentMsgObj: Record<string, unknown> = {
-			message_id: options.targetMessage.messageId,
-			sender_id: options.targetMessage.userId,
 			sender: senderDesc,
 			text: cleanText,
 		};
 
 		if (options.targetMessage.replyTo) {
 			currentMsgObj.replying_to = {
-				message_id: options.targetMessage.replyTo.messageId,
 				sender: options.targetMessage.replyTo.senderName,
 				text: options.targetMessage.replyTo.text,
 			};
@@ -138,12 +135,9 @@ function buildDocumentAttachment(doc: PreparedDocumentContext) {
 		filename: doc.fileName,
 		mime_type: doc.mimeType,
 		size_bytes: doc.sizeBytes,
-		is_text: doc.isText,
-		is_truncated: doc.isTruncated,
-		content: doc.textContent,
-		summary_hint: doc.summaryHint,
-		workspace_saved: true,
-		workspace_filename: doc.fileName,
+		...(doc.isTruncated && { is_truncated: true }),
+		...(doc.textContent && { content: doc.textContent }),
+		...(doc.summaryHint && { summary_hint: doc.summaryHint }),
 	};
 }
 
@@ -158,25 +152,30 @@ function buildInputPayload(
 		lastMsg,
 		options.mediaFallbackText,
 	);
-	const historyList = buildHistoryList(history, undefined, options.chatId);
+	const priorHistory =
+		!options.isSpontaneous && history.length > 0
+			? history.slice(0, -1)
+			: history;
+	const historyList = buildHistoryList(priorHistory, undefined, options.chatId);
 
 	const inputPayload: Record<string, unknown> = {
-		active_topic:
-			topicSummary || "General chat is going on, no specific topic.",
 		recent_messages: historyList,
-		memories,
 	};
 
+	if (
+		topicSummary &&
+		topicSummary !== "General chat is going on, no specific topic."
+	) {
+		inputPayload.active_topic = topicSummary;
+	}
+	if (memories.length > 0) {
+		inputPayload.memories = memories;
+	}
 	if (options.instruction) {
 		inputPayload.instruction = options.instruction;
 	}
-
 	if (options.document) {
 		inputPayload.attached_document = buildDocumentAttachment(options.document);
-		const docGuidance = `Document '${options.document.fileName}' is available in your persistent workspace. You can inspect it, summarize it, execute it with execute_code (Python/Bash/Bun), or edit it with edit_workspace_file/write_workspace_file and deliver it to the user with send_workspace_file.`;
-		inputPayload.instruction = inputPayload.instruction
-			? `${inputPayload.instruction} ${docGuidance}`
-			: docGuidance;
 	}
 
 	if (options.isSpontaneous) {
@@ -198,7 +197,7 @@ function buildInputPayload(
 	if (hasExplicitMemoryIntent) {
 		inputPayload.instruction =
 			(inputPayload.instruction ? `${inputPayload.instruction} ` : "") +
-			"IMPORTANT: The user explicitly requested to remember information from this message. Make sure to extract all personal facts/details into new_memory_updates.";
+			"IMPORTANT: The user explicitly requested to remember information from this message. Extract all personal facts into new_memory_updates.";
 	}
 
 	return inputPayload;
@@ -551,7 +550,10 @@ function buildHistoricalUserMessage(
 	const senderName =
 		msg.first_name || (msg.user_id ? `User_${msg.user_id}` : "User");
 	const clean = cleanUserText(msg.text) || resolveMessageFallback(msg);
-	const prefix = resolveReplyPrefix(msg.reply_to_message_id, msgMap);
+	const prefix = resolveReplyPrefix(
+		msg.reply_to_message_id ?? undefined,
+		msgMap,
+	);
 	return { role: "user", content: `${prefix}${senderName}: ${clean}` };
 }
 
@@ -649,13 +651,17 @@ function buildGenConfig(
 	replyDescription: string,
 	contextSections?: string[],
 ): Record<string, unknown> {
-	const isAgentic = toolRegistry.count > 0;
+	const allTools = toolRegistry.getAllTools();
+	const isAgentic = allTools.length > 0;
 	const isConversationalProvider = CONFIG.LLM_PROVIDER === "openai";
 	const systemInstruction = getSystemInstruction(
 		personaPrompt,
-		toolRegistry.getAllTools().map((t) => t.name),
+		allTools.map((t) => t.name),
 		contextSections,
 	);
+	const declarations = isAgentic
+		? toolRegistry.getFunctionDeclarations()
+		: undefined;
 
 	const genConfig: Record<string, unknown> = {
 		systemInstruction,
@@ -664,9 +670,13 @@ function buildGenConfig(
 				? 4096
 				: CONFIG.MAX_TOOL_OUTPUT_TOKENS && CONFIG.MAX_TOOL_OUTPUT_TOKENS > 0
 					? CONFIG.MAX_TOOL_OUTPUT_TOKENS
-					: undefined
-			: 2048,
-		tools: isAgentic ? toolRegistry.getFunctionDeclarations() : undefined,
+					: 8192
+			: 1024,
+		tools: declarations
+			? isConversationalProvider
+				? declarations
+				: [{ functionDeclarations: declarations }]
+			: undefined,
 	};
 
 	if (!isAgentic && !isConversationalProvider) {
@@ -702,6 +712,14 @@ async function loadContextMemories(
 		senderUserId: targetUserId,
 		isPrivateChat: isPrivate,
 	});
+}
+
+function recordSummarizedCount(chatIdStr: string, count: number): void {
+	lastSummarizedCount.set(chatIdStr, count);
+	if (lastSummarizedCount.size > MAX_TRACKED_CHATS) {
+		const firstKey = lastSummarizedCount.keys().next().value;
+		if (firstKey) lastSummarizedCount.delete(firstKey);
+	}
 }
 
 export const LlmService = {
@@ -809,28 +827,32 @@ export const LlmService = {
 		currentTopic: string | null,
 	): Promise<string> {
 		const currentCount = Repository.getMessageCount(chatIdStr);
-		const lastCount = lastSummarizedCount.get(chatIdStr) || 0;
+		if (currentTopic && !lastSummarizedCount.has(chatIdStr)) {
+			recordSummarizedCount(chatIdStr, currentCount);
+			return currentTopic;
+		}
 
-		if (!currentTopic || currentCount - lastCount >= 20) {
-			logger.info(
-				`[Summarizer] Triggering on-demand topic summary for group ${chatIdStr}...`,
-			);
-			const history = Repository.getRecentMessages(chatIdStr, 30);
-			const summary = await this.summarizeTopic(history);
-			if (summary) {
-				Repository.updateChatSettings(chatIdStr, {
-					current_topic: summary,
+		const lastCount = lastSummarizedCount.get(chatIdStr) || 0;
+		const shouldSummarize =
+			(!currentTopic && currentCount >= 6) || currentCount - lastCount >= 25;
+
+		if (shouldSummarize) {
+			recordSummarizedCount(chatIdStr, currentCount);
+			const history = Repository.getRecentMessages(chatIdStr, 20);
+			void this.summarizeTopic(history)
+				.then((summary) => {
+					if (summary) {
+						Repository.updateChatSettings(chatIdStr, {
+							current_topic: summary,
+						});
+						logger.info(
+							`[Summarizer] Updated topic summary for ${chatIdStr}: "${summary}"`,
+						);
+					}
+				})
+				.catch((err) => {
+					logger.warn(`[Summarizer] Background summary failed:`, err);
 				});
-				lastSummarizedCount.set(chatIdStr, currentCount);
-				if (lastSummarizedCount.size > MAX_TRACKED_CHATS) {
-					const firstKey = lastSummarizedCount.keys().next().value;
-					if (firstKey) lastSummarizedCount.delete(firstKey);
-				}
-				logger.info(
-					`[Summarizer] New topic summary for ${chatIdStr}: "${summary}"`,
-				);
-				return summary;
-			}
 		}
 
 		return currentTopic || "";
@@ -871,23 +893,21 @@ export const LlmService = {
 		try {
 			if (history.length === 0) return "";
 
-			const historyList = history.map((msg) => ({
-				sender: msg.is_bot_reply
-					? "You (ket.ai)"
-					: `User: ${msg.first_name || "Unnamed"}`,
-				text: msg.text || "[Media]",
-			}));
-
-			const prompt =
-				"Analyze the conversations below. Summarize the main topic of conversation or the situation being discussed by a person in a maximum of 1–2 sentences.";
+			const lines = history
+				.slice(-20)
+				.map((msg) => {
+					const sender = msg.is_bot_reply ? "ket.ai" : msg.first_name || "User";
+					const text = (msg.text || "[Media]").slice(0, 150);
+					return `${sender}: ${text}`;
+				})
+				.join("\n");
 
 			const schema = {
 				type: "OBJECT",
 				properties: {
 					summary: {
 						type: "STRING",
-						description:
-							"A 1-2 sentence text summarizing the current topic of the group chat.",
+						description: "1-2 sentence summary of the current chat topic.",
 					},
 				},
 				required: ["summary"],
@@ -896,12 +916,9 @@ export const LlmService = {
 			const parsed = await getLlmProvider().generateStructured<{
 				summary?: string;
 			}>(
-				JSON.stringify({
-					messages: historyList,
-					instruction: prompt,
-				}),
+				`Summarize the main topic of this conversation in 1-2 short sentences:\n\n${lines}`,
 				schema,
-				"You are an analysis expert. You summarize group chats in just 1-2 sentences.",
+				"Summarize group chats in 1-2 concise sentences.",
 			);
 
 			return typeof parsed?.summary === "string" ? parsed.summary.trim() : "";

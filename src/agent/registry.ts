@@ -1,7 +1,6 @@
 import logger from "../utils/logger";
 import { bashExecutionTool, codeExecutionTool } from "./tools/codeExecution";
 import { fetchUrlTool } from "./tools/fetchUrl";
-import { updatePlanTool } from "./tools/plan";
 import { webSearchTool } from "./tools/webSearch";
 import {
 	editWorkspaceFileTool,
@@ -34,7 +33,6 @@ class ToolRegistry {
 			this.tools.set("edit_workspace_file", editWorkspaceFileTool);
 			this.tools.set("send_workspace_file", sendWorkspaceFileTool);
 			this.tools.set("reset_workspace", resetWorkspaceTool);
-			this.tools.set("update_plan", updatePlanTool);
 		}
 	}
 

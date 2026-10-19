@@ -122,7 +122,7 @@ export const CONFIG = {
 			? configJson.max_tool_output_tokens
 			: process.env.MAX_TOOL_OUTPUT_TOKENS
 				? parseInt(process.env.MAX_TOOL_OUTPUT_TOKENS, 10)
-				: 65536,
+				: 8192,
 	ENABLE_AGENT_THINKING:
 		typeof configJson.enable_agent_thinking === "boolean"
 			? configJson.enable_agent_thinking
@@ -144,7 +144,7 @@ export const CONFIG = {
 			? configJson.agent_context_max_chars
 			: process.env.AGENT_CONTEXT_MAX_CHARS
 				? parseInt(process.env.AGENT_CONTEXT_MAX_CHARS, 10)
-				: 80000,
+				: 28000,
 	ENABLE_FETCH_URL:
 		typeof configJson.enable_fetch_url === "boolean"
 			? configJson.enable_fetch_url

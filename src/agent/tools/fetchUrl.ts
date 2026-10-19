@@ -3,7 +3,7 @@ import logger from "../../utils/logger";
 import type { AgentTool, ToolExecutionContext } from "../types";
 
 const DEFAULT_TIMEOUT_MS = 15000;
-const DEFAULT_MAX_CHARS = 6000;
+const DEFAULT_MAX_CHARS = 4000;
 const MAX_RAW_BYTES = 3 * 1024 * 1024;
 
 interface FetchUrlArgs {
@@ -210,23 +210,21 @@ async function fetchUrl(
 export const fetchUrlTool: AgentTool<FetchUrlArgs, FetchUrlResult> = {
 	name: "fetch_url",
 	description:
-		"Fetches a web page or JSON/text endpoint and returns its readable content as plain text. Use this for quick page reads (articles, docs, raw JSON/APIs) without spinning up the sandbox. It does not execute JavaScript and returns server-rendered content only; for JS-heavy sites or authenticated scraping use execute_code.",
+		"Fetches a web page or JSON/text endpoint as plain text (no JS execution; use execute_code for JS-heavy scraping).",
 	parameters: {
 		type: "OBJECT",
 		properties: {
 			url: {
 				type: "STRING",
-				description: "The absolute http(s) URL to fetch.",
+				description: "Absolute http(s) URL to fetch.",
 			},
 			maxChars: {
 				type: "INTEGER",
-				description:
-					"Optional maximum number of characters to return (default 6000, max 40000).",
+				description: "Optional max characters to return (default 4000).",
 			},
 			timeoutMs: {
 				type: "INTEGER",
-				description:
-					"Optional request timeout in milliseconds (default 15000).",
+				description: "Optional timeout in ms (default 15000).",
 			},
 		},
 		required: ["url"],

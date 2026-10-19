@@ -4,7 +4,7 @@ import {
 } from "../../agent/tools/workspaceTools";
 import logger from "../../utils/logger";
 
-const MAX_DIRECT_TEXT_CHARS = 40_000;
+const MAX_DIRECT_TEXT_CHARS = 4_000;
 
 export interface PreparedDocumentContext {
 	fileName: string;
@@ -141,9 +141,9 @@ export function prepareDocumentContext(
 	} else if (isText) {
 		const rawText = buffer.toString("utf-8");
 		if (rawText.length > MAX_DIRECT_TEXT_CHARS) {
-			const head = rawText.slice(0, 25_000);
-			const tail = rawText.slice(-10_000);
-			textContent = `${head}\n\n[... Truncated ${rawText.length - 35_000} chars. Full file available in workspace as '${fileName}'] ...\n\n${tail}`;
+			const head = rawText.slice(0, 2_500);
+			const tail = rawText.slice(-1_000);
+			textContent = `${head}\n\n[... Truncated ${rawText.length - 3_500} chars. Full file in workspace as '${fileName}'] ...\n\n${tail}`;
 			isTruncated = true;
 		} else {
 			textContent = rawText;

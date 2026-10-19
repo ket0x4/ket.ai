@@ -168,7 +168,7 @@ async function readWorkspaceFile(
 			sizeBytes: data.sizeBytes,
 			error: data.error,
 			system_note: data.success
-				? `File '${filename}' read successfully (${data.sizeBytes} bytes).`
+				? undefined
 				: `Could not read '${filename}': ${data.error}`,
 		};
 	} catch (err) {
@@ -218,7 +218,7 @@ export async function writeWorkspaceFile(
 			sizeBytes: data.sizeBytes,
 			error: data.error,
 			system_note: data.success
-				? `File '${filename}' written successfully (${data.sizeBytes} bytes).`
+				? undefined
 				: `Failed writing '${filename}': ${data.error}`,
 		};
 	} catch (err) {
@@ -262,9 +262,7 @@ function countOccurrences(haystack: string, needle: string): number {
 }
 
 /**
- * Applies a targeted string replacement inside a workspace file. Reads the
- * current file, replaces an exact (and by default unique) match, and writes it
- * back. Far safer than rewriting whole files for small edits.
+ * Applies a targeted string replacement inside a workspace file.
  */
 async function editWorkspaceFile(
 	args: EditWorkspaceFileArgs,
@@ -283,8 +281,6 @@ async function editWorkspaceFile(
 			success: false,
 			filename,
 			error: "old_string must be a non-empty exact snippet to replace.",
-			system_note:
-				"Provide the exact text to find. Read the file first if unsure.",
 		};
 	}
 
@@ -297,7 +293,6 @@ async function editWorkspaceFile(
 			success: false,
 			filename,
 			error: readRes.error || "Could not read the file.",
-			system_note: `File '${filename}' could not be read for editing. Ensure it exists as a text file.`,
 		};
 	}
 
@@ -306,18 +301,15 @@ async function editWorkspaceFile(
 		return {
 			success: false,
 			filename,
-			error: "old_string not found in file.",
-			system_note:
-				"The snippet to replace was not found. Read the file to confirm the exact text (including whitespace).",
+			error:
+				"old_string not found in file. Read the file to confirm exact text.",
 		};
 	}
 	if (occurrences > 1 && !args.replace_all) {
 		return {
 			success: false,
 			filename,
-			error: `old_string appears ${occurrences} times.`,
-			system_note:
-				"Ambiguous match. Include more surrounding context to make it unique, or set replace_all to true.",
+			error: `old_string appears ${occurrences} times. Add surrounding context or set replace_all: true.`,
 		};
 	}
 
@@ -343,13 +335,11 @@ async function editWorkspaceFile(
 		};
 	}
 
-	const replacements = args.replace_all ? occurrences : 1;
 	return {
 		success: true,
 		filename,
-		replacements,
+		replacements: args.replace_all ? occurrences : 1,
 		sizeBytes: writeRes.sizeBytes,
-		system_note: `Applied ${replacements} replacement(s) to '${filename}'.`,
 	};
 }
 
@@ -372,7 +362,6 @@ export async function resetWorkspace(
 			success: data.success,
 			message: data.message,
 			error: data.error,
-			system_note: "Session workspace was cleaned and reset to an empty state.",
 		};
 	} catch (err) {
 		const msg = err instanceof Error ? err.message : String(err);
@@ -407,7 +396,6 @@ async function listWorkspaceFiles(
 			files,
 			totalFiles: data.totalFiles || files.length,
 			error: data.error,
-			system_note: `Found ${files.length} file(s) in the current session workspace: [${files.map((f) => f.filename).join(", ")}].`,
 		};
 	} catch (err) {
 		const msg = err instanceof Error ? err.message : String(err);
@@ -465,10 +453,6 @@ async function searchWorkspace(
 			filesSearched: data.filesSearched || 0,
 			truncated: data.truncated,
 			error: data.error,
-			system_note:
-				matches.length > 0
-					? `Found ${data.totalMatches ?? matches.length} match(es) for "${query}" across ${data.filesSearched ?? 0} file(s).${data.truncated ? " Results were truncated; refine the query or pattern." : ""}`
-					: `No matches for "${query}" in the workspace.`,
 		};
 	} catch (err) {
 		const msg = err instanceof Error ? err.message : String(err);
@@ -503,7 +487,7 @@ async function sendWorkspaceFile(
 		return {
 			success: true,
 			filename,
-			system_note: `File '${filename}' has already been delivered to the user in this interaction. Do not call send_workspace_file again for '${filename}'. Proceed with your answer to the user.`,
+			system_note: `File '${filename}' was already queued for delivery in this turn.`,
 		};
 	}
 
@@ -520,8 +504,7 @@ async function sendWorkspaceFile(
 		return {
 			success: false,
 			filename: readRes.filename,
-			error: readRes.error,
-			system_note: `Could not retrieve '${filename}' to send to user. Ensure file exists in workspace.`,
+			error: readRes.error || `File '${filename}' not found in workspace.`,
 		};
 	}
 
@@ -547,7 +530,7 @@ async function sendWorkspaceFile(
 			success: true,
 			filename,
 			sizeBytes: buffer.length,
-			system_note: `File '${filename}' (${buffer.length} bytes) successfully queued and will be delivered to the user as a Telegram file attachment. Do not call send_workspace_file again for this file.`,
+			system_note: `Queued '${filename}' for Telegram delivery.`,
 		};
 	} catch (err) {
 		const msg = err instanceof Error ? err.message : String(err);
@@ -559,7 +542,6 @@ async function sendWorkspaceFile(
 			success: false,
 			filename: readRes.filename,
 			error: msg,
-			system_note: "Failed to read file from workspace for delivery.",
 		};
 	}
 }
@@ -569,8 +551,7 @@ export const listWorkspaceFilesTool: AgentTool<
 	ListWorkspaceFilesResult
 > = {
 	name: "list_workspace_files",
-	description:
-		"Lists all files, sizes, and types in the current persistent session workspace. Use this to discover available datasets, generated files, scripts, or attached user documents before processing them.",
+	description: "Lists all files and sizes in the session workspace.",
 	parameters: {
 		type: "OBJECT",
 		properties: {},
@@ -590,28 +571,25 @@ export const searchWorkspaceTool: AgentTool<
 > = {
 	name: "search_workspace",
 	description:
-		"Searches the text/code files in the session workspace for a literal string and returns matching file, line number, and line text. Use this to locate symbols, functions, config keys, or data values across files before reading them in full.",
+		"Searches workspace text/code files for a string and returns matching file, line number, and text.",
 	parameters: {
 		type: "OBJECT",
 		properties: {
 			query: {
 				type: "STRING",
-				description:
-					"The literal text to search for (case-insensitive by default).",
+				description: "Text to search for (case-insensitive by default).",
 			},
 			filePattern: {
 				type: "STRING",
-				description:
-					"Optional filename glob to limit the search, e.g. '*.py' or 'data*'. Defaults to all text files.",
+				description: "Optional filename glob (e.g. '*.py').",
 			},
 			maxResults: {
 				type: "INTEGER",
-				description:
-					"Optional maximum number of matches to return (default 50, max 200).",
+				description: "Optional max matches (default 50).",
 			},
 			caseSensitive: {
 				type: "BOOLEAN",
-				description: "Optional. Set to true for a case-sensitive search.",
+				description: "Optional case-sensitive flag.",
 			},
 		},
 		required: ["query"],
@@ -630,15 +608,13 @@ export const readWorkspaceFileTool: AgentTool<
 	ReadWorkspaceFileResult
 > = {
 	name: "read_workspace_file",
-	description:
-		"Reads the content of a text or code file from the session workspace. Use this to inspect source code, configuration files, CSV headers, schemas, or script outputs.",
+	description: "Reads a text or code file from the session workspace.",
 	parameters: {
 		type: "OBJECT",
 		properties: {
 			filename: {
 				type: "STRING",
-				description:
-					"Name of the file in workspace to read (e.g. 'dataset.csv', 'report.txt', 'script.py').",
+				description: "Filename in workspace to read.",
 			},
 		},
 		required: ["filename"],
@@ -658,18 +634,17 @@ export const writeWorkspaceFileTool: AgentTool<
 > = {
 	name: "write_workspace_file",
 	description:
-		"Writes or updates a text/code file in the persistent session workspace. To deliver the file to the user, call send_workspace_file.",
+		"Writes or overwrites a text/code file in the session workspace.",
 	parameters: {
 		type: "OBJECT",
 		properties: {
 			filename: {
 				type: "STRING",
-				description:
-					"Name of the file to write (e.g. 'clean_data.csv', 'config.json', 'crawler.py').",
+				description: "Filename to write.",
 			},
 			content: {
 				type: "STRING",
-				description: "Text or code content to write into the file.",
+				description: "Text/code content.",
 			},
 		},
 		required: ["filename", "content"],
@@ -689,27 +664,25 @@ export const editWorkspaceFileTool: AgentTool<
 > = {
 	name: "edit_workspace_file",
 	description:
-		"Makes a targeted edit to an existing text/code file in the session workspace by replacing an exact snippet. Use this instead of rewriting whole files when changing a few lines. old_string must match exactly (including whitespace) and, unless replace_all is true, must be unique in the file.",
+		"Replaces an exact snippet inside an existing workspace text/code file.",
 	parameters: {
 		type: "OBJECT",
 		properties: {
 			filename: {
 				type: "STRING",
-				description: "Name of the existing text/code file to edit.",
+				description: "Filename to edit.",
 			},
 			old_string: {
 				type: "STRING",
-				description:
-					"The exact text to find. Include enough surrounding context to be unique.",
+				description: "Exact snippet to find.",
 			},
 			new_string: {
 				type: "STRING",
-				description: "The text to replace it with.",
+				description: "Replacement text.",
 			},
 			replace_all: {
 				type: "BOOLEAN",
-				description:
-					"Optional. When true, replace every occurrence of old_string instead of requiring a unique match.",
+				description: "Optional flag to replace all occurrences.",
 			},
 		},
 		required: ["filename", "old_string", "new_string"],
@@ -729,19 +702,17 @@ export const sendWorkspaceFileTool: AgentTool<
 > = {
 	name: "send_workspace_file",
 	description:
-		"Delivers an existing workspace file, chart, spreadsheet, or generated media directly to the user as a Telegram document, photo, or video. You can optionally specify a caption describing the file.",
+		"Delivers a workspace file (chart, spreadsheet, PDF, video, code) to the user in Telegram.",
 	parameters: {
 		type: "OBJECT",
 		properties: {
 			filename: {
 				type: "STRING",
-				description:
-					"Name of the existing file in the workspace to send to the user (e.g. 'analysis.xlsx', 'chart.png', 'summary.pdf').",
+				description: "Filename in workspace to send.",
 			},
 			caption: {
 				type: "STRING",
-				description:
-					"Optional caption or summary to accompany this file in Telegram.",
+				description: "Optional caption.",
 			},
 		},
 		required: ["filename"],
@@ -760,8 +731,7 @@ export const resetWorkspaceTool: AgentTool<
 	ResetWorkspaceResult
 > = {
 	name: "reset_workspace",
-	description:
-		"Cleans out all files in the current session workspace. Use when starting a completely fresh task or resetting temporary data.",
+	description: "Clears all files in the current session workspace.",
 	parameters: {
 		type: "OBJECT",
 		properties: {},

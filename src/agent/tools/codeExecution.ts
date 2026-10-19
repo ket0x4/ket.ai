@@ -70,26 +70,24 @@ function buildSystemNote(data: {
 	images?: CodeExecutionImage[];
 	errorHint?: string;
 	notes?: string[];
-}): string {
-	let systemNote = data.success
-		? "Code execution succeeded. Format code snippets, stdout/text outputs, calculation results, or data tables cleanly using Markdown code blocks (```language ... ```) or inline code (`...`) in your reply to the user. Do not pretend you did not run the code."
-		: "Code execution finished with errors. Format any error details, stderr, or code snippets cleanly in Markdown code blocks (``` ... ```) and explain or provide the best possible answer.";
-
+}): string | undefined {
+	const parts: string[] = [];
+	if (data.errorHint) {
+		parts.push(data.errorHint);
+	}
 	const allArtifacts = data.artifacts || data.images || [];
 	if (allArtifacts.length > 0) {
 		const fileList = allArtifacts
 			.map((art) => `${art.filename} (${art.type || "file"})`)
 			.join(", ");
-		systemNote += ` Generated workspace file(s): [${fileList}]. To deliver any of these files to the user, call send_workspace_file({ filename, caption? }).`;
-	}
-
-	if (data.errorHint) {
-		systemNote = `${data.errorHint} | ${systemNote}`;
+		parts.push(
+			`Generated workspace file(s): [${fileList}]. Call send_workspace_file({ filename, caption? }) to deliver to user.`,
+		);
 	}
 	if (data.notes && data.notes.length > 0) {
-		systemNote += ` Notes: ${data.notes.join(" ")}`;
+		parts.push(data.notes.join(" "));
 	}
-	return systemNote;
+	return parts.length > 0 ? parts.join(" | ") : undefined;
 }
 
 type RawSandboxExecutionResponse = SandboxExecuteResponse;
@@ -260,45 +258,40 @@ export const codeExecutionTool: AgentTool<
 > = {
 	name: "execute_code",
 	description:
-		"Executes Python, JavaScript, TypeScript, or Bash scripts in a sandboxed Linux container with web access, persistent workspace files across turns, pre-loaded data science, scraping, media, and reporting packages (numpy, pandas, polars, matplotlib, seaborn, pillow, openpyxl, xlsxwriter, reportlab, tabulate, curl_cffi, beautifulsoup4, requests, ffmpeg, aria2c, patchright). You can generate Excel spreadsheets (.xlsx), PDF documents (.pdf), CSV files (.csv), charts/plots (.png/.jpg), animations/videos (.mp4), or screenshots, and they will automatically be delivered directly to the user as appropriate Telegram photos/documents/videos.",
+		"Runs Python, JavaScript, TypeScript, or Bash in a Linux sandbox with web access, persistent workspace files, and data/scraping/media libraries (numpy, pandas, polars, matplotlib, seaborn, pillow, openpyxl, xlsxwriter, reportlab, tabulate, curl_cffi, beautifulsoup4, requests, ffmpeg, aria2c, patchright). Files written to workspace can be sent to the user via send_workspace_file.",
 	parameters: {
 		type: "OBJECT",
 		properties: {
 			language: {
 				type: "STRING",
 				description:
-					"Language to run: 'python', 'javascript', 'typescript', or 'bash'. Default is 'python'.",
+					"'python', 'javascript', 'typescript', or 'bash' (default: 'python').",
 			},
 			code: {
 				type: "STRING",
-				description:
-					"Complete source code of the script to execute in the sandbox.",
+				description: "Source code to execute.",
 			},
 			packages: {
 				type: "ARRAY",
-				description:
-					"Optional list of package dependencies to install before running (e.g. ['requests', 'beautifulsoup4', 'lxml']).",
+				description: "Optional packages to install before running.",
 				items: {
 					type: "STRING",
 				},
 			},
 			filename: {
 				type: "STRING",
-				description:
-					"Optional custom filename to save and execute the script as (e.g. 'main.py', 'crawler.ts'). Defaults to standard extension.",
+				description: "Optional script filename (e.g. 'main.py').",
 			},
 			target_files: {
 				type: "ARRAY",
-				description:
-					"Optional list of specific filenames intended for final delivery to the user (e.g. ['sales_chart.png', 'report.xlsx', 'final_video.mp4']). If specified, intermediate frame/temp files will be excluded.",
+				description: "Optional output filenames to track.",
 				items: {
 					type: "STRING",
 				},
 			},
 			timeoutMs: {
 				type: "INTEGER",
-				description:
-					"Optional execution timeout in milliseconds (1000-120000). Increase it for long web scraping, Patchright, or heavy data jobs. Defaults to the server configuration.",
+				description: "Optional timeout in ms (1000-120000).",
 			},
 		},
 		required: ["language", "code"],
@@ -340,19 +333,17 @@ export const bashExecutionTool: AgentTool<
 > = {
 	name: "execute_bash",
 	description:
-		"Executes a Bash terminal command or pipeline (curl, wget, aria2c, jq, grep, awk, sed, ffmpeg, git, tar, unzip, ls, etc.) in the sandbox container. Ideal for quick terminal tasks, CLI inspection, and media processing.",
+		"Runs a Bash command or pipeline (curl, jq, grep, awk, ffmpeg, git, ls, etc.) in the sandbox workspace.",
 	parameters: {
 		type: "OBJECT",
 		properties: {
 			command: {
 				type: "STRING",
-				description:
-					"The exact Bash command line string to execute in the container workspace.",
+				description: "Bash command string to execute.",
 			},
 			timeoutMs: {
 				type: "INTEGER",
-				description:
-					"Optional execution timeout in milliseconds (1000-120000). Increase it for long-running commands. Defaults to the server configuration.",
+				description: "Optional timeout in ms (1000-120000).",
 			},
 		},
 		required: ["command"],

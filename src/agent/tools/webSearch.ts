@@ -6,7 +6,7 @@ import type { AgentTool, ToolExecutionContext } from "../types";
 
 interface SearchResult {
 	title: string;
-	snippet: string;
+	snippet?: string;
 	url?: string;
 }
 
@@ -58,12 +58,14 @@ function buildSearchResults(
 	summary: string,
 ): SearchResult[] {
 	const results: SearchResult[] = [];
+	const seen = new Set<string>();
 	for (const chunk of chunks) {
-		if (chunk.web?.uri) {
+		const uri = chunk.web?.uri;
+		if (uri && !seen.has(uri)) {
+			seen.add(uri);
 			results.push({
-				title: chunk.web.title || "Web Source",
-				snippet: summary.length > 300 ? `${summary.slice(0, 297)}...` : summary,
-				url: chunk.web.uri,
+				title: chunk.web?.title || "Web Source",
+				url: uri,
 			});
 		}
 	}
@@ -113,11 +115,13 @@ async function performWebSearch(
 		const response = await runWithRetry(() =>
 			ai.models.generateContent({
 				model: CONFIG.GEMINI_MODEL,
-				contents: `Search the web and provide accurate, up-to-date information for the following search query or URL. Include key facts, numbers, dates, or relevant details concisely:\n\nQuery: ${trimmedQuery}`,
+				contents: `Search the web and provide concise, accurate facts, numbers, and dates for: ${trimmedQuery}`,
 				config: {
 					tools: [{ googleSearch: {} }],
-					maxOutputTokens: 2048,
-					thinkingConfig: getThinkingConfig(CONFIG.GEMINI_MODEL),
+					maxOutputTokens: 1024,
+					thinkingConfig: getThinkingConfig(CONFIG.GEMINI_MODEL, {
+						isAgentic: false,
+					}),
 					abortSignal: signal,
 				},
 			}),
@@ -138,7 +142,7 @@ async function performWebSearch(
 
 		const noResultsNote =
 			results.length === 0 && !summary
-				? "Search returned 0 results. Tell the user politely that no relevant information was found."
+				? "Search returned 0 results."
 				: undefined;
 
 		const output: WebSearchOutput = {
@@ -162,8 +166,7 @@ async function performWebSearch(
 			summary: "",
 			results: [],
 			count: 0,
-			system_note:
-				"Search engine error. Tell the user politely that you couldn't access search results at the moment.",
+			system_note: "Search engine error.",
 		};
 	}
 }
@@ -171,13 +174,13 @@ async function performWebSearch(
 export const webSearchTool: AgentTool<{ query: string }, WebSearchOutput> = {
 	name: "web_search",
 	description:
-		"Use this to search the internet or look up web URLs when current information, news, weather, stock prices, events, or webpage content are needed.",
+		"Searches the web for current information, news, prices, events, or facts.",
 	parameters: {
 		type: "OBJECT",
 		properties: {
 			query: {
 				type: "STRING",
-				description: "The search query string or URL to look up",
+				description: "Search query or URL.",
 			},
 		},
 		required: ["query"],

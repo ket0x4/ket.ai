@@ -11,6 +11,8 @@ import { expandContextualQuery, runWithRetry } from "./utils";
 
 const newMemoriesCount = new Map<string, number>();
 const MAX_TRACKED_CHATS = 200;
+const queryEmbeddingCache = new Map<string, number[]>();
+const MAX_EMBEDDING_CACHE = 100;
 
 const TASK_PREFIXES: Record<string, string> = {
 	RETRIEVAL_QUERY: "task: search result | query: ",
@@ -31,6 +33,10 @@ export async function generateEmbedding(
 ): Promise<number[]> {
 	try {
 		const formattedContents = formatEmbeddingContent(text, taskType);
+		const cacheKey = `${taskType}::${formattedContents.toLowerCase()}`;
+		const cached = queryEmbeddingCache.get(cacheKey);
+		if (cached) return cached;
+
 		const response = await runWithRetry(() =>
 			ai.models.embedContent({
 				model: "gemini-embedding-2",
@@ -40,7 +46,15 @@ export async function generateEmbedding(
 				},
 			}),
 		);
-		return response.embeddings?.[0]?.values || [];
+		const values = response.embeddings?.[0]?.values || [];
+		if (values.length > 0) {
+			if (queryEmbeddingCache.size >= MAX_EMBEDDING_CACHE) {
+				const oldest = queryEmbeddingCache.keys().next().value;
+				if (oldest) queryEmbeddingCache.delete(oldest);
+			}
+			queryEmbeddingCache.set(cacheKey, values);
+		}
+		return values;
 	} catch (error) {
 		logger.error("Error generating embedding:", error);
 		return [];

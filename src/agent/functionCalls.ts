@@ -12,36 +12,37 @@ interface GeminiFunctionCallPart {
 	};
 }
 
-interface ModelResponseLike {
+export interface ModelResponseLike {
+	toolCalls?: RawFunctionCall[];
 	functionCalls?: Array<{
 		id?: string;
 		name?: string;
 		args?: Record<string, unknown>;
 	}>;
-	candidates?: Array<{
-		content?: {
-			parts?: GeminiFunctionCallPart[];
-		};
-	}>;
-	choices?: Array<{
-		message?: {
-			tool_calls?: Array<{
-				id?: string;
-				type?: string;
-				function?: {
-					name?: string;
-					arguments?: string;
-				};
-			}>;
-		};
-	}>;
+	candidates?: unknown[];
+	choices?: unknown[];
 }
 
 export function extractFunctionCalls(
 	response: ModelResponseLike,
 ): RawFunctionCall[] {
-	if (response.choices?.[0]?.message?.tool_calls) {
-		return response.choices[0].message.tool_calls
+	if (Array.isArray(response.toolCalls) && response.toolCalls.length > 0) {
+		return response.toolCalls.filter((fc) => Boolean(fc?.name));
+	}
+
+	const firstChoice = response.choices?.[0] as
+		| {
+				message?: {
+					tool_calls?: Array<{
+						id?: string;
+						function?: { name?: string; arguments?: string };
+					}>;
+				};
+		  }
+		| undefined;
+
+	if (firstChoice?.message?.tool_calls) {
+		return firstChoice.message.tool_calls
 			.filter((tc) => tc.function?.name)
 			.map((tc) => {
 				let parsedArgs: Record<string, unknown> = {};
@@ -60,7 +61,10 @@ export function extractFunctionCalls(
 			});
 	}
 
-	const rawParts = response.candidates?.[0]?.content?.parts;
+	const firstCandidate = response.candidates?.[0] as
+		| { content?: { parts?: GeminiFunctionCallPart[] } }
+		| undefined;
+	const rawParts = firstCandidate?.content?.parts;
 	const candidateCalls =
 		response.functionCalls ||
 		rawParts?.filter((p) => p.functionCall?.name).map((p) => p.functionCall);
