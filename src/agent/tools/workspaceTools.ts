@@ -551,7 +551,7 @@ export const listWorkspaceFilesTool: AgentTool<
 	ListWorkspaceFilesResult
 > = {
 	name: "list_workspace_files",
-	description: "Lists all files and sizes in the session workspace.",
+	description: "List files in workspace.",
 	parameters: {
 		type: "OBJECT",
 		properties: {},
@@ -570,26 +570,17 @@ export const searchWorkspaceTool: AgentTool<
 	SearchWorkspaceResult
 > = {
 	name: "search_workspace",
-	description:
-		"Searches workspace text/code files for a string and returns matching file, line number, and text.",
+	description: "Search workspace files for text.",
 	parameters: {
 		type: "OBJECT",
 		properties: {
 			query: {
 				type: "STRING",
-				description: "Text to search for (case-insensitive by default).",
+				description: "Search text.",
 			},
 			filePattern: {
 				type: "STRING",
-				description: "Optional filename glob (e.g. '*.py').",
-			},
-			maxResults: {
-				type: "INTEGER",
-				description: "Optional max matches (default 50).",
-			},
-			caseSensitive: {
-				type: "BOOLEAN",
-				description: "Optional case-sensitive flag.",
+				description: "Optional glob (e.g. '*.py').",
 			},
 		},
 		required: ["query"],
@@ -608,13 +599,13 @@ export const readWorkspaceFileTool: AgentTool<
 	ReadWorkspaceFileResult
 > = {
 	name: "read_workspace_file",
-	description: "Reads a text or code file from the session workspace.",
+	description: "Read a workspace text file.",
 	parameters: {
 		type: "OBJECT",
 		properties: {
 			filename: {
 				type: "STRING",
-				description: "Filename in workspace to read.",
+				description: "Filename.",
 			},
 		},
 		required: ["filename"],
@@ -633,18 +624,17 @@ export const writeWorkspaceFileTool: AgentTool<
 	WriteWorkspaceFileResult
 > = {
 	name: "write_workspace_file",
-	description:
-		"Writes or overwrites a text/code file in the session workspace.",
+	description: "Write a workspace text file.",
 	parameters: {
 		type: "OBJECT",
 		properties: {
 			filename: {
 				type: "STRING",
-				description: "Filename to write.",
+				description: "Filename.",
 			},
 			content: {
 				type: "STRING",
-				description: "Text/code content.",
+				description: "File content.",
 			},
 		},
 		required: ["filename", "content"],
@@ -663,26 +653,25 @@ export const editWorkspaceFileTool: AgentTool<
 	EditWorkspaceFileResult
 > = {
 	name: "edit_workspace_file",
-	description:
-		"Replaces an exact snippet inside an existing workspace text/code file.",
+	description: "Replace text in a workspace file.",
 	parameters: {
 		type: "OBJECT",
 		properties: {
 			filename: {
 				type: "STRING",
-				description: "Filename to edit.",
+				description: "Filename.",
 			},
 			old_string: {
 				type: "STRING",
-				description: "Exact snippet to find.",
+				description: "Exact text to replace.",
 			},
 			new_string: {
 				type: "STRING",
-				description: "Replacement text.",
+				description: "New text.",
 			},
 			replace_all: {
 				type: "BOOLEAN",
-				description: "Optional flag to replace all occurrences.",
+				description: "Replace all matches.",
 			},
 		},
 		required: ["filename", "old_string", "new_string"],
@@ -701,14 +690,13 @@ export const sendWorkspaceFileTool: AgentTool<
 	SendWorkspaceFileResult
 > = {
 	name: "send_workspace_file",
-	description:
-		"Delivers a workspace file (chart, spreadsheet, PDF, video, code) to the user in Telegram.",
+	description: "Send a workspace file to the Telegram chat.",
 	parameters: {
 		type: "OBJECT",
 		properties: {
 			filename: {
 				type: "STRING",
-				description: "Filename in workspace to send.",
+				description: "Filename to send.",
 			},
 			caption: {
 				type: "STRING",
@@ -731,7 +719,7 @@ export const resetWorkspaceTool: AgentTool<
 	ResetWorkspaceResult
 > = {
 	name: "reset_workspace",
-	description: "Clears all files in the current session workspace.",
+	description: "Delete all files in workspace.",
 	parameters: {
 		type: "OBJECT",
 		properties: {},

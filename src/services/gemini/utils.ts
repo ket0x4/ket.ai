@@ -520,10 +520,12 @@ export function expandContextualQuery(
 ): string {
 	const cleanQuery = query.trim();
 	const isAnaphoric = ANAPHORIC_TRIGGERS.test(cleanQuery);
-	const isVeryShort = cleanQuery.split(/\s+/).length <= 4;
+	if (!isAnaphoric) {
+		return cleanQuery;
+	}
 
 	let contextSnippet = "";
-	if ((isAnaphoric || isVeryShort) && history.length > 0) {
+	if (history.length > 0) {
 		const recentUserMsgs = history
 			.slice(-4)
 			.filter((m) => !m.is_bot_reply && m.text?.trim())
@@ -543,6 +545,7 @@ export function expandContextualQuery(
 		parts.push(cleanQuery);
 	}
 	if (
+		!contextSnippet &&
 		activeTopic &&
 		activeTopic !== "General chat is going on, no specific topic."
 	) {

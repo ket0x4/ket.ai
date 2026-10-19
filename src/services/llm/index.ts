@@ -474,6 +474,10 @@ function resolveGenerationFailure(
 	return fallbackError;
 }
 
+function shouldEnableToolsForTurn(options: GenerateResponseOptions): boolean {
+	return !options.isSpontaneous;
+}
+
 function formatMemoriesSection(memories: unknown[]): string | undefined {
 	if (!memories || memories.length === 0) return undefined;
 	const facts = memories
@@ -489,10 +493,55 @@ function formatMemoriesSection(memories: unknown[]): string | undefined {
 		})
 		.filter(Boolean);
 	if (facts.length === 0) return undefined;
-	return `### RELEVANT USER & CHAT FACTS ###\n${facts.map((f) => `- ${f}`).join("\n")}`;
+	return `### BACKGROUND MEMORY FACTS (USE ONLY IF DIRECTLY RELEVANT TO THE CURRENT MESSAGE; IGNORE OTHERWISE) ###\n${facts.map((f) => `- ${f}`).join("\n")}`;
+}
+
+function formatUserSenderTag(name?: string | null, userId?: number): string {
+	const cleanName = name?.trim() || (userId ? `User_${userId}` : "User");
+	return `[User ${cleanName}]`;
+}
+
+function extractBotExchangePairs(
+	historySubset: MessageRow[],
+): Array<[MessageRow, MessageRow]> {
+	const pairs: Array<[MessageRow, MessageRow]> = [];
+	for (let i = 0; i < historySubset.length - 1; i++) {
+		const curr = historySubset[i];
+		const next = historySubset[i + 1];
+		if (curr && next && !curr.is_bot_reply && next.is_bot_reply) {
+			pairs.push([curr, next]);
+			i++;
+		}
+	}
+	return pairs;
+}
+
+function formatBackgroundChatSection(
+	history: MessageRow[],
+	options: GenerateResponseOptions,
+): string | undefined {
+	if (options.isSpontaneous || history.length <= 1) return undefined;
+	const historySubset = history.slice(0, -1).slice(-8);
+	const pairedIds = new Set(
+		extractBotExchangePairs(historySubset)
+			.flat()
+			.map((m) => m.message_id),
+	);
+	const unpairedRecent = historySubset
+		.filter((m) => !pairedIds.has(m.message_id) && !m.is_bot_reply)
+		.slice(-5);
+
+	if (unpairedRecent.length === 0) return undefined;
+	const lines = unpairedRecent.map((m) => {
+		const sender = formatUserSenderTag(m.first_name, m.user_id);
+		const text = cleanUserText(m.text) || resolveMessageFallback(m);
+		return `- ${sender}: ${text}`;
+	});
+	return `### RECENT GROUP CHAT LOG (BACKGROUND ONLY - DO NOT ANSWER THESE OLD MESSAGES) ###\n${lines.join("\n")}`;
 }
 
 function buildConversationalContextSections(
+	history: MessageRow[],
 	topicSummary: string | null,
 	options: GenerateResponseOptions,
 	memories: unknown[],
@@ -500,10 +549,16 @@ function buildConversationalContextSections(
 	const sections: string[] = [];
 
 	if (
+		options.isSpontaneous &&
 		topicSummary &&
 		topicSummary !== "General chat is going on, no specific topic."
 	) {
 		sections.push(`### ACTIVE CONVERSATION TOPIC ###\n${topicSummary}`);
+	}
+
+	const backgroundChatSection = formatBackgroundChatSection(history, options);
+	if (backgroundChatSection) {
+		sections.push(backgroundChatSection);
 	}
 
 	const memorySection = formatMemoriesSection(memories);
@@ -526,7 +581,7 @@ function buildConversationalContextSections(
 
 function formatParentPreviewText(text?: string | null): string {
 	if (!text) return "[Media]";
-	return text.length > 40 ? `${text.slice(0, 37)}...` : text;
+	return text.length > 60 ? `${text.slice(0, 57)}...` : text;
 }
 
 function resolveReplyPrefix(
@@ -538,7 +593,7 @@ function resolveReplyPrefix(
 	if (!parent) return "";
 	const parentSender = parent.is_bot_reply
 		? "You (ket.ai)"
-		: parent.first_name || "User";
+		: formatUserSenderTag(parent.first_name, parent.user_id);
 	const preview = formatParentPreviewText(parent.text);
 	return `[Replying to ${parentSender}: "${preview}"]\n`;
 }
@@ -547,73 +602,90 @@ function buildHistoricalUserMessage(
 	msg: MessageRow,
 	msgMap: Map<number, MessageRow>,
 ): ChatMessage {
-	const senderName =
-		msg.first_name || (msg.user_id ? `User_${msg.user_id}` : "User");
+	const senderTag = formatUserSenderTag(msg.first_name, msg.user_id);
 	const clean = cleanUserText(msg.text) || resolveMessageFallback(msg);
 	const prefix = resolveReplyPrefix(
 		msg.reply_to_message_id ?? undefined,
 		msgMap,
 	);
-	return { role: "user", content: `${prefix}${senderName}: ${clean}` };
+	return { role: "user", content: `${prefix}${senderTag}: ${clean}` };
 }
 
 function buildActiveUserMessage(
 	options: GenerateResponseOptions,
 	lastMsg: MessageRow | undefined,
+	msgMap: Map<number, MessageRow>,
 ): ChatMessage {
 	if (options.targetMessage) {
-		const sender = options.targetMessage.userName || "User";
+		const senderTag = formatUserSenderTag(
+			options.targetMessage.userName,
+			options.targetMessage.userId,
+		);
 		const text =
 			cleanUserText(options.targetMessage.text) || options.mediaFallbackText;
-		let content = `${sender}: ${text}`;
+		let content = `${senderTag}: ${text}`;
 		if (options.targetMessage.replyTo) {
+			const replySender = options.targetMessage.replyTo.isBot
+				? "You (ket.ai)"
+				: formatUserSenderTag(
+						options.targetMessage.replyTo.senderName,
+						options.targetMessage.replyTo.senderId,
+					);
 			const preview = formatParentPreviewText(
 				options.targetMessage.replyTo.text,
 			);
-			content = `[Replying to ${options.targetMessage.replyTo.senderName}: "${preview}"]\n${content}`;
+			content = `[Replying to ${replySender}: "${preview}"]\n${content}`;
 		}
 		return { role: "user", content, media: options.media };
 	}
 
-	const sender = resolveSenderDescription(lastMsg);
+	const senderTag = lastMsg?.is_bot_reply
+		? "You (ket.ai)"
+		: formatUserSenderTag(lastMsg?.first_name, lastMsg?.user_id);
 	const lastMessageText = resolveLastMessageText(
 		lastMsg,
 		options.mediaFallbackText,
 	);
+	const prefix = resolveReplyPrefix(
+		lastMsg?.reply_to_message_id ?? undefined,
+		msgMap,
+	);
 	return {
 		role: "user",
-		content: `${sender}: ${lastMessageText}`,
+		content: `${prefix}${senderTag}: ${lastMessageText}`,
 		media: options.media,
 	};
 }
 
 function buildSpontaneousMessages(
-	lastMsg: MessageRow | undefined,
+	history: MessageRow[],
 	mediaFallbackText: string,
 ): ChatMessage[] {
-	const messages: ChatMessage[] = [];
-	if (lastMsg) {
-		const senderName = lastMsg.is_bot_reply
+	const recentSlice = history.slice(-6);
+	const lines = recentSlice.map((m) => {
+		const sender = m.is_bot_reply
 			? "You (ket.ai)"
-			: lastMsg.first_name || "User";
-		const lastText = resolveLastMessageText(lastMsg, mediaFallbackText);
-		messages.push({
-			role: lastMsg.is_bot_reply ? "assistant" : "user",
-			content: `${senderName}: ${lastText}`,
-		});
-	}
-	messages.push({
-		role: "user",
-		content:
-			"You observe the ongoing chat above. Chime in naturally with a short, witty, or helpful spontaneous comment as ket.ai.",
+			: formatUserSenderTag(m.first_name, m.user_id);
+		const text = resolveLastMessageText(m, mediaFallbackText);
+		return `${sender}: ${text}`;
 	});
-	return messages;
+	const transcript = lines.length > 0 ? `${lines.join("\n")}\n\n` : "";
+	return [
+		{
+			role: "user",
+			content: `${transcript}You observe the ongoing chat above. Chime in naturally with a short, witty, or helpful spontaneous comment as ket.ai in the same language as the chat.`,
+		},
+	];
 }
 
 function buildConversationalMessages(
 	history: MessageRow[],
 	options: GenerateResponseOptions,
 ): ChatMessage[] {
+	if (options.isSpontaneous) {
+		return buildSpontaneousMessages(history, options.mediaFallbackText);
+	}
+
 	const messages: ChatMessage[] = [];
 	const lastMsg = history[history.length - 1];
 	const msgMap = new Map<number, MessageRow>();
@@ -622,53 +694,59 @@ function buildConversationalMessages(
 	}
 
 	const historySubset =
-		history.length > 1 ? history.slice(0, history.length - 1) : [];
+		history.length > 1 ? history.slice(0, history.length - 1).slice(-8) : [];
 
-	for (const msg of historySubset) {
-		if (msg.is_bot_reply) {
-			messages.push({
-				role: "assistant",
-				content: msg.text || options.mediaFallbackText,
-			});
-		} else {
-			messages.push(buildHistoricalUserMessage(msg, msgMap));
-		}
+	for (const [userMsg, botMsg] of extractBotExchangePairs(historySubset)) {
+		messages.push(buildHistoricalUserMessage(userMsg, msgMap));
+		messages.push({
+			role: "assistant",
+			content: botMsg.text || options.mediaFallbackText,
+		});
 	}
 
-	if (options.isSpontaneous) {
-		messages.push(
-			...buildSpontaneousMessages(lastMsg, options.mediaFallbackText),
-		);
-		return messages;
-	}
-
-	messages.push(buildActiveUserMessage(options, lastMsg));
+	messages.push(buildActiveUserMessage(options, lastMsg, msgMap));
 	return messages;
+}
+
+function resolveMaxOutputTokens(
+	isAgentic: boolean,
+	isConversationalProvider: boolean,
+): number {
+	if (!isAgentic) {
+		return isConversationalProvider ? 2048 : 1024;
+	}
+	if (isConversationalProvider) {
+		return 4096;
+	}
+	if (CONFIG.MAX_TOOL_OUTPUT_TOKENS && CONFIG.MAX_TOOL_OUTPUT_TOKENS > 0) {
+		return CONFIG.MAX_TOOL_OUTPUT_TOKENS;
+	}
+	return 8192;
 }
 
 function buildGenConfig(
 	personaPrompt: string | undefined,
 	replyDescription: string,
 	contextSections?: string[],
+	enableTools = true,
 ): Record<string, unknown> {
-	const declarations = toolRegistry.getFunctionDeclarations();
+	const declarations = enableTools
+		? toolRegistry.getFunctionDeclarations()
+		: [];
 	const isAgentic = declarations.length > 0;
 	const isConversationalProvider = CONFIG.LLM_PROVIDER === "openai";
 	const systemInstruction = getSystemInstruction(
 		personaPrompt,
-		declarations.map((t) => t.name),
+		isAgentic ? declarations.map((t) => t.name) : undefined,
 		contextSections,
 	);
 
 	const genConfig: Record<string, unknown> = {
 		systemInstruction,
-		maxOutputTokens: isAgentic
-			? isConversationalProvider
-				? 4096
-				: CONFIG.MAX_TOOL_OUTPUT_TOKENS && CONFIG.MAX_TOOL_OUTPUT_TOKENS > 0
-					? CONFIG.MAX_TOOL_OUTPUT_TOKENS
-					: 8192
-			: 1024,
+		maxOutputTokens: resolveMaxOutputTokens(
+			isAgentic,
+			isConversationalProvider,
+		),
 		tools: isAgentic
 			? isConversationalProvider
 				? declarations
@@ -762,11 +840,13 @@ export const LlmService = {
 			);
 
 			const isConversationalProvider = CONFIG.LLM_PROVIDER === "openai";
+			const enableTools = shouldEnableToolsForTurn(options);
 			let contents: Array<Record<string, unknown>>;
 			let genConfig: Record<string, unknown>;
 
 			if (isConversationalProvider) {
 				const contextSections = buildConversationalContextSections(
+					history,
 					topicSummary,
 					options,
 					memories,
@@ -779,6 +859,7 @@ export const LlmService = {
 					personaPrompt,
 					options.replyDescription,
 					contextSections,
+					enableTools,
 				);
 			} else {
 				const inputPayload = buildInputPayload(
@@ -788,7 +869,12 @@ export const LlmService = {
 					memories,
 				);
 				contents = buildInitialContents(inputPayload, options.media);
-				genConfig = buildGenConfig(personaPrompt, options.replyDescription);
+				genConfig = buildGenConfig(
+					personaPrompt,
+					options.replyDescription,
+					undefined,
+					enableTools,
+				);
 			}
 
 			const responseText = await runAgentLoop(contents, genConfig, {
@@ -831,7 +917,7 @@ export const LlmService = {
 
 		const lastCount = lastSummarizedCount.get(chatIdStr) || 0;
 		const shouldSummarize =
-			(!currentTopic && currentCount >= 6) || currentCount - lastCount >= 25;
+			(!currentTopic && currentCount >= 6) || currentCount - lastCount >= 10;
 
 		if (shouldSummarize) {
 			recordSummarizedCount(chatIdStr, currentCount);

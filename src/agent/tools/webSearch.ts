@@ -173,14 +173,13 @@ async function performWebSearch(
 
 export const webSearchTool: AgentTool<{ query: string }, WebSearchOutput> = {
 	name: "web_search",
-	description:
-		"Searches the web for current information, news, prices, events, or facts.",
+	description: "Search the web for current events, news, prices, or facts.",
 	parameters: {
 		type: "OBJECT",
 		properties: {
 			query: {
 				type: "STRING",
-				description: "Search query or URL.",
+				description: "Search query.",
 			},
 		},
 		required: ["query"],

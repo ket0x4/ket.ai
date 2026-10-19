@@ -258,40 +258,28 @@ export const codeExecutionTool: AgentTool<
 > = {
 	name: "execute_code",
 	description:
-		"Runs Python, JavaScript, TypeScript, or Bash in a Linux sandbox with web access, persistent workspace files, and data/scraping/media libraries (numpy, pandas, polars, matplotlib, seaborn, pillow, openpyxl, xlsxwriter, reportlab, tabulate, curl_cffi, beautifulsoup4, requests, ffmpeg, aria2c, patchright). Files written to workspace can be sent to the user via send_workspace_file.",
+		"Run Python, JS, TS, or Bash in the Linux sandbox (has internet, workspace files, data/media/scraping libs).",
 	parameters: {
 		type: "OBJECT",
 		properties: {
 			language: {
 				type: "STRING",
-				description:
-					"'python', 'javascript', 'typescript', or 'bash' (default: 'python').",
+				description: "'python', 'javascript', 'typescript', or 'bash'.",
 			},
 			code: {
 				type: "STRING",
-				description: "Source code to execute.",
+				description: "Code to run.",
 			},
 			packages: {
 				type: "ARRAY",
-				description: "Optional packages to install before running.",
+				description: "Optional packages to install.",
 				items: {
 					type: "STRING",
 				},
 			},
 			filename: {
 				type: "STRING",
-				description: "Optional script filename (e.g. 'main.py').",
-			},
-			target_files: {
-				type: "ARRAY",
-				description: "Optional output filenames to track.",
-				items: {
-					type: "STRING",
-				},
-			},
-			timeoutMs: {
-				type: "INTEGER",
-				description: "Optional timeout in ms (1000-120000).",
+				description: "Optional script filename.",
 			},
 		},
 		required: ["language", "code"],
@@ -332,18 +320,13 @@ export const bashExecutionTool: AgentTool<
 	CodeExecutionResult
 > = {
 	name: "execute_bash",
-	description:
-		"Runs a Bash command or pipeline (curl, jq, grep, awk, ffmpeg, git, ls, etc.) in the sandbox workspace.",
+	description: "Run a Bash command in the sandbox workspace.",
 	parameters: {
 		type: "OBJECT",
 		properties: {
 			command: {
 				type: "STRING",
-				description: "Bash command string to execute.",
-			},
-			timeoutMs: {
-				type: "INTEGER",
-				description: "Optional timeout in ms (1000-120000).",
+				description: "Bash command.",
 			},
 		},
 		required: ["command"],

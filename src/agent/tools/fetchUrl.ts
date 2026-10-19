@@ -209,22 +209,13 @@ async function fetchUrl(
 
 export const fetchUrlTool: AgentTool<FetchUrlArgs, FetchUrlResult> = {
 	name: "fetch_url",
-	description:
-		"Fetches a web page or JSON/text endpoint as plain text (no JS execution; use execute_code for JS-heavy scraping).",
+	description: "Fetch plain text from an http(s) URL.",
 	parameters: {
 		type: "OBJECT",
 		properties: {
 			url: {
 				type: "STRING",
-				description: "Absolute http(s) URL to fetch.",
-			},
-			maxChars: {
-				type: "INTEGER",
-				description: "Optional max characters to return (default 4000).",
-			},
-			timeoutMs: {
-				type: "INTEGER",
-				description: "Optional timeout in ms (default 15000).",
+				description: "Full http(s) URL.",
 			},
 		},
 		required: ["url"],

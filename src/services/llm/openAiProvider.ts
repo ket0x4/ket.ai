@@ -114,6 +114,43 @@ function convertSingleMessage(
 	}
 }
 
+function canMergePlainMessages(
+	prev: OpenAI.Chat.Completions.ChatCompletionMessageParam | undefined,
+	next: OpenAI.Chat.Completions.ChatCompletionMessageParam,
+): boolean {
+	if (!prev || prev.role !== next.role) return false;
+	if (prev.role === "user" && next.role === "user") {
+		return typeof prev.content === "string" && typeof next.content === "string";
+	}
+	if (prev.role === "assistant" && next.role === "assistant") {
+		return (
+			!prev.tool_calls?.length &&
+			!next.tool_calls?.length &&
+			typeof prev.content === "string" &&
+			typeof next.content === "string"
+		);
+	}
+	return false;
+}
+
+function appendOrMergeMessage(
+	out: OpenAI.Chat.Completions.ChatCompletionMessageParam[],
+	converted: OpenAI.Chat.Completions.ChatCompletionMessageParam,
+): void {
+	const hasUserMessage = out.some((m) => m.role === "user");
+	if (converted.role === "assistant" && !hasUserMessage) {
+		return;
+	}
+
+	const prev = out[out.length - 1];
+	if (prev && canMergePlainMessages(prev, converted)) {
+		prev.content = `${prev.content}\n\n${converted.content}`;
+		return;
+	}
+
+	out.push(converted);
+}
+
 function convertMessages(
 	messages: ChatMessage[],
 	systemInstruction?: string,
@@ -128,7 +165,7 @@ function convertMessages(
 	for (const msg of messages) {
 		const converted = convertSingleMessage(msg, hasSystem);
 		if (converted) {
-			out.push(converted);
+			appendOrMergeMessage(out, converted);
 		}
 	}
 
