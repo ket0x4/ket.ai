@@ -13,29 +13,31 @@ export async function transcribeAudio(
 	mimeType: string = "audio/ogg",
 ): Promise<string> {
 	try {
-		const response = await runWithRetry(() =>
-			ai.models.generateContent({
-				model: "gemini-3.5-transcribe",
-				contents: [
-					{
-						role: "user",
-						parts: [
-							{
-								inlineData: {
-									data: audioBuffer.toString("base64"),
-									mimeType,
+		const response = await runWithRetry(
+			() =>
+				ai.models.generateContent({
+					model: "gemini-3.5-transcribe",
+					contents: [
+						{
+							role: "user",
+							parts: [
+								{
+									inlineData: {
+										data: audioBuffer.toString("base64"),
+										mimeType,
+									},
 								},
-							},
-							{
-								text: "Accurately transcribe all spoken words verbatim in the original spoken language. Return ONLY the transcribed text.",
-							},
-						],
+								{
+									text: "Accurately transcribe all spoken words verbatim in the original spoken language. Return ONLY the transcribed text.",
+								},
+							],
+						},
+					],
+					config: {
+						maxOutputTokens: 2048,
 					},
-				],
-				config: {
-					maxOutputTokens: 2048,
-				},
-			}),
+				}),
+			{ bucket: "transcribe", baseDelayMs: 2000 },
 		);
 
 		const text = response.text?.trim() || "";

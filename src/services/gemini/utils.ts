@@ -195,6 +195,8 @@ function extractRetryDelayMs(error: unknown): number | null {
 	return parseTextDelay(str);
 }
 
+type GeminiLimiterBucket = "default" | "embedding" | "transcribe";
+
 interface ScheduleOptions {
 	customIntervalMs?: number;
 }
@@ -203,13 +205,14 @@ interface RunWithRetryOptions {
 	retries?: number;
 	baseDelayMs?: number;
 	customIntervalMs?: number;
+	bucket?: GeminiLimiterBucket;
 }
 
 class GeminiRateLimiter {
 	private lastRequestEndTime = 0;
 	private queue: Promise<void> = Promise.resolve();
 
-	constructor(private minIntervalMs = 3500) {}
+	constructor(private readonly defaultIntervalFn: () => number) {}
 
 	public async schedule<T>(
 		fn: () => Promise<T>,
@@ -223,10 +226,7 @@ class GeminiRateLimiter {
 				: optionsOrInterval?.customIntervalMs;
 
 		const interval =
-			customIntervalMs ??
-			(isTestEnv
-				? 0
-				: (CONFIG.GEMINI_MIN_REQUEST_INTERVAL_MS ?? this.minIntervalMs));
+			customIntervalMs ?? (isTestEnv ? 0 : this.defaultIntervalFn());
 
 		const run = async () => {
 			const elapsed = Date.now() - this.lastRequestEndTime;
@@ -249,9 +249,13 @@ class GeminiRateLimiter {
 	}
 }
 
-const geminiRateLimiter = new GeminiRateLimiter(
-	CONFIG.GEMINI_MIN_REQUEST_INTERVAL_MS,
-);
+const rateLimiters: Record<GeminiLimiterBucket, GeminiRateLimiter> = {
+	default: new GeminiRateLimiter(
+		() => CONFIG.GEMINI_MIN_REQUEST_INTERVAL_MS ?? 3500,
+	),
+	embedding: new GeminiRateLimiter(() => 100),
+	transcribe: new GeminiRateLimiter(() => 500),
+};
 
 function parseRetryOptions(
 	retriesOrOptions: number | RunWithRetryOptions,
@@ -260,10 +264,12 @@ function parseRetryOptions(
 	retries: number;
 	currentDelayMs: number;
 	customIntervalMs?: number;
+	bucket: GeminiLimiterBucket;
 } {
 	let retries = 4;
 	let currentDelayMs = baseDelayMs;
 	let customIntervalMs: number | undefined;
+	let bucket: GeminiLimiterBucket = "default";
 
 	if (typeof retriesOrOptions === "number") {
 		retries = retriesOrOptions;
@@ -280,9 +286,12 @@ function parseRetryOptions(
 		if (retriesOrOptions.customIntervalMs !== undefined) {
 			customIntervalMs = retriesOrOptions.customIntervalMs;
 		}
+		if (retriesOrOptions.bucket !== undefined) {
+			bucket = retriesOrOptions.bucket;
+		}
 	}
 
-	return { retries, currentDelayMs, customIntervalMs };
+	return { retries, currentDelayMs, customIntervalMs, bucket };
 }
 
 function isTransientError(error: unknown): boolean {
@@ -311,12 +320,13 @@ export async function runWithRetry<T>(
 	baseDelayMs = 5000,
 ): Promise<T> {
 	const options = parseRetryOptions(retriesOrOptions, baseDelayMs);
+	const limiter = rateLimiters[options.bucket] ?? rateLimiters.default;
 	let currentDelayMs = options.currentDelayMs;
 	let lastError: unknown;
 
 	for (let i = 0; i < options.retries; i++) {
 		try {
-			return await geminiRateLimiter.schedule(fn, {
+			return await limiter.schedule(fn, {
 				customIntervalMs: options.customIntervalMs,
 			});
 		} catch (error) {
@@ -328,7 +338,7 @@ export async function runWithRetry<T>(
 					serverDelayMs ?? currentDelayMs + Math.floor(Math.random() * 500);
 
 				logger.warn(
-					`[Gemini] Rate limit / transient error (Attempt ${i + 1}/${options.retries}). Waiting ${waitMs}ms before retry...`,
+					`[Gemini:${options.bucket}] Rate limit / transient error (Attempt ${i + 1}/${options.retries}). Waiting ${waitMs}ms before retry...`,
 				);
 				await new Promise((resolve) => setTimeout(resolve, waitMs));
 				currentDelayMs += 5000;

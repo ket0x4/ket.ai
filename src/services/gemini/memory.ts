@@ -37,14 +37,16 @@ export async function generateEmbedding(
 		const cached = queryEmbeddingCache.get(cacheKey);
 		if (cached) return cached;
 
-		const response = await runWithRetry(() =>
-			ai.models.embedContent({
-				model: "gemini-embedding-2",
-				contents: formattedContents,
-				config: {
-					taskType,
-				},
-			}),
+		const response = await runWithRetry(
+			() =>
+				ai.models.embedContent({
+					model: "gemini-embedding-2",
+					contents: formattedContents,
+					config: {
+						taskType,
+					},
+				}),
+			{ bucket: "embedding", baseDelayMs: 1000 },
 		);
 		const values = response.embeddings?.[0]?.values || [];
 		if (values.length > 0) {
