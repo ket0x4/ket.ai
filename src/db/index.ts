@@ -220,6 +220,8 @@ function runMigrations() {
       END;
     `);
 
+		db.run("DELETE FROM memories WHERE user_id = 0");
+
 		// Rebuild FTS index on startup if needed to ensure parity
 		const ftsCount = db
 			.prepare("SELECT COUNT(*) as count FROM memories_fts")

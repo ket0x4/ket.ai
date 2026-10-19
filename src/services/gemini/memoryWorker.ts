@@ -3,19 +3,14 @@ import { Repository } from "../../db/repository";
 import logger from "../../utils/logger";
 import { getLlmProvider } from "../llm/index";
 import { processNewMemory } from "./memory";
-import { resolveTargetUserId } from "./utils";
 
-export const MEMORY_UPDATE_ITEM_SCHEMA = {
+const MEMORY_UPDATE_ITEM_SCHEMA = {
 	type: "OBJECT",
 	properties: {
 		user_id: {
 			type: "INTEGER",
 			description:
-				"The integer user_id extracted from User_ID field if available.",
-		},
-		user_name: {
-			type: "STRING",
-			description: "The first name of the user who stated the fact.",
+				"The exact integer user_id from the [User #<id> | ...] tag of the speaker.",
 		},
 		fact: {
 			type: "STRING",
@@ -33,7 +28,7 @@ export const MEMORY_UPDATE_ITEM_SCHEMA = {
 				"Days after which temporary memory expires. Leave null or 0 for permanent facts.",
 		},
 	},
-	required: ["user_name", "fact"],
+	required: ["user_id", "fact"],
 };
 
 const backgroundCounter = new Map<string, number>();
@@ -65,22 +60,20 @@ export async function checkAndRunBackgroundMemoryExtraction(
 	});
 }
 
-function buildExtractionPrompt(recentMessages: MessageRow[]): string {
-	const formattedHistory = recentMessages
+function buildExtractionPrompt(humanMessages: MessageRow[]): string {
+	const formattedHistory = humanMessages
 		.map((msg) => {
-			const sender = msg.is_bot_reply
-				? "Bot (ket.ai)"
-				: `User_${msg.user_id} (${msg.first_name || "Unnamed"})`;
-			return `${sender}: ${msg.text || "[Media]"}`;
+			const handle = msg.username ? ` (@${msg.username})` : "";
+			return `[User #${msg.user_id} | ${msg.first_name || "Unnamed"}${handle}]: ${msg.text || "[Media]"}`;
 		})
 		.join("\n");
 
-	return `Analyze the following group chat conversation log.
-Identify any stated personal facts, user preferences, locations, plans, life updates, purchases, or events about users in the chat.
+	return `Analyze the following group chat user statements.
+Identify any stated personal facts, user preferences, locations, plans, life updates, purchases, or events about the users in the log.
 Note: Entries marked as [Ses Kaydı] (voice transcription) and [Image] (image description) represent real user statements and media shared in the chat. Extract factual information from them as well (e.g. bought a new motorcycle, went to a concert, shared an event ticket/invoice).
-Do NOT invent facts. Do NOT save jokes, sarcasm, or bot responses.
+Do NOT invent facts. Do NOT save jokes or sarcasm.
 
-Return ONLY a JSON array of extracted facts.
+Return ONLY a JSON array of extracted facts, each linked to the speaker's exact integer user_id.
 
 Chat Log:
 ${formattedHistory}`;
@@ -98,58 +91,42 @@ function resolveTtl(category: string, ttlDays?: number): number | null {
 	return category === "TEMPORARY" ? 3 : null;
 }
 
-function isOptedOut(targetUserId?: number, userName?: string): boolean {
-	if (targetUserId && Repository.isUserOptedOut(targetUserId)) {
-		logger.debug(
-			`[MemoryWorker] Skipped saving memory for opted-out user ${targetUserId}`,
-		);
-		return true;
-	}
-	if (userName && Repository.isUsernameOptedOut(userName)) {
-		logger.debug(
-			`[MemoryWorker] Skipped saving memory for opted-out username "${userName}"`,
-		);
-		return true;
-	}
-	return false;
-}
-
-export async function saveExtractedMemories(
+async function saveExtractedMemories(
 	chatIdStr: string,
 	extractedList: unknown[],
-	recentMessages: MessageRow[] = [],
-	senderUserId?: number,
-	senderFirstName?: string,
-	senderUsername?: string,
+	humanMessages: MessageRow[],
 ): Promise<number> {
 	if (!Array.isArray(extractedList) || extractedList.length === 0) return 0;
+
+	const participants = new Map<number, string>();
+	for (const msg of humanMessages) {
+		if (msg.user_id > 0) {
+			participants.set(msg.user_id, msg.first_name || "User");
+		}
+	}
 
 	let savedCount = 0;
 	for (const item of extractedList as Array<{
 		user_id?: number;
-		user_name?: string;
 		fact?: string;
 		category?: string;
 		ttl_days?: number;
 	}>) {
-		if (!item.user_name || !item.fact) continue;
+		const userId = item.user_id;
+		const fact = item.fact?.trim();
+		if (typeof userId !== "number" || !participants.has(userId) || !fact) {
+			continue;
+		}
+		if (Repository.isUserOptedOut(userId)) {
+			continue;
+		}
 
-		const targetUserId = resolveTargetUserId(
-			item.user_name,
-			item.user_id,
-			recentMessages,
-			senderUserId,
-			senderFirstName,
-			senderUsername,
-		);
-
-		if (isOptedOut(targetUserId ?? undefined, item.user_name)) continue;
-
+		const userName = participants.get(userId) || "User";
 		const cat =
 			(item.category as "PROFILE" | "DYNAMIC" | "TEMPORARY") || "PROFILE";
 
-		await processNewMemory(chatIdStr, `${item.user_name}: ${item.fact}`, {
-			userId: targetUserId ?? undefined,
+		await processNewMemory(chatIdStr, `${userName}: ${fact}`, {
+			userId,
 			category: cat,
 			ttlDays: resolveTtl(cat, item.ttl_days),
 		});
@@ -163,9 +140,12 @@ export async function saveExtractedMemories(
  */
 async function runBackgroundMemoryExtraction(chatIdStr: string): Promise<void> {
 	const recentMessages = Repository.getRecentMessages(chatIdStr, 20);
-	if (recentMessages.length < 3) return;
+	const humanMessages = recentMessages.filter(
+		(m) => !m.is_bot_reply && m.user_id > 0,
+	);
+	if (humanMessages.length < 3) return;
 
-	const prompt = buildExtractionPrompt(recentMessages);
+	const prompt = buildExtractionPrompt(humanMessages);
 	logger.info(
 		`[MemoryWorker] Running background memory extraction for chat ${chatIdStr}...`,
 	);
@@ -180,7 +160,7 @@ async function runBackgroundMemoryExtraction(chatIdStr: string): Promise<void> {
 		const savedCount = await saveExtractedMemories(
 			chatIdStr,
 			extractedList,
-			recentMessages,
+			humanMessages,
 		);
 
 		if (savedCount > 0) {

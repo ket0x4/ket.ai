@@ -7,14 +7,10 @@ import { CONFIG } from "../../config";
 import type { MessageRow } from "../../db/repository";
 import { Repository } from "../../db/repository";
 import logger from "../../utils/logger";
+import { botUsername } from "../bot/instance";
 import type { PreparedDocumentContext } from "../gemini/documentPerception";
-import { getRelevantMemories } from "../gemini/memory";
+import { getRelevantMemories, type RetrievedMemory } from "../gemini/memory";
 import {
-	MEMORY_UPDATE_ITEM_SCHEMA,
-	saveExtractedMemories,
-} from "../gemini/memoryWorker";
-import {
-	buildHistoryList,
 	cleanUserText,
 	getSystemInstruction,
 	resolveMessageFallback,
@@ -32,6 +28,7 @@ export function getLlmProvider(): LlmProvider {
 
 const lastSummarizedCount = new Map<string, number>();
 const MAX_TRACKED_CHATS = 200;
+const BOT_SENDER_TAG = "ket.ai (assistant)";
 
 export interface ReplyContextInfo {
 	messageId: number;
@@ -87,137 +84,7 @@ function resolveLastMessageText(
 ): string {
 	if (!lastMsg) return mediaFallback;
 	if (lastMsg.is_bot_reply) return lastMsg.text || mediaFallback;
-	return cleanUserText(lastMsg.text) || mediaFallback;
-}
-
-function resolveSenderDescription(lastMsg?: MessageRow): string {
-	if (!lastMsg) return "User: unnamed";
-	if (lastMsg.is_bot_reply) return "You (ket.ai)";
-	const suffix = lastMsg.username ? ` (@${lastMsg.username})` : "";
-	return `User_${lastMsg.user_id} (${lastMsg.first_name || "Unnamed"}${suffix})`;
-}
-
-function buildCurrentMessageToReply(
-	options: GenerateResponseOptions,
-	lastMsg?: MessageRow,
-	lastMessageText = "",
-): Record<string, unknown> {
-	if (options.targetMessage) {
-		const usernameSuffix = options.targetMessage.userUsername
-			? ` (@${options.targetMessage.userUsername})`
-			: "";
-		const senderDesc = `User_${options.targetMessage.userId} (${options.targetMessage.userName || "Unnamed"}${usernameSuffix})`;
-		const cleanText =
-			cleanUserText(options.targetMessage.text) || options.mediaFallbackText;
-
-		const currentMsgObj: Record<string, unknown> = {
-			sender: senderDesc,
-			text: cleanText,
-		};
-
-		if (options.targetMessage.replyTo) {
-			currentMsgObj.replying_to = {
-				sender: options.targetMessage.replyTo.senderName,
-				text: options.targetMessage.replyTo.text,
-			};
-		}
-		return currentMsgObj;
-	}
-
-	return {
-		sender: resolveSenderDescription(lastMsg),
-		text: lastMessageText,
-	};
-}
-
-function buildDocumentAttachment(doc: PreparedDocumentContext) {
-	return {
-		filename: doc.fileName,
-		mime_type: doc.mimeType,
-		size_bytes: doc.sizeBytes,
-		...(doc.isTruncated && { is_truncated: true }),
-		...(doc.textContent && { content: doc.textContent }),
-		...(doc.summaryHint && { summary_hint: doc.summaryHint }),
-	};
-}
-
-function buildInputPayload(
-	history: MessageRow[],
-	topicSummary: string | null,
-	options: GenerateResponseOptions,
-	memories: unknown[],
-): Record<string, unknown> {
-	const lastMsg = history[history.length - 1];
-	const lastMessageText = resolveLastMessageText(
-		lastMsg,
-		options.mediaFallbackText,
-	);
-	const priorHistory =
-		!options.isSpontaneous && history.length > 0
-			? history.slice(0, -1)
-			: history;
-	const historyList = buildHistoryList(priorHistory, undefined, options.chatId);
-
-	const inputPayload: Record<string, unknown> = {
-		recent_messages: historyList,
-	};
-
-	if (
-		topicSummary &&
-		topicSummary !== "General chat is going on, no specific topic."
-	) {
-		inputPayload.active_topic = topicSummary;
-	}
-	if (memories.length > 0) {
-		inputPayload.memories = memories;
-	}
-	if (options.instruction) {
-		inputPayload.instruction = options.instruction;
-	}
-	if (options.document) {
-		inputPayload.attached_document = buildDocumentAttachment(options.document);
-	}
-
-	if (options.isSpontaneous) {
-		inputPayload.interaction_type = "spontaneous_comment";
-	} else {
-		inputPayload.interaction_type = "direct_reply";
-		inputPayload.current_message_to_reply = buildCurrentMessageToReply(
-			options,
-			lastMsg,
-			lastMessageText,
-		);
-	}
-
-	const activeText = options.targetMessage?.text || lastMessageText;
-	const hasExplicitMemoryIntent =
-		/\b(?:remember this|keep in mind|note this|save this|don'?t forget|bunu unutma|aklında tut|not et|hafızana yaz|kaydet|bunu hatırla)\b/i.test(
-			activeText,
-		);
-	if (hasExplicitMemoryIntent) {
-		inputPayload.instruction =
-			(inputPayload.instruction ? `${inputPayload.instruction} ` : "") +
-			"IMPORTANT: The user explicitly requested to remember information from this message. Extract all personal facts into new_memory_updates.";
-	}
-
-	return inputPayload;
-}
-
-function buildResponseSchemaProperties(
-	replyDescription: string,
-): Record<string, unknown> {
-	return {
-		reply: {
-			type: "STRING",
-			description: replyDescription,
-		},
-		new_memory_updates: {
-			type: "ARRAY",
-			description:
-				"List of new facts to remember. DO NOT save facts based on your own generated replies, assumptions, or jokes. Leave empty [] if no meaningful user facts exist.",
-			items: MEMORY_UPDATE_ITEM_SCHEMA,
-		},
-	};
+	return cleanUserText(lastMsg.text, botUsername) || mediaFallback;
 }
 
 function extractReplyFieldFromObject(
@@ -243,45 +110,13 @@ function extractReplyFieldFromObject(
 	return undefined;
 }
 
-async function handleJsonReply(
+function handleJsonReply(
 	cleanedText: string,
 	rawText: string,
-	chatIdStr: string,
 	traceId: string,
-	history: MessageRow[] = [],
-	lastMsg?: MessageRow,
-	senderUserId?: number,
-	senderFirstName?: string,
-	senderUsername?: string,
-): Promise<string> {
+): string {
 	try {
 		const parsed = JSON.parse(cleanedText);
-
-		const effectiveSenderId =
-			senderUserId ??
-			(lastMsg && !lastMsg.is_bot_reply ? lastMsg.user_id : undefined);
-
-		if (
-			parsed &&
-			typeof parsed === "object" &&
-			Array.isArray(parsed.new_memory_updates) &&
-			parsed.new_memory_updates.length > 0
-		) {
-			saveExtractedMemories(
-				chatIdStr,
-				parsed.new_memory_updates,
-				history,
-				effectiveSenderId,
-				senderFirstName,
-				senderUsername,
-			).catch((err) => {
-				logger.error(
-					`[LLM:${traceId}] Error persisting extracted memories:`,
-					err,
-				);
-			});
-		}
-
 		if (parsed && typeof parsed === "object") {
 			const extracted = extractReplyFieldFromObject(
 				parsed as Record<string, unknown>,
@@ -292,7 +127,6 @@ async function handleJsonReply(
 				return cleanedText;
 			}
 		}
-
 		return "";
 	} catch {
 		const looseReply = tryExtractReplyFromJsonLoose(cleanedText);
@@ -338,16 +172,7 @@ function tryExtractJsonString(text: string): string | null {
 	return null;
 }
 
-async function parseAndProcessReply(
-	responseText: string,
-	chatIdStr: string,
-	traceId: string,
-	history: MessageRow[] = [],
-	lastMsg?: MessageRow,
-	senderUserId?: number,
-	senderFirstName?: string,
-	senderUsername?: string,
-): Promise<string> {
+function parseAndProcessReply(responseText: string, traceId: string): string {
 	const trimmed = responseText?.trim() || "";
 	if (!trimmed) {
 		return "";
@@ -367,39 +192,41 @@ async function parseAndProcessReply(
 
 	const jsonStr = tryExtractJsonString(trimmed);
 	if (jsonStr) {
-		const jsonReply = await handleJsonReply(
-			jsonStr,
-			responseText,
-			chatIdStr,
-			traceId,
-			history,
-			lastMsg,
-			senderUserId,
-			senderFirstName,
-			senderUsername,
-		);
+		const jsonReply = handleJsonReply(jsonStr, responseText, traceId);
 		if (jsonReply) return stripEmoji(jsonReply).trim();
 	}
 
 	return stripEmoji(trimmed).trim();
 }
 
-function buildInitialContents(
-	inputPayload: Record<string, unknown>,
-	media?: { buffer: Buffer; mimeType: string },
+function convertChatMessagesToGeminiContents(
+	messages: ChatMessage[],
 ): Array<Record<string, unknown>> {
-	const initialParts: Array<Record<string, unknown>> = [
-		{ text: JSON.stringify(inputPayload) },
-	];
-	if (media) {
-		initialParts.push({
-			inlineData: {
-				mimeType: media.mimeType,
-				data: media.buffer.toString("base64"),
-			},
-		});
+	const contents: Array<Record<string, unknown>> = [];
+	for (const msg of messages) {
+		const role = msg.role === "assistant" ? "model" : "user";
+		const parts: Array<Record<string, unknown>> = [];
+		if (msg.content) {
+			parts.push({ text: msg.content });
+		}
+		if (msg.media) {
+			parts.push({
+				inlineData: {
+					mimeType: msg.media.mimeType,
+					data: msg.media.buffer.toString("base64"),
+				},
+			});
+		}
+		if (parts.length === 0) continue;
+
+		const prev = contents[contents.length - 1];
+		if (prev && prev.role === role && Array.isArray(prev.parts)) {
+			prev.parts.push(...parts);
+		} else {
+			contents.push({ role, parts });
+		}
 	}
-	return [{ role: "user", parts: initialParts }];
+	return contents;
 }
 
 function resolveMediaFallbacks(
@@ -478,39 +305,104 @@ function shouldEnableToolsForTurn(options: GenerateResponseOptions): boolean {
 	return !options.isSpontaneous;
 }
 
-function formatMemoriesSection(memories: unknown[]): string | undefined {
-	if (!memories || memories.length === 0) return undefined;
-	const facts = memories
-		.map((m) => {
-			if (typeof m === "string") return m.trim();
-			if (typeof m === "object" && m !== null) {
-				const fact =
-					(m as { fact?: string; text?: string }).fact ||
-					(m as { fact?: string; text?: string }).text;
-				if (fact) return fact.trim();
-			}
-			return "";
-		})
-		.filter(Boolean);
-	if (facts.length === 0) return undefined;
-	return `### BACKGROUND MEMORY FACTS (USE ONLY IF DIRECTLY RELEVANT TO THE CURRENT MESSAGE; IGNORE OTHERWISE) ###\n${facts.map((f) => `- ${f}`).join("\n")}`;
+function formatUserSenderTag(
+	name?: string | null,
+	userId?: number,
+	username?: string | null,
+): string {
+	const cleanName = name?.trim() || "Unnamed";
+	const handle = username?.trim().replace(/^@/, "");
+	const handleSuffix = handle ? ` (@${handle})` : "";
+	if (typeof userId === "number" && userId > 0) {
+		return `[User #${userId} | ${cleanName}${handleSuffix}]`;
+	}
+	return `[User ${cleanName}${handleSuffix}]`;
 }
 
-function formatUserSenderTag(name?: string | null, userId?: number): string {
-	const cleanName = name?.trim() || (userId ? `User_${userId}` : "User");
-	return `[User ${cleanName}]`;
+function formatMemoriesSection(
+	memories: RetrievedMemory[],
+	targetUserId?: number,
+): string | undefined {
+	if (!memories || memories.length === 0) return undefined;
+	const speakerFacts: string[] = [];
+	const otherFacts: string[] = [];
+
+	for (const m of memories) {
+		const text = m.text?.trim();
+		if (!text) continue;
+		if (
+			typeof targetUserId === "number" &&
+			targetUserId > 0 &&
+			m.userId === targetUserId
+		) {
+			speakerFacts.push(`- ${text}`);
+		} else if (typeof m.userId === "number" && m.userId > 0) {
+			otherFacts.push(`- [User #${m.userId}] ${text}`);
+		} else {
+			otherFacts.push(`- [Group] ${text}`);
+		}
+	}
+
+	const parts: string[] = [];
+	if (speakerFacts.length > 0) {
+		parts.push(`### SPEAKER MEMORIES ###\n${speakerFacts.join("\n")}`);
+	}
+	if (otherFacts.length > 0) {
+		parts.push(`### OTHER CHAT MEMORIES ###\n${otherFacts.join("\n")}`);
+	}
+	return parts.length > 0 ? parts.join("\n\n") : undefined;
+}
+
+function resolvePairedUserMessage(
+	botMsg: MessageRow,
+	prevMsg: MessageRow | undefined,
+	subsetIds: Set<number>,
+	pairedUserMsgIds: Set<number>,
+	msgMap: Map<number, MessageRow>,
+): MessageRow | undefined {
+	const replyId = botMsg.reply_to_message_id;
+	if (replyId && subsetIds.has(replyId)) {
+		const parent = msgMap.get(replyId);
+		if (
+			parent &&
+			!parent.is_bot_reply &&
+			!pairedUserMsgIds.has(parent.message_id)
+		) {
+			return parent;
+		}
+	}
+	if (
+		prevMsg &&
+		!prevMsg.is_bot_reply &&
+		!pairedUserMsgIds.has(prevMsg.message_id)
+	) {
+		return prevMsg;
+	}
+	return undefined;
 }
 
 function extractBotExchangePairs(
 	historySubset: MessageRow[],
+	msgMap: Map<number, MessageRow>,
 ): Array<[MessageRow, MessageRow]> {
 	const pairs: Array<[MessageRow, MessageRow]> = [];
-	for (let i = 0; i < historySubset.length - 1; i++) {
-		const curr = historySubset[i];
-		const next = historySubset[i + 1];
-		if (curr && next && !curr.is_bot_reply && next.is_bot_reply) {
-			pairs.push([curr, next]);
-			i++;
+	const subsetIds = new Set(historySubset.map((m) => m.message_id));
+	const pairedUserMsgIds = new Set<number>();
+
+	for (let i = 0; i < historySubset.length; i++) {
+		const msg = historySubset[i];
+		if (!msg?.is_bot_reply) continue;
+
+		const targetUserMsg = resolvePairedUserMessage(
+			msg,
+			historySubset[i - 1],
+			subsetIds,
+			pairedUserMsgIds,
+			msgMap,
+		);
+		if (targetUserMsg) {
+			pairedUserMsgIds.add(targetUserMsg.message_id);
+			pairs.push([targetUserMsg, msg]);
 		}
 	}
 	return pairs;
@@ -521,9 +413,13 @@ function formatBackgroundChatSection(
 	options: GenerateResponseOptions,
 ): string | undefined {
 	if (options.isSpontaneous || history.length <= 1) return undefined;
+	const msgMap = new Map<number, MessageRow>();
+	for (const m of history) {
+		msgMap.set(m.message_id, m);
+	}
 	const historySubset = history.slice(0, -1).slice(-8);
 	const pairedIds = new Set(
-		extractBotExchangePairs(historySubset)
+		extractBotExchangePairs(historySubset, msgMap)
 			.flat()
 			.map((m) => m.message_id),
 	);
@@ -533,8 +429,9 @@ function formatBackgroundChatSection(
 
 	if (unpairedRecent.length === 0) return undefined;
 	const lines = unpairedRecent.map((m) => {
-		const sender = formatUserSenderTag(m.first_name, m.user_id);
-		const text = cleanUserText(m.text) || resolveMessageFallback(m);
+		const sender = formatUserSenderTag(m.first_name, m.user_id, m.username);
+		const text =
+			cleanUserText(m.text, botUsername) || resolveMessageFallback(m);
 		return `- ${sender}: ${text}`;
 	});
 	return `### RECENT GROUP CHAT LOG (BACKGROUND ONLY - DO NOT ANSWER THESE OLD MESSAGES) ###\n${lines.join("\n")}`;
@@ -544,7 +441,8 @@ function buildConversationalContextSections(
 	history: MessageRow[],
 	topicSummary: string | null,
 	options: GenerateResponseOptions,
-	memories: unknown[],
+	memories: RetrievedMemory[],
+	targetUserId?: number,
 ): string[] {
 	const sections: string[] = [];
 
@@ -561,7 +459,7 @@ function buildConversationalContextSections(
 		sections.push(backgroundChatSection);
 	}
 
-	const memorySection = formatMemoriesSection(memories);
+	const memorySection = formatMemoriesSection(memories, targetUserId);
 	if (memorySection) {
 		sections.push(memorySection);
 	}
@@ -571,9 +469,17 @@ function buildConversationalContextSections(
 	}
 
 	if (options.document) {
-		sections.push(
-			`### ATTACHED DOCUMENT ###\nDocument '${options.document.fileName}' (${options.document.sizeBytes} bytes) is saved in your persistent sandbox workspace. You can read, run, edit, or summarize it using your workspace tools.`,
-		);
+		const docLines = [
+			`### ATTACHED DOCUMENT ###`,
+			`Document '${options.document.fileName}' (${options.document.sizeBytes} bytes, ${options.document.mimeType}) is saved in your persistent sandbox workspace. You can read, run, edit, or summarize it using your workspace tools.`,
+		];
+		if (options.document.summaryHint) {
+			docLines.push(`Summary Hint: ${options.document.summaryHint}`);
+		}
+		if (options.document.textContent) {
+			docLines.push(`Content Preview:\n${options.document.textContent}`);
+		}
+		sections.push(docLines.join("\n"));
 	}
 
 	return sections;
@@ -592,8 +498,8 @@ function resolveReplyPrefix(
 	const parent = msgMap.get(replyToId);
 	if (!parent) return "";
 	const parentSender = parent.is_bot_reply
-		? "You (ket.ai)"
-		: formatUserSenderTag(parent.first_name, parent.user_id);
+		? BOT_SENDER_TAG
+		: formatUserSenderTag(parent.first_name, parent.user_id, parent.username);
 	const preview = formatParentPreviewText(parent.text);
 	return `[Replying to ${parentSender}: "${preview}"]\n`;
 }
@@ -602,8 +508,13 @@ function buildHistoricalUserMessage(
 	msg: MessageRow,
 	msgMap: Map<number, MessageRow>,
 ): ChatMessage {
-	const senderTag = formatUserSenderTag(msg.first_name, msg.user_id);
-	const clean = cleanUserText(msg.text) || resolveMessageFallback(msg);
+	const senderTag = formatUserSenderTag(
+		msg.first_name,
+		msg.user_id,
+		msg.username,
+	);
+	const clean =
+		cleanUserText(msg.text, botUsername) || resolveMessageFallback(msg);
 	const prefix = resolveReplyPrefix(
 		msg.reply_to_message_id ?? undefined,
 		msgMap,
@@ -620,16 +531,19 @@ function buildActiveUserMessage(
 		const senderTag = formatUserSenderTag(
 			options.targetMessage.userName,
 			options.targetMessage.userId,
+			options.targetMessage.userUsername,
 		);
 		const text =
-			cleanUserText(options.targetMessage.text) || options.mediaFallbackText;
+			cleanUserText(options.targetMessage.text, botUsername) ||
+			options.mediaFallbackText;
 		let content = `${senderTag}: ${text}`;
 		if (options.targetMessage.replyTo) {
 			const replySender = options.targetMessage.replyTo.isBot
-				? "You (ket.ai)"
+				? BOT_SENDER_TAG
 				: formatUserSenderTag(
 						options.targetMessage.replyTo.senderName,
 						options.targetMessage.replyTo.senderId,
+						options.targetMessage.replyTo.senderUsername,
 					);
 			const preview = formatParentPreviewText(
 				options.targetMessage.replyTo.text,
@@ -640,8 +554,12 @@ function buildActiveUserMessage(
 	}
 
 	const senderTag = lastMsg?.is_bot_reply
-		? "You (ket.ai)"
-		: formatUserSenderTag(lastMsg?.first_name, lastMsg?.user_id);
+		? BOT_SENDER_TAG
+		: formatUserSenderTag(
+				lastMsg?.first_name,
+				lastMsg?.user_id,
+				lastMsg?.username,
+			);
 	const lastMessageText = resolveLastMessageText(
 		lastMsg,
 		options.mediaFallbackText,
@@ -664,8 +582,8 @@ function buildSpontaneousMessages(
 	const recentSlice = history.slice(-6);
 	const lines = recentSlice.map((m) => {
 		const sender = m.is_bot_reply
-			? "You (ket.ai)"
-			: formatUserSenderTag(m.first_name, m.user_id);
+			? BOT_SENDER_TAG
+			: formatUserSenderTag(m.first_name, m.user_id, m.username);
 		const text = resolveLastMessageText(m, mediaFallbackText);
 		return `${sender}: ${text}`;
 	});
@@ -673,7 +591,7 @@ function buildSpontaneousMessages(
 	return [
 		{
 			role: "user",
-			content: `${transcript}You observe the ongoing chat above. Chime in naturally with a short, witty, or helpful spontaneous comment as ket.ai in the same language as the chat.`,
+			content: `${transcript}Observe the ongoing chat above and chime in naturally with a short, witty, or helpful spontaneous comment as ket.ai in the same language as the chat.`,
 		},
 	];
 }
@@ -696,7 +614,10 @@ function buildConversationalMessages(
 	const historySubset =
 		history.length > 1 ? history.slice(0, history.length - 1).slice(-8) : [];
 
-	for (const [userMsg, botMsg] of extractBotExchangePairs(historySubset)) {
+	for (const [userMsg, botMsg] of extractBotExchangePairs(
+		historySubset,
+		msgMap,
+	)) {
 		messages.push(buildHistoricalUserMessage(userMsg, msgMap));
 		messages.push({
 			role: "assistant",
@@ -726,7 +647,6 @@ function resolveMaxOutputTokens(
 
 function buildGenConfig(
 	personaPrompt: string | undefined,
-	replyDescription: string,
 	contextSections?: string[],
 	enableTools = true,
 ): Record<string, unknown> {
@@ -741,7 +661,7 @@ function buildGenConfig(
 		contextSections,
 	);
 
-	const genConfig: Record<string, unknown> = {
+	return {
 		systemInstruction,
 		maxOutputTokens: resolveMaxOutputTokens(
 			isAgentic,
@@ -753,17 +673,6 @@ function buildGenConfig(
 				: [{ functionDeclarations: declarations }]
 			: undefined,
 	};
-
-	if (!isAgentic && !isConversationalProvider) {
-		genConfig.responseMimeType = "application/json";
-		genConfig.responseSchema = {
-			type: "OBJECT",
-			properties: buildResponseSchemaProperties(replyDescription),
-			required: ["reply"],
-		};
-	}
-
-	return genConfig;
 }
 
 async function loadContextMemories(
@@ -773,7 +682,7 @@ async function loadContextMemories(
 	options: GenerateResponseOptions,
 	lastMessageText: string,
 	targetUserId?: number,
-): Promise<unknown[]> {
+): Promise<RetrievedMemory[]> {
 	if (!chatIdStr) return [];
 	const queryForMemory = options.isSpontaneous
 		? topicSummary || "General chat"
@@ -839,43 +748,24 @@ export const LlmService = {
 				targetUserId,
 			);
 
-			const isConversationalProvider = CONFIG.LLM_PROVIDER === "openai";
 			const enableTools = shouldEnableToolsForTurn(options);
-			let contents: Array<Record<string, unknown>>;
-			let genConfig: Record<string, unknown>;
-
-			if (isConversationalProvider) {
-				const contextSections = buildConversationalContextSections(
-					history,
-					topicSummary,
-					options,
-					memories,
-				);
-				contents = buildConversationalMessages(
-					history,
-					options,
-				) as unknown as Array<Record<string, unknown>>;
-				genConfig = buildGenConfig(
-					personaPrompt,
-					options.replyDescription,
-					contextSections,
-					enableTools,
-				);
-			} else {
-				const inputPayload = buildInputPayload(
-					history,
-					topicSummary,
-					options,
-					memories,
-				);
-				contents = buildInitialContents(inputPayload, options.media);
-				genConfig = buildGenConfig(
-					personaPrompt,
-					options.replyDescription,
-					undefined,
-					enableTools,
-				);
-			}
+			const contextSections = buildConversationalContextSections(
+				history,
+				topicSummary,
+				options,
+				memories,
+				targetUserId,
+			);
+			const chatMessages = buildConversationalMessages(history, options);
+			const contents =
+				CONFIG.LLM_PROVIDER === "openai"
+					? (chatMessages as unknown as Array<Record<string, unknown>>)
+					: convertChatMessagesToGeminiContents(chatMessages);
+			const genConfig = buildGenConfig(
+				personaPrompt,
+				contextSections,
+				enableTools,
+			);
 
 			const responseText = await runAgentLoop(contents, genConfig, {
 				chatId: chatIdStr,
@@ -885,16 +775,7 @@ export const LlmService = {
 				signal: options.signal,
 			});
 
-			return await parseAndProcessReply(
-				responseText,
-				chatIdStr,
-				traceId,
-				history,
-				lastMsg,
-				targetUserId,
-				options.targetMessage?.userName,
-				options.targetMessage?.userUsername,
-			);
+			return parseAndProcessReply(responseText, traceId);
 		} catch (error) {
 			return resolveGenerationFailure(
 				error,

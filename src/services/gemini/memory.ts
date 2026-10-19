@@ -113,6 +113,10 @@ export async function processNewMemory(
 ) {
 	if (!memoryText?.trim() || !chatIdStr) return;
 
+	if (options?.userId === 0) {
+		return;
+	}
+
 	if (options?.userId && Repository.isUserOptedOut(options.userId)) {
 		logger.debug(
 			`[Memory Store] Skipped memory for opted-out user ${options.userId} in chat ${chatIdStr}:`,
@@ -237,6 +241,11 @@ function createDefaultDiagnosticItem(m: {
 	};
 }
 
+export interface RetrievedMemory {
+	text: string;
+	userId?: number | null;
+}
+
 interface MemoryQueryDiagnostics {
 	chatId: string;
 	originalQuery: string;
@@ -248,7 +257,7 @@ interface MemoryQueryDiagnostics {
 	topK: number;
 	evaluatedCount: number;
 	matchedCount: number;
-	retrievedMemories: string[];
+	retrievedMemories: RetrievedMemory[];
 	details: MemoryDiagnosticItem[];
 }
 
@@ -268,7 +277,7 @@ function resolveChatMemories(
 	// Copy the cached array before merging so callers never mutate cache state.
 	const allMemories = [...Repository.getMemories(chatId)];
 
-	if (options?.isPrivateChat && options?.senderUserId) {
+	if (options?.senderUserId) {
 		const existingIds = new Set(allMemories.map((m) => m.id));
 		for (const uMem of Repository.getUserAllMemories(options.senderUserId)) {
 			if (!existingIds.has(uMem.id)) {
@@ -350,20 +359,20 @@ function selectPersonalMemories(
 	senderUserId: number,
 	topK: number,
 	selectedIds: Set<number>,
-	retrieved: string[],
+	retrieved: RetrievedMemory[],
 ): void {
 	const personalItems = details.filter(
 		(d) =>
 			d.userId === senderUserId &&
-			(d.category === "PROFILE" || d.category === "DYNAMIC") &&
-			d.passedThreshold,
+			(d.category === "PROFILE" ||
+				(d.category === "DYNAMIC" && d.passedThreshold)),
 	);
 
 	for (const pItem of personalItems.slice(0, 2)) {
 		if (retrieved.length < topK) {
 			pItem.selected = true;
 			selectedIds.add(pItem.id);
-			retrieved.push(pItem.text);
+			retrieved.push({ text: pItem.text, userId: pItem.userId });
 		}
 	}
 }
@@ -372,8 +381,8 @@ function selectBiLevelCandidates(
 	details: MemoryDiagnosticItem[],
 	senderUserId?: number,
 	topK = 5,
-): { retrievedMemories: string[]; matchedCount: number } {
-	const retrievedMemories: string[] = [];
+): { retrievedMemories: RetrievedMemory[]; matchedCount: number } {
+	const retrievedMemories: RetrievedMemory[] = [];
 	const selectedIds = new Set<number>();
 	let matchedCount = 0;
 
@@ -398,7 +407,7 @@ function selectBiLevelCandidates(
 		if (item.passedThreshold && !selectedIds.has(item.id)) {
 			item.selected = true;
 			selectedIds.add(item.id);
-			retrievedMemories.push(item.text);
+			retrievedMemories.push({ text: item.text, userId: item.userId });
 		}
 	}
 
@@ -412,8 +421,8 @@ async function queryMemoriesWithDiagnostics(
 ): Promise<MemoryQueryDiagnostics> {
 	Repository.pruneExpiredMemories(chatId);
 
-	const allMemories = resolveChatMemories(chatId, options);
 	const cleanQuery = query.trim();
+	const allMemories = resolveChatMemories(chatId, options);
 	const enrichedQuery = expandContextualQuery(
 		cleanQuery,
 		options?.history,
@@ -497,7 +506,7 @@ export async function getRelevantMemories(
 	query: string,
 	activeTopicOrOptions?: string | QueryMemoriesOptions,
 	topK = 5,
-): Promise<string[]> {
+): Promise<RetrievedMemory[]> {
 	const cleanQuery = query.trim();
 	if (!cleanQuery) return [];
 

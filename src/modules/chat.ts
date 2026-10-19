@@ -261,7 +261,7 @@ function resolveReplyContext(
 	const isBot = Boolean(
 		from?.is_bot || (from?.username && from.username === botUsername),
 	);
-	const senderName = isBot ? "You (ket.ai)" : from?.first_name || "User";
+	const senderName = isBot ? "ket.ai (assistant)" : from?.first_name || "User";
 	const senderUsername = from?.username || undefined;
 	const text = extractReplyMessageText(replyToMsg, chatIdStr);
 

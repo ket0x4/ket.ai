@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { CONFIG } from "../../config";
-import { type MessageRow, Repository } from "../../db/repository";
+import type { MessageRow } from "../../db/repository";
 import logger from "../../utils/logger";
 
 const SYSTEM_PROMPT_FILE = "system.txt";
@@ -355,15 +355,12 @@ export function cleanUserText(
 	botUsernameOverride?: string,
 ): string {
 	if (!text) return "";
-	const names = new Set<string>(["ket"]);
-	if (botUsernameOverride?.trim()) {
-		names.add(botUsernameOverride.trim());
+	const handle = botUsernameOverride?.trim().replace(/^@/, "");
+	if (!handle) {
+		return text.replace(/\s+/g, " ").trim();
 	}
-	const escapedNames = Array.from(names)
-		.map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
-		.join("|");
-
-	const regex = new RegExp(`(^|\\s)@?(?:${escapedNames})\\b`, "gi");
+	const escapedHandle = handle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+	const regex = new RegExp(`(^|\\s)@${escapedHandle}\\b`, "gi");
 	return text.replace(regex, " ").replace(/\s+/g, " ").trim();
 }
 
@@ -373,138 +370,6 @@ export function resolveMessageFallback(msg: MessageRow): string {
 		return `[Document: ${msg.document_file_name || "file"}]`;
 	}
 	return "[Media]";
-}
-
-function resolveMessageSender(msg: MessageRow): string {
-	if (msg.is_bot_reply) return "You (ket.ai)";
-	const usernameSuffix = msg.username ? ` (@${msg.username})` : "";
-	return `User_${msg.user_id} (${msg.first_name || "Unnamed"}${usernameSuffix})`;
-}
-
-function formatParentPreview(sender: string, rawText?: string | null): string {
-	const text = rawText
-		? rawText.length > 50
-			? `${rawText.slice(0, 47)}...`
-			: rawText
-		: "[Media]";
-	return `${sender}: "${text}"`;
-}
-
-function resolveReplyPreview(
-	replyToId: number,
-	msgMap: Map<number, MessageRow>,
-	chatId?: string,
-): string | undefined {
-	const parent = msgMap.get(replyToId);
-	if (parent) {
-		const sender = parent.is_bot_reply
-			? "You (ket.ai)"
-			: parent.first_name || "User";
-		return formatParentPreview(sender, parent.text);
-	}
-
-	if (chatId) {
-		const dbParent = Repository.getMessageWithUser(chatId, replyToId);
-		if (dbParent) {
-			const sender = dbParent.is_bot_reply
-				? "You (ket.ai)"
-				: dbParent.first_name || "User";
-			return formatParentPreview(sender, dbParent.text);
-		}
-	}
-
-	return undefined;
-}
-
-export function buildHistoryList(
-	history: MessageRow[],
-	botUsernameOverride?: string,
-	chatId?: string,
-) {
-	const msgMap = new Map<number, MessageRow>();
-	for (const m of history) {
-		msgMap.set(m.message_id, m);
-	}
-
-	return history.map((msg) => {
-		const fallback = resolveMessageFallback(msg);
-		const sender = resolveMessageSender(msg);
-		const replyPreview = msg.reply_to_message_id
-			? resolveReplyPreview(msg.reply_to_message_id, msgMap, chatId)
-			: undefined;
-
-		const cleanText = msg.is_bot_reply
-			? msg.text || fallback
-			: cleanUserText(msg.text, botUsernameOverride) || fallback;
-
-		return {
-			sender,
-			...(replyPreview && { reply_to: replyPreview }),
-			text: cleanText,
-		};
-	});
-}
-
-/**
- * Resolves target Telegram user_id by matching name against recent chat message history or SQLite database.
- * If userName is about someone else and that person is not found, returns null (rather than wrongly attributing
- * the fact to the speaker).
- */
-export function resolveTargetUserId(
-	userName: string,
-	explicitUserId?: number,
-	history: MessageRow[] = [],
-	fallbackUserId?: number,
-	senderFirstName?: string,
-	senderUsername?: string,
-): number | null {
-	if (typeof explicitUserId === "number" && explicitUserId > 0) {
-		return explicitUserId;
-	}
-
-	if (!userName?.trim()) {
-		return fallbackUserId ?? null;
-	}
-
-	const cleanName = userName.toLowerCase().trim();
-
-	const isSelf =
-		cleanName === "me" ||
-		cleanName === "myself" ||
-		cleanName === "ben" ||
-		cleanName === "kendim" ||
-		cleanName === "kendisi" ||
-		(senderFirstName && senderFirstName.toLowerCase().trim() === cleanName) ||
-		(senderUsername && senderUsername.toLowerCase().trim() === cleanName);
-
-	if (isSelf && typeof fallbackUserId === "number" && fallbackUserId > 0) {
-		return fallbackUserId;
-	}
-
-	if (history.length > 0) {
-		const matchedMsg = history
-			.slice()
-			.reverse()
-			.find(
-				(m) =>
-					!m.is_bot_reply &&
-					(m.first_name?.toLowerCase().trim() === cleanName ||
-						m.first_name?.toLowerCase().trim().startsWith(cleanName) ||
-						m.username?.toLowerCase().trim() === cleanName),
-			);
-		if (matchedMsg) {
-			return matchedMsg.user_id;
-		}
-	}
-
-	const dbUser = Repository.getUserByName(cleanName);
-	if (dbUser) {
-		return dbUser.user_id;
-	}
-
-	// If userName was explicitly provided and clearly not the sender, DO NOT pollute sender's profile.
-	// Return null so the memory is stored as a general group memory.
-	return null;
 }
 
 const ANAPHORIC_TRIGGERS =
