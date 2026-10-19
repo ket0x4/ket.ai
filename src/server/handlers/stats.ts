@@ -205,6 +205,7 @@ export async function handleSettings(
 		openai_model: CONFIG.OPENAI_MODEL,
 		openai_base_url: CONFIG.OPENAI_BASE_URL,
 		default_reply_probability: CONFIG.DEFAULT_REPLY_PROBABILITY,
+		enable_spontaneous_replies: CONFIG.ENABLE_SPONTANEOUS_REPLIES,
 		chat_history_limit: CONFIG.CHAT_HISTORY_LIMIT,
 		enable_web_search: CONFIG.ENABLE_WEB_SEARCH,
 		max_agent_steps: CONFIG.MAX_AGENT_STEPS,

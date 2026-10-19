@@ -2,6 +2,7 @@ export interface ChatRow {
 	chat_id: string;
 	title: string | null;
 	reply_probability: number;
+	spontaneous_enabled: number; // 0 or 1
 	last_random_reply_at: number;
 	current_topic: string | null;
 	is_allowed: number; // 0 or 1
@@ -63,6 +64,7 @@ export interface RepositorySelf {
 		settings: {
 			title?: string;
 			reply_probability?: number;
+			spontaneous_enabled?: boolean | number;
 			last_random_reply_at?: number;
 			current_topic?: string | null;
 		},

@@ -47,6 +47,7 @@ function runMigrations() {
       chat_id TEXT PRIMARY KEY,
       title TEXT,
       reply_probability REAL DEFAULT 0.05,
+      spontaneous_enabled INTEGER DEFAULT 1,
       last_random_reply_at INTEGER DEFAULT 0,
       current_topic TEXT DEFAULT NULL,
       is_allowed INTEGER DEFAULT 0,
@@ -54,6 +55,29 @@ function runMigrations() {
       created_at INTEGER NOT NULL
     ) STRICT;
   `);
+
+	// Ensure spontaneous_enabled column exists for existing databases
+	try {
+		const chatColumns = db.prepare("PRAGMA table_info(chats)").all() as Array<{
+			name: string;
+		}>;
+		const hasSpontaneousCol = chatColumns.some(
+			(col) => col.name === "spontaneous_enabled",
+		);
+		if (!hasSpontaneousCol) {
+			logger.info(
+				"[DB Migration] Adding spontaneous_enabled column to chats table...",
+			);
+			db.run(
+				"ALTER TABLE chats ADD COLUMN spontaneous_enabled INTEGER DEFAULT 1",
+			);
+			db.run(
+				"UPDATE chats SET spontaneous_enabled = CASE WHEN reply_probability > 0 THEN 1 ELSE 0 END",
+			);
+		}
+	} catch (e) {
+		logger.debug("[DB Migration] spontaneous_enabled migration check:", e);
+	}
 
 	// Clean legacy placeholder titles so real Telegram titles can be dynamically resolved
 	try {

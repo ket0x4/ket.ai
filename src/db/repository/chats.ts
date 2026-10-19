@@ -133,6 +133,7 @@ export const chatMethods = {
 		settings: {
 			title?: string;
 			reply_probability?: number;
+			spontaneous_enabled?: boolean | number;
 			last_random_reply_at?: number;
 			current_topic?: string | null;
 		},
@@ -147,6 +148,10 @@ export const chatMethods = {
 		if (settings.reply_probability !== undefined) {
 			updates.push("reply_probability = ?");
 			params.push(settings.reply_probability);
+		}
+		if (settings.spontaneous_enabled !== undefined) {
+			updates.push("spontaneous_enabled = ?");
+			params.push(settings.spontaneous_enabled ? 1 : 0);
 		}
 		if (settings.last_random_reply_at !== undefined) {
 			updates.push("last_random_reply_at = ?");

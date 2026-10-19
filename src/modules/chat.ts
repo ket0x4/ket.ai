@@ -275,6 +275,19 @@ function resolveReplyContext(
 	};
 }
 
+/**
+ * Checks whether a group message has more than a single word so the bot
+ * skips one-word messages ("ok", "lol", "tamam", single URLs, etc.).
+ */
+function isMessageWorthyOfSpontaneous(text: string): boolean {
+	const cleaned = text
+		.replace(/https?:\/\/\S+/gi, "")
+		.replace(/@\w+/g, "")
+		.trim();
+
+	return cleaned.split(/\s+/).filter(Boolean).length > 1;
+}
+
 async function generateAndSendReply(
 	ctx: Context,
 	chatIdStr: string,
@@ -363,10 +376,17 @@ async function trySpontaneousReply(
 	ctx: Context,
 	chatIdStr: string,
 	chatSettings: NonNullable<ReturnType<typeof Repository.getChat>>,
+	messageText: string,
 ): Promise<void> {
+	if (!CONFIG.ENABLE_SPONTANEOUS_REPLIES) return;
+	if ((chatSettings.spontaneous_enabled ?? 1) === 0) return;
+	if (chatSettings.reply_probability <= 0) return;
+
 	const now = Math.floor(Date.now() / 1000);
 	const lastRandomReply = chatSettings.last_random_reply_at || 0;
 	if (now - lastRandomReply < COOLDOWN_SECONDS) return;
+
+	if (!isMessageWorthyOfSpontaneous(messageText)) return;
 
 	const roll = Math.random();
 	if (roll >= chatSettings.reply_probability) return;
@@ -432,7 +452,7 @@ export function registerChatHandlers(bot: Bot) {
 
 		// Check if we should trigger spontaneous participation (real users only)
 		if (!from.is_bot) {
-			await trySpontaneousReply(ctx, chatIdStr, chatSettings);
+			await trySpontaneousReply(ctx, chatIdStr, chatSettings, text);
 		}
 	});
 }

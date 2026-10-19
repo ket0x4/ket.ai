@@ -26,17 +26,135 @@ interface GroupCardProps {
 	onToggleAllowed: (chatId: string, currentAllowed: boolean) => Promise<void>;
 }
 
+interface GroupSpontaneousControlsProps {
+	probability: number;
+	spontaneousEnabled: boolean;
+	onToggleSpontaneous: (checked: boolean) => void;
+	onProbabilityChange: (val: number) => void;
+	onProbabilityCommit: (val: number[]) => void;
+}
+
+const GroupSpontaneousControls: FC<GroupSpontaneousControlsProps> = ({
+	probability,
+	spontaneousEnabled,
+	onToggleSpontaneous,
+	onProbabilityChange,
+	onProbabilityCommit,
+}) => (
+	<div className="space-y-3">
+		<div className="flex items-center justify-between text-xs">
+			<span className="text-muted-foreground">Spontaneous replies</span>
+			<div className="flex items-center gap-2">
+				<span className="text-[11px] text-muted-foreground">
+					{spontaneousEnabled ? "On" : "Off"}
+				</span>
+				<Switch
+					checked={spontaneousEnabled}
+					onCheckedChange={onToggleSpontaneous}
+				/>
+			</div>
+		</div>
+
+		<div
+			className={cn(
+				"space-y-2 transition-opacity",
+				!spontaneousEnabled && "opacity-50 pointer-events-none",
+			)}
+		>
+			<div className="flex items-center justify-between text-xs">
+				<span className="flex items-center gap-1 text-muted-foreground">
+					<Percent className="h-3 w-3" />
+					Reply probability
+				</span>
+				<span className="font-mono font-medium text-foreground tnum">
+					{spontaneousEnabled ? `${probability}%` : "Off"}
+				</span>
+			</div>
+			<Slider
+				value={[probability]}
+				min={0}
+				max={100}
+				step={1}
+				disabled={!spontaneousEnabled}
+				onValueChange={(val) => onProbabilityChange(val[0])}
+				onValueCommit={onProbabilityCommit}
+			/>
+		</div>
+	</div>
+);
+
+const GroupAccessControl: FC<{
+	chat: Chat;
+	isOwner: boolean;
+	onToggleAllowed: (chatId: string, currentAllowed: boolean) => Promise<void>;
+}> = ({ chat, isOwner, onToggleAllowed }) => {
+	if (isOwner) {
+		return (
+			<div className="flex shrink-0 items-center gap-2">
+				<span className="text-[11px] text-muted-foreground">
+					{chat.is_allowed ? "Allowed" : "Blocked"}
+				</span>
+				<Switch
+					checked={chat.is_allowed}
+					onCheckedChange={() => onToggleAllowed(chat.chat_id, chat.is_allowed)}
+				/>
+			</div>
+		);
+	}
+	return (
+		<span className="flex shrink-0 items-center gap-1.5 text-[11px] text-muted-foreground">
+			<span
+				className={cn(
+					"h-1.5 w-1.5 rounded-full",
+					chat.is_allowed ? "bg-emerald-500" : "bg-muted-foreground",
+				)}
+			/>
+			{chat.is_allowed ? "Allowed" : "Inactive"}
+		</span>
+	);
+};
+
 const GroupCard: FC<GroupCardProps> = ({ chat, role, onToggleAllowed }) => {
 	const isOwner = role === "owner";
 	const isAdmin = chat.isAdmin || isOwner;
 	const initialProb = Math.round((chat.reply_probability ?? 0.05) * 100);
 	const [probability, setProbability] = useState<number>(initialProb);
+	const [spontaneousEnabled, setSpontaneousEnabled] = useState<boolean>(
+		chat.spontaneous_enabled ?? initialProb > 0,
+	);
 	const { execute } = useAsyncAction();
+
+	const handleToggleSpontaneous = async (checked: boolean) => {
+		const shouldRestoreDefault = checked && probability === 0;
+		setSpontaneousEnabled(checked);
+		if (shouldRestoreDefault) {
+			setProbability(5);
+		}
+		await execute(
+			() =>
+				api.chats.update(chat.chat_id, {
+					spontaneous_enabled: checked,
+					...(shouldRestoreDefault ? { reply_probability: 0.05 } : {}),
+				}),
+			{
+				successMessage: checked
+					? "Spontaneous mode enabled."
+					: "Spontaneous mode disabled.",
+				errorMessage: "Update failed",
+			},
+		);
+	};
 
 	const handleProbabilityCommit = async (val: number[]) => {
 		const probVal = val[0] / 100;
+		const nextEnabled = val[0] > 0;
+		setSpontaneousEnabled(nextEnabled);
 		await execute(
-			() => api.chats.update(chat.chat_id, { reply_probability: probVal }),
+			() =>
+				api.chats.update(chat.chat_id, {
+					reply_probability: probVal,
+					spontaneous_enabled: nextEnabled,
+				}),
 			{
 				successMessage: `Reply probability updated to ${val[0]}%.`,
 				errorMessage: "Update failed",
@@ -66,29 +184,11 @@ const GroupCard: FC<GroupCardProps> = ({ chat, role, onToggleAllowed }) => {
 					</div>
 				</div>
 
-				{isOwner ? (
-					<div className="flex shrink-0 items-center gap-2">
-						<span className="text-[11px] text-muted-foreground">
-							{chat.is_allowed ? "Allowed" : "Blocked"}
-						</span>
-						<Switch
-							checked={chat.is_allowed}
-							onCheckedChange={() =>
-								onToggleAllowed(chat.chat_id, chat.is_allowed)
-							}
-						/>
-					</div>
-				) : (
-					<span className="flex shrink-0 items-center gap-1.5 text-[11px] text-muted-foreground">
-						<span
-							className={cn(
-								"h-1.5 w-1.5 rounded-full",
-								chat.is_allowed ? "bg-emerald-500" : "bg-muted-foreground",
-							)}
-						/>
-						{chat.is_allowed ? "Allowed" : "Inactive"}
-					</span>
-				)}
+				<GroupAccessControl
+					chat={chat}
+					isOwner={isOwner}
+					onToggleAllowed={onToggleAllowed}
+				/>
 			</div>
 
 			<div className="space-y-3 border-t border-border/60 p-4">
@@ -105,30 +205,18 @@ const GroupCard: FC<GroupCardProps> = ({ chat, role, onToggleAllowed }) => {
 				</div>
 
 				{isAdmin ? (
-					<div className="space-y-2">
-						<div className="flex items-center justify-between text-xs">
-							<span className="flex items-center gap-1 text-muted-foreground">
-								<Percent className="h-3 w-3" />
-								Reply probability
-							</span>
-							<span className="font-mono font-medium text-foreground tnum">
-								{probability}%
-							</span>
-						</div>
-						<Slider
-							value={[probability]}
-							min={0}
-							max={100}
-							step={1}
-							onValueChange={(val) => setProbability(val[0])}
-							onValueCommit={handleProbabilityCommit}
-						/>
-					</div>
+					<GroupSpontaneousControls
+						probability={probability}
+						spontaneousEnabled={spontaneousEnabled}
+						onToggleSpontaneous={handleToggleSpontaneous}
+						onProbabilityChange={setProbability}
+						onProbabilityCommit={handleProbabilityCommit}
+					/>
 				) : (
 					<div className="flex items-center justify-between text-xs text-muted-foreground">
-						<span>Reply rate</span>
+						<span>Spontaneous replies</span>
 						<span className="font-mono text-foreground tnum">
-							{probability}%
+							{spontaneousEnabled ? `${probability}%` : "Off"}
 						</span>
 					</div>
 				)}

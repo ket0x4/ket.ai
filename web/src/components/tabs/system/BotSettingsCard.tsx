@@ -33,6 +33,89 @@ const GroupLabel: FC<{ icon: ElementType; title: string }> = ({
 	</div>
 );
 
+interface BehaviorSettingsSectionProps {
+	settings: BotSettings;
+	replyProbPct: number;
+	onChange: (next: BotSettings) => void;
+}
+
+const BehaviorSettingsSection: FC<BehaviorSettingsSectionProps> = ({
+	settings,
+	replyProbPct,
+	onChange,
+}) => {
+	const isSpontaneousOn = settings.enable_spontaneous_replies ?? true;
+
+	return (
+		<div className="space-y-3 border-t border-border/60 pt-5">
+			<GroupLabel icon={Sliders} title="Behavior" />
+
+			<div className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-background/40 p-3">
+				<div className="text-xs">
+					<div className="font-medium text-foreground">
+						Spontaneous group replies
+					</div>
+					<div className="text-muted-foreground">
+						Allow the bot to chime in on group conversations on its own.
+					</div>
+				</div>
+				<Switch
+					checked={isSpontaneousOn}
+					onCheckedChange={(val) =>
+						onChange({ ...settings, enable_spontaneous_replies: val })
+					}
+				/>
+			</div>
+
+			<div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+				<div className="space-y-2">
+					<div className="flex items-center justify-between text-xs">
+						<span className="text-muted-foreground">Default reply rate</span>
+						<span className="font-mono font-medium text-foreground tnum">
+							{replyProbPct}%
+						</span>
+					</div>
+					<Slider
+						value={[replyProbPct]}
+						min={0}
+						max={100}
+						step={1}
+						disabled={!isSpontaneousOn}
+						onValueChange={(val) =>
+							onChange({
+								...settings,
+								default_reply_probability: val[0] / 100,
+							})
+						}
+					/>
+				</div>
+
+				<div className="space-y-1.5">
+					<label
+						htmlFor="input-history-limit-sys"
+						className="text-xs text-muted-foreground"
+					>
+						Context window (turns)
+					</label>
+					<Input
+						id="input-history-limit-sys"
+						type="number"
+						min={5}
+						max={100}
+						value={settings.chat_history_limit ?? 10}
+						onChange={(e) =>
+							onChange({
+								...settings,
+								chat_history_limit: parseInt(e.target.value, 10) || 10,
+							})
+						}
+					/>
+				</div>
+			</div>
+		</div>
+	);
+};
+
 export const BotSettingsCard: FC = () => {
 	const [settings, setSettings] = useState<BotSettings>({
 		llm_provider: "gemini",
@@ -40,6 +123,7 @@ export const BotSettingsCard: FC = () => {
 		openai_model: "",
 		openai_base_url: "",
 		default_reply_probability: 0.05,
+		enable_spontaneous_replies: true,
 		chat_history_limit: 10,
 		max_agent_steps: 3,
 		log_level: "info",
@@ -200,56 +284,11 @@ export const BotSettingsCard: FC = () => {
 					</div>
 				</div>
 
-				<div className="space-y-3 border-t border-border/60 pt-5">
-					<GroupLabel icon={Sliders} title="Behavior" />
-
-					<div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-						<div className="space-y-2">
-							<div className="flex items-center justify-between text-xs">
-								<span className="text-muted-foreground">
-									Default reply rate
-								</span>
-								<span className="font-mono font-medium text-foreground tnum">
-									{replyProbPct}%
-								</span>
-							</div>
-							<Slider
-								value={[replyProbPct]}
-								min={0}
-								max={100}
-								step={1}
-								onValueChange={(val) =>
-									setSettings({
-										...settings,
-										default_reply_probability: val[0] / 100,
-									})
-								}
-							/>
-						</div>
-
-						<div className="space-y-1.5">
-							<label
-								htmlFor="input-history-limit-sys"
-								className="text-xs text-muted-foreground"
-							>
-								Context window (turns)
-							</label>
-							<Input
-								id="input-history-limit-sys"
-								type="number"
-								min={5}
-								max={100}
-								value={settings.chat_history_limit ?? 10}
-								onChange={(e) =>
-									setSettings({
-										...settings,
-										chat_history_limit: parseInt(e.target.value, 10) || 10,
-									})
-								}
-							/>
-						</div>
-					</div>
-				</div>
+				<BehaviorSettingsSection
+					settings={settings}
+					replyProbPct={replyProbPct}
+					onChange={setSettings}
+				/>
 
 				<div className="space-y-3 border-t border-border/60 pt-5">
 					<GroupLabel icon={FileText} title="Logging" />

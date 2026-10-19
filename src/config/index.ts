@@ -11,6 +11,7 @@ interface ConfigJson {
 	chat_history_limit?: number;
 	image_history_limit?: number;
 	default_reply_probability?: number;
+	enable_spontaneous_replies?: boolean;
 	db_path?: string;
 	bot_owner_id?: number;
 	allowed_chat_ids?: (number | string)[];
@@ -148,6 +149,11 @@ export const CONFIG = {
 		"DEFAULT_REPLY_PROBABILITY",
 		0.05,
 	),
+	ENABLE_SPONTANEOUS_REPLIES: bool(
+		configJson.enable_spontaneous_replies,
+		"ENABLE_SPONTANEOUS_REPLIES",
+		true,
+	),
 	DB_PATH: str(configJson.db_path, "DB_PATH", "bot.db"),
 	BOT_OWNER_ID:
 		configJson.bot_owner_id ||
@@ -269,6 +275,7 @@ export interface BotSettingsUpdate {
 	openai_base_url?: string;
 	openai_api_key?: string;
 	default_reply_probability?: number;
+	enable_spontaneous_replies?: boolean;
 	chat_history_limit?: number;
 	enable_web_search?: boolean;
 	enable_code_execution?: boolean;
@@ -286,6 +293,7 @@ const SETTINGS_KEY_MAP: Record<keyof BotSettingsUpdate, keyof typeof CONFIG> = {
 	openai_base_url: "OPENAI_BASE_URL",
 	openai_api_key: "OPENAI_API_KEY",
 	default_reply_probability: "DEFAULT_REPLY_PROBABILITY",
+	enable_spontaneous_replies: "ENABLE_SPONTANEOUS_REPLIES",
 	chat_history_limit: "CHAT_HISTORY_LIMIT",
 	enable_web_search: "ENABLE_WEB_SEARCH",
 	enable_code_execution: "ENABLE_CODE_EXECUTION",

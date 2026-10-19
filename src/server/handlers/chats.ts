@@ -84,6 +84,7 @@ async function handleChatsGet(auth: AuthContext): Promise<Response> {
 			chat_id: string;
 			title: string | null;
 			reply_probability: number;
+			spontaneous_enabled?: number;
 			last_random_reply_at: number;
 			current_topic: string | null;
 			is_allowed: number;
@@ -107,6 +108,7 @@ async function handleChatsGet(auth: AuthContext): Promise<Response> {
 					...c,
 					title: displayTitle,
 					is_allowed: Boolean(c.is_allowed),
+					spontaneous_enabled: (c.spontaneous_enabled ?? 1) !== 0,
 					active_persona_id: c.active_persona_id,
 					stats,
 					memoryCount: memCount,
@@ -142,6 +144,7 @@ async function handleChatPatch(
 		const body = (await req.json()) as {
 			is_allowed?: boolean;
 			reply_probability?: number;
+			spontaneous_enabled?: boolean;
 		};
 
 		if (typeof body.is_allowed === "boolean") {
@@ -154,10 +157,20 @@ async function handleChatPatch(
 			Repository.setChatAllowed(chatId, body.is_allowed);
 		}
 
+		const settingsUpdate: {
+			reply_probability?: number;
+			spontaneous_enabled?: boolean;
+		} = {};
+
 		if (typeof body.reply_probability === "number") {
-			Repository.updateChatSettings(chatId, {
-				reply_probability: body.reply_probability,
-			});
+			settingsUpdate.reply_probability = body.reply_probability;
+		}
+		if (typeof body.spontaneous_enabled === "boolean") {
+			settingsUpdate.spontaneous_enabled = body.spontaneous_enabled;
+		}
+
+		if (Object.keys(settingsUpdate).length > 0) {
+			Repository.updateChatSettings(chatId, settingsUpdate);
 		}
 
 		return jsonResponse({

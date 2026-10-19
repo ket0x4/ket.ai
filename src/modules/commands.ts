@@ -83,12 +83,13 @@ export function registerCommandHandlers(bot: Bot) {
 		await ctx.reply(
 			"Available Commands & Capabilities:\n\n" +
 				"**Chat**: I respond if you reply to me directly or mention me in your message.\n" +
-				"**Spontaneous Participation**: I occasionally chime in on the group conversation.\n" +
+				"**Spontaneous Participation**: I occasionally chime in on the group conversation when I have something relevant or witty to add.\n" +
 				"**Image & Voice Recognition**: I understand photos and listen to voice messages.\n" +
 				"**Management Commands**:\n" +
 				"• `/app` or `/admin` — Open Web Mini App Dashboard\n" +
 				"• `/remember <fact>` — Save a new fact to memory\n" +
-				"• `/prob [0-100]` — Set random reply probability (Admin)\n" +
+				"• `/spontaneous [on|off]` — Toggle spontaneous replies on or off (Admin)\n" +
+				"• `/prob [0-100|on|off]` — Set random reply probability (Admin)\n" +
 				"• `/reset` — Clear chat history and memory (Admin)\n" +
 				"• `/stop` — Cancel an in-progress response\n\n" +
 				"**Privacy Commands**:\n" +
@@ -264,57 +265,144 @@ export function registerCommandHandlers(bot: Bot) {
 		);
 	});
 
-	bot.command("prob", async (ctx) => {
-		if (!ctx.chat) return;
+	function parseToggleArg(arg?: string): boolean | null {
+		if (!arg) return null;
+		if (arg === "on" || arg === "enable" || arg === "1" || arg === "true") {
+			return true;
+		}
+		if (arg === "off" || arg === "disable" || arg === "0" || arg === "false") {
+			return false;
+		}
+		return null;
+	}
 
+	async function replySpontaneousStatus(
+		ctx: Context,
+		chatId: string,
+	): Promise<void> {
+		const chat = Repository.getChat(chatId);
+		const isEnabled = (chat?.spontaneous_enabled ?? 1) !== 0;
+		const pct = Math.round((chat?.reply_probability ?? 0.05) * 100);
+		const globalNote = !CONFIG.ENABLE_SPONTANEOUS_REPLIES
+			? " _(Note: globally disabled by bot owner)_"
+			: "";
+
+		await ctx.reply(
+			`Spontaneous replies are currently **${isEnabled ? "ON" : "OFF"}**${globalNote} (probability: ${pct}%).\nUsage: \`/spontaneous on\` or \`/spontaneous off\``,
+			{ parse_mode: "Markdown" },
+		);
+	}
+
+	async function handleSpontaneousToggle(
+		ctx: Context,
+		chatId: string,
+		enable: boolean,
+	): Promise<void> {
+		const chat = Repository.getChat(chatId);
+		const currentProb = chat?.reply_probability ?? 0.05;
+		const needsDefaultProb = enable && currentProb <= 0;
+		const nextProb = needsDefaultProb
+			? CONFIG.DEFAULT_REPLY_PROBABILITY || 0.05
+			: currentProb;
+
+		Repository.updateChatSettings(chatId, {
+			spontaneous_enabled: enable,
+			...(needsDefaultProb ? { reply_probability: nextProb } : {}),
+		});
+
+		const pct = Math.round(nextProb * 100);
+		logger.info(
+			`[Commands:spontaneous] Spontaneous replies turned ${enable ? "ON" : "OFF"} (${pct}%) for chat ${chatId} by user ${ctx.from?.id} (${ctx.from?.first_name})`,
+		);
+		await ctx.reply(
+			enable
+				? `Spontaneous replies turned **ON** (probability: ${pct}%).`
+				: "Spontaneous replies turned **OFF**. I will only reply when mentioned or replied to directly.",
+			{ parse_mode: "Markdown" },
+		);
+	}
+
+	bot.command(["spontaneous", "chime"], async (ctx) => {
+		if (!ctx.chat) return;
 		if (!(await isAuthorized(ctx))) {
-			logger.warn(
-				`[Commands:prob] Unauthorized /prob attempt by user ${ctx.from?.id} (${ctx.from?.first_name}) in chat ${ctx.chat.id}`,
-			);
 			await ctx.reply(CONFIG.MESSAGES.not_authorized_command);
 			return;
 		}
 
-		const matchValue = ctx.match?.trim();
 		const chatId = ctx.chat.id.toString();
-
-		if (!matchValue) {
-			const chat = Repository.getChat(chatId);
-			const currentProbability = Math.round(
-				(chat?.reply_probability ?? 0.05) * 100,
-			);
-			logger.info(
-				`[Commands:prob] User ${ctx.from?.id} (${ctx.from?.first_name}) queried probability for chat ${chatId} (${currentProbability}%)`,
-			);
-			await ctx.reply(
-				`Random reply probability is currently ${currentProbability}%. To change it, type: \`/prob 10\` (for 10%).`,
-				{ parse_mode: "Markdown" },
-			);
+		const arg = ctx.match?.trim().toLowerCase();
+		if (!arg) {
+			await replySpontaneousStatus(ctx, chatId);
 			return;
 		}
 
+		const toggleVal = parseToggleArg(arg);
+		if (toggleVal !== null) {
+			await handleSpontaneousToggle(ctx, chatId, toggleVal);
+			return;
+		}
+
+		await ctx.reply("Usage: `/spontaneous on` or `/spontaneous off`", {
+			parse_mode: "Markdown",
+		});
+	});
+
+	async function applyProbabilityPercentage(
+		ctx: Context,
+		chatId: string,
+		matchValue: string,
+	): Promise<void> {
 		const probabilityValue = parseInt(matchValue, 10);
 		if (
 			Number.isNaN(probabilityValue) ||
 			probabilityValue < 0 ||
 			probabilityValue > 100
 		) {
-			logger.info(
-				`[Commands:prob] User ${ctx.from?.id} (${ctx.from?.first_name}) entered invalid probability "${matchValue}" in chat ${chatId}`,
+			await ctx.reply(
+				"Enter a percentage between 0 and 100, or `on` / `off`.",
+				{ parse_mode: "Markdown" },
 			);
-			await ctx.reply("You must enter a percentage value between 0 and 100.");
 			return;
 		}
 
+		const nextEnabled = probabilityValue > 0;
 		Repository.updateChatSettings(chatId, {
 			reply_probability: probabilityValue / 100,
+			spontaneous_enabled: nextEnabled,
 		});
 		logger.info(
-			`[Commands:prob] Updated random reply probability to ${probabilityValue}% for chat ${chatId} by user ${ctx.from?.id} (${ctx.from?.first_name})`,
+			`[Commands:prob] Updated random reply probability to ${probabilityValue}% (enabled: ${nextEnabled}) for chat ${chatId} by user ${ctx.from?.id}`,
 		);
 		await ctx.reply(
-			`Random reply probability updated to ${probabilityValue}%.`,
+			nextEnabled
+				? `Spontaneous reply probability updated to ${probabilityValue}% (**ON**).`
+				: "Spontaneous replies turned **OFF** (0%).",
+			{ parse_mode: "Markdown" },
 		);
+	}
+
+	bot.command("prob", async (ctx) => {
+		if (!ctx.chat) return;
+		if (!(await isAuthorized(ctx))) {
+			await ctx.reply(CONFIG.MESSAGES.not_authorized_command);
+			return;
+		}
+
+		const matchValue = ctx.match?.trim().toLowerCase();
+		const chatId = ctx.chat.id.toString();
+
+		if (!matchValue) {
+			await replySpontaneousStatus(ctx, chatId);
+			return;
+		}
+
+		const toggleVal = parseToggleArg(matchValue);
+		if (toggleVal !== null) {
+			await handleSpontaneousToggle(ctx, chatId, toggleVal);
+			return;
+		}
+
+		await applyProbabilityPercentage(ctx, chatId, matchValue);
 	});
 
 	bot.command("remember", async (ctx) => {

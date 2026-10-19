@@ -86,6 +86,7 @@ export interface Chat {
 	title?: string;
 	is_allowed: boolean;
 	reply_probability?: number;
+	spontaneous_enabled?: boolean;
 	active_persona_id?: string | null;
 	isAdmin?: boolean;
 	memoryCount?: number;
@@ -99,6 +100,7 @@ export interface BotSettings {
 	openai_base_url?: string;
 	openai_api_key?: string;
 	default_reply_probability?: number;
+	enable_spontaneous_replies?: boolean;
 	chat_history_limit?: number;
 	max_agent_steps?: number;
 	log_level?: string;

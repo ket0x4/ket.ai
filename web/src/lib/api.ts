@@ -168,7 +168,11 @@ export const api = {
 		list: () => apiFetch<Chat[]>("/api/chats"),
 		update: (
 			chatId: string,
-			data: { is_allowed?: boolean; reply_probability?: number },
+			data: {
+				is_allowed?: boolean;
+				reply_probability?: number;
+				spontaneous_enabled?: boolean;
+			},
 		) =>
 			apiFetch<{ success: boolean; chat: Chat }>(`/api/chats/${chatId}`, {
 				method: "PATCH",
