@@ -11,23 +11,23 @@ export const stmts = {
 	),
 
 	getAllPersonas: db.prepare(
-		"SELECT * FROM personas ORDER BY is_system DESC, created_at DESC",
+		"SELECT id, name, description, prompt, is_system, created_by, created_at, updated_at FROM personas ORDER BY is_system DESC, created_at DESC",
 	),
-	getPersonaById: db.prepare("SELECT * FROM personas WHERE id = ?"),
+	getPersonaById: db.prepare(
+		"SELECT id, name, description, prompt, is_system, created_by, created_at, updated_at FROM personas WHERE id = ?",
+	),
 	insertPersona: db.prepare(
-		`INSERT INTO personas (id, name, description, prompt, emoji, is_system, created_by, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO personas (id, name, description, prompt, is_system, created_by, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 	),
 	updatePersona: db.prepare(
-		`UPDATE personas SET name = ?, description = ?, prompt = ?, emoji = ?, updated_at = ? WHERE id = ?`,
+		`UPDATE personas SET name = ?, description = ?, prompt = ?, updated_at = ? WHERE id = ?`,
 	),
 	deletePersona: db.prepare(
 		"DELETE FROM personas WHERE id = ? AND is_system = 0",
 	),
-	getChatActivePersona: db.prepare(
-		`SELECT p.* FROM personas p
-     JOIN chats c ON c.active_persona_id = p.id
-     WHERE c.chat_id = ?`,
+	getAllChatActivePersonas: db.prepare(
+		"SELECT chat_id, active_persona_id FROM chats WHERE active_persona_id IS NOT NULL",
 	),
 	setChatActivePersona: db.prepare(
 		"UPDATE chats SET active_persona_id = ? WHERE chat_id = ?",

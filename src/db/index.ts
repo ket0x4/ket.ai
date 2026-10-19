@@ -245,20 +245,19 @@ function seedDefaultPersonas() {
 	try {
 		db.run("DELETE FROM personas WHERE is_system = 1 AND id != 'ket-default'");
 		db.run(
-			"UPDATE chats SET active_persona_id = NULL WHERE active_persona_id IS NOT NULL AND active_persona_id NOT IN (SELECT id FROM personas)",
+			"UPDATE chats SET active_persona_id = NULL WHERE active_persona_id IS NOT NULL AND (active_persona_id = 'ket-default' OR active_persona_id NOT IN (SELECT id FROM personas))",
 		);
 	} catch (e) {
 		logger.debug("[DB Seed] Clean legacy system personas skipped:", e);
 	}
 
 	const insertStmt = db.prepare(`
-    INSERT INTO personas (id, name, description, prompt, emoji, is_system, created_by, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, 1, NULL, ?, ?)
+    INSERT INTO personas (id, name, description, prompt, is_system, created_by, created_at, updated_at)
+    VALUES (?, ?, ?, ?, 1, NULL, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       name = excluded.name,
       description = excluded.description,
-      prompt = excluded.prompt,
-      emoji = excluded.emoji
+      prompt = excluded.prompt
   `);
 
 	try {
@@ -267,7 +266,6 @@ function seedDefaultPersonas() {
 			"ket.ai Standard",
 			"Default smart, witty, and balanced ket.ai conversation style.",
 			"Be a friendly, smart, witty, and natural conversation partner. Use fluent, modern, and natural language, avoiding robotic or artificial phrases. Never use emojis in your responses.",
-			"",
 			now,
 			now,
 		);

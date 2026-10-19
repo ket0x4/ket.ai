@@ -3,6 +3,7 @@ import type { AuthContext } from "../../../web/src/types";
 import {
 	type BotSettingsUpdate,
 	CONFIG,
+	getBotSettingsSnapshot,
 	updateBotSettings,
 } from "../../config/index";
 import { db } from "../../db/index";
@@ -199,21 +200,8 @@ export async function handleSettings(
 		);
 	}
 
-	const getSettingsSnapshot = () => ({
-		llm_provider: CONFIG.LLM_PROVIDER,
-		gemini_model: CONFIG.GEMINI_MODEL,
-		openai_model: CONFIG.OPENAI_MODEL,
-		openai_base_url: CONFIG.OPENAI_BASE_URL,
-		default_reply_probability: CONFIG.DEFAULT_REPLY_PROBABILITY,
-		enable_spontaneous_replies: CONFIG.ENABLE_SPONTANEOUS_REPLIES,
-		chat_history_limit: CONFIG.CHAT_HISTORY_LIMIT,
-		enable_web_search: CONFIG.ENABLE_WEB_SEARCH,
-		max_agent_steps: CONFIG.MAX_AGENT_STEPS,
-		log_level: CONFIG.LOG_LEVEL,
-	});
-
 	if (req.method === "GET") {
-		return jsonResponse(getSettingsSnapshot());
+		return jsonResponse(getBotSettingsSnapshot());
 	}
 
 	if (req.method === "PATCH") {
@@ -223,7 +211,7 @@ export async function handleSettings(
 			return jsonResponse({
 				success: true,
 				message: "Settings updated successfully",
-				settings: getSettingsSnapshot(),
+				settings: getBotSettingsSnapshot(),
 			});
 		} catch (e) {
 			logger.error("[Server] Error updating settings:", e);

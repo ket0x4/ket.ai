@@ -15,7 +15,6 @@ export interface PersonaRow {
 	name: string;
 	description: string | null;
 	prompt: string;
-	emoji: string;
 	is_system: number; // 0 or 1
 	created_by: number | null;
 	created_at: number;

@@ -74,7 +74,6 @@ export interface Persona {
 	name: string;
 	description?: string | null;
 	prompt: string;
-	emoji?: string;
 	is_system: number; // 0 or 1
 	created_by?: number | null;
 	created_at: number;
@@ -105,12 +104,17 @@ export interface BotSettings {
 	max_agent_steps?: number;
 	log_level?: string;
 	enable_web_search?: boolean;
+	enable_code_execution?: boolean;
+	enable_fetch_url?: boolean;
+	enable_agent_thinking?: boolean;
 }
 
 export interface LogEntry {
+	id?: number;
 	level: "DEBUG" | "INFO" | "WARN" | "ERROR" | string;
 	timestamp: string;
 	message: string;
+	raw?: string;
 }
 
 export interface ToolTrace {

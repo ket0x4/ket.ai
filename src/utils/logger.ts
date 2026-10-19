@@ -177,7 +177,8 @@ class Logger {
 	}
 
 	public log(level: LogLevel, message: string, ...args: unknown[]): void {
-		if (LOG_LEVEL_SEVERITY[level] < LOG_LEVEL_SEVERITY[this.minLevel]) {
+		const activeMinLevel = CONFIG.LOG_LEVEL || this.minLevel;
+		if (LOG_LEVEL_SEVERITY[level] < LOG_LEVEL_SEVERITY[activeMinLevel]) {
 			return;
 		}
 

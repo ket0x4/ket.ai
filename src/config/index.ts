@@ -279,6 +279,8 @@ export interface BotSettingsUpdate {
 	chat_history_limit?: number;
 	enable_web_search?: boolean;
 	enable_code_execution?: boolean;
+	enable_fetch_url?: boolean;
+	enable_agent_thinking?: boolean;
 	sandbox_url?: string;
 	sandbox_timeout_ms?: number;
 	max_agent_steps?: number;
@@ -297,6 +299,8 @@ const SETTINGS_KEY_MAP: Record<keyof BotSettingsUpdate, keyof typeof CONFIG> = {
 	chat_history_limit: "CHAT_HISTORY_LIMIT",
 	enable_web_search: "ENABLE_WEB_SEARCH",
 	enable_code_execution: "ENABLE_CODE_EXECUTION",
+	enable_fetch_url: "ENABLE_FETCH_URL",
+	enable_agent_thinking: "ENABLE_AGENT_THINKING",
 	sandbox_url: "SANDBOX_URL",
 	sandbox_timeout_ms: "SANDBOX_TIMEOUT_MS",
 	max_agent_steps: "MAX_AGENT_STEPS",
@@ -304,22 +308,92 @@ const SETTINGS_KEY_MAP: Record<keyof BotSettingsUpdate, keyof typeof CONFIG> = {
 	log_level: "LOG_LEVEL",
 };
 
+const VALID_LOG_LEVELS = new Set(["debug", "info", "warn", "error"]);
+
+const sanitizeStr = (raw: unknown) =>
+	typeof raw === "string" ? raw.trim() || undefined : undefined;
+const sanitizeBool = (raw: unknown) =>
+	typeof raw === "boolean" ? raw : undefined;
+const sanitizeNum =
+	(min: number, max: number, round = true) =>
+	(raw: unknown) => {
+		if (typeof raw !== "number" || Number.isNaN(raw)) return undefined;
+		const clamped = Math.min(max, Math.max(min, raw));
+		return round ? Math.round(clamped) : clamped;
+	};
+
+const SETTING_SANITIZERS: Record<
+	keyof BotSettingsUpdate,
+	(raw: unknown) => unknown
+> = {
+	llm_provider: (raw) =>
+		raw === "gemini" || raw === "openai" ? raw : undefined,
+	log_level: (raw) => {
+		const lower = typeof raw === "string" ? raw.toLowerCase() : "";
+		return VALID_LOG_LEVELS.has(lower) ? lower : undefined;
+	},
+	gemini_model: sanitizeStr,
+	openai_model: sanitizeStr,
+	openai_base_url: sanitizeStr,
+	openai_api_key: sanitizeStr,
+	sandbox_url: sanitizeStr,
+	enable_spontaneous_replies: sanitizeBool,
+	enable_web_search: sanitizeBool,
+	enable_code_execution: sanitizeBool,
+	enable_fetch_url: sanitizeBool,
+	enable_agent_thinking: sanitizeBool,
+	default_reply_probability: sanitizeNum(0, 1, false),
+	chat_history_limit: sanitizeNum(1, 100),
+	max_agent_steps: sanitizeNum(1, 100),
+	sandbox_timeout_ms: sanitizeNum(1000, 300000),
+	gemini_min_request_interval_ms: sanitizeNum(0, 60000),
+};
+
+function sanitizeSettingValue(
+	key: keyof BotSettingsUpdate,
+	raw: unknown,
+): unknown {
+	return SETTING_SANITIZERS[key]?.(raw);
+}
+
+export function getBotSettingsSnapshot() {
+	return {
+		llm_provider: CONFIG.LLM_PROVIDER,
+		gemini_model: CONFIG.GEMINI_MODEL,
+		openai_model: CONFIG.OPENAI_MODEL,
+		openai_base_url: CONFIG.OPENAI_BASE_URL,
+		default_reply_probability: CONFIG.DEFAULT_REPLY_PROBABILITY,
+		enable_spontaneous_replies: CONFIG.ENABLE_SPONTANEOUS_REPLIES,
+		chat_history_limit: CONFIG.CHAT_HISTORY_LIMIT,
+		enable_web_search: CONFIG.ENABLE_WEB_SEARCH,
+		enable_code_execution: CONFIG.ENABLE_CODE_EXECUTION,
+		enable_fetch_url: CONFIG.ENABLE_FETCH_URL,
+		enable_agent_thinking: CONFIG.ENABLE_AGENT_THINKING,
+		max_agent_steps: CONFIG.MAX_AGENT_STEPS,
+		log_level: CONFIG.LOG_LEVEL,
+	};
+}
+
 /**
  * Updates bot configuration settings and persists changes to config.json.
  */
 export function updateBotSettings(settings: BotSettingsUpdate): void {
 	const configRecord = CONFIG as Record<string, unknown>;
 	const jsonRecord = configJson as Record<string, unknown>;
+	let changed = false;
 
 	for (const [jsonKey, configKey] of Object.entries(SETTINGS_KEY_MAP) as Array<
 		[keyof BotSettingsUpdate, keyof typeof CONFIG]
 	>) {
-		const value = settings[jsonKey];
-		if (value !== undefined) {
-			configRecord[configKey] = value;
-			jsonRecord[jsonKey] = value;
+		const sanitized = sanitizeSettingValue(jsonKey, settings[jsonKey]);
+		if (sanitized !== undefined && configRecord[configKey] !== sanitized) {
+			configRecord[configKey] = sanitized;
+			jsonRecord[jsonKey] = sanitized;
+			changed = true;
 		}
 	}
+
+	if (!changed) return;
 
 	try {
 		writeFileSync(

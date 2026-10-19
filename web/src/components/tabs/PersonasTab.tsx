@@ -1,20 +1,14 @@
 import { Bot, Edit3, Plus, Sparkles, Trash2 } from "lucide-react";
 import { type FC, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { SearchInput } from "@/components/common";
-import {
-	Button,
-	Card,
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from "@/components/ui";
+import { ChatSelect, EmptyState, SearchInput } from "@/components/common";
+import { Button, Card } from "@/components/ui";
 import { useAsyncAction } from "@/hooks/useAsyncAction";
 import { api } from "@/lib/api";
 import { cn, getChatDisplayName, normalizeSearchText } from "@/lib/utils";
 import type { BaseTabProps, Persona } from "@/types";
+
+const DEFAULT_PERSONA_ID = "ket-default";
 
 interface PersonaCardProps {
 	persona: Persona;
@@ -22,7 +16,7 @@ interface PersonaCardProps {
 	isSelecting: boolean;
 	selectedChatId: string;
 	canEdit: boolean;
-	onSelect: (personaId: string) => void;
+	onSelect: (personaId: string | null) => void;
 	onEdit: (persona: Persona) => void;
 	onDelete: (persona: Persona) => void;
 }
@@ -79,7 +73,9 @@ const PersonaCard: FC<PersonaCardProps> = ({
 						size="sm"
 						variant={isActive ? "secondary" : "outline"}
 						disabled={isActive || isSelecting || !selectedChatId}
-						onClick={() => onSelect(persona.id)}
+						onClick={() =>
+							onSelect(persona.id === DEFAULT_PERSONA_ID ? null : persona.id)
+						}
 						className="flex-1"
 					>
 						{isActive ? "Active here" : "Use here"}
@@ -131,48 +127,35 @@ export const PersonasTab: FC<PersonasTabProps> = ({
 }) => {
 	const [searchQuery, setSearchQuery] = useState("");
 	const [selectedChatId, setSelectedChatId] = useState<string>("");
-	const [isSelectingPersona, setIsSelectingPersona] = useState(false);
 
+	const { isLoading: isSelectingPersona, execute: executeSelect } =
+		useAsyncAction();
 	const { execute: executeDelete } = useAsyncAction();
 
-	const manageableChats = useMemo(() => {
-		const result: Array<{ id: string; title: string; isDM: boolean }> = [];
-		if (currentUser) {
-			result.push({
-				id: currentUser.id.toString(),
-				title: `You (${currentUser.first_name})`,
-				isDM: true,
-			});
-		}
+	const currentUserIdStr = currentUser ? currentUser.id.toString() : "";
 
-		for (const c of chats) {
-			if (c.chat_id === currentUser?.id.toString()) continue;
-			const canManage = role === "owner" || adminChatIds.includes(c.chat_id);
-			if (canManage) {
-				result.push({
-					id: c.chat_id,
-					title: getChatDisplayName(c),
-					isDM: false,
-				});
-			}
-		}
-		return result;
-	}, [chats, currentUser, role, adminChatIds]);
+	const manageableGroupChats = useMemo(
+		() =>
+			chats.filter(
+				(c) =>
+					c.chat_id !== currentUserIdStr &&
+					(role === "owner" || adminChatIds.includes(c.chat_id)),
+			),
+		[chats, currentUserIdStr, role, adminChatIds],
+	);
 
 	useEffect(() => {
-		if (manageableChats.length > 0 && !selectedChatId) {
-			setSelectedChatId(manageableChats[0].id);
+		if (!selectedChatId) {
+			const fallbackId = currentUserIdStr || manageableGroupChats[0]?.chat_id;
+			if (fallbackId) setSelectedChatId(fallbackId);
 		}
-	}, [manageableChats, selectedChatId]);
-
-	const currentActivePersonaId = selectedChatId
-		? activePersonas[selectedChatId] || null
-		: null;
+	}, [currentUserIdStr, manageableGroupChats, selectedChatId]);
 
 	const currentActivePersona = useMemo(() => {
-		if (!currentActivePersonaId) return null;
-		return personas.find((p) => p.id === currentActivePersonaId) || null;
-	}, [currentActivePersonaId, personas]);
+		const activeId = selectedChatId ? activePersonas[selectedChatId] : null;
+		if (!activeId || activeId === DEFAULT_PERSONA_ID) return null;
+		return personas.find((p) => p.id === activeId) || null;
+	}, [selectedChatId, activePersonas, personas]);
 
 	const handleSelectPersona = async (personaId: string | null) => {
 		if (!selectedChatId) {
@@ -180,27 +163,25 @@ export const PersonasTab: FC<PersonasTabProps> = ({
 			return;
 		}
 
-		setIsSelectingPersona(true);
-		try {
-			await api.personas.select({
-				chatId: selectedChatId,
-				personaId,
-			});
+		const targetId = personaId === DEFAULT_PERSONA_ID ? null : personaId;
 
-			if (personaId) {
-				const p = personas.find((item) => item.id === personaId);
-				toast.success(`"${p?.name || "Persona"}" activated for this chat!`);
-			} else {
-				toast.success("Reset to default ket.ai persona.");
-			}
-			await onRefresh();
-		} catch (err) {
-			const msg =
-				err instanceof Error ? err.message : "Error selecting persona";
-			toast.error(msg);
-		} finally {
-			setIsSelectingPersona(false);
-		}
+		await executeSelect(
+			async () => {
+				await api.personas.select({
+					chatId: selectedChatId,
+					personaId: targetId,
+				});
+
+				if (targetId) {
+					const p = personas.find((item) => item.id === targetId);
+					toast.success(`"${p?.name || "Persona"}" activated for this chat!`);
+				} else {
+					toast.success("Reset to default ket.ai persona.");
+				}
+				await onRefresh();
+			},
+			{ errorMessage: "Error selecting persona" },
+		);
 	};
 
 	const handleDeletePersona = async (persona: Persona) => {
@@ -209,10 +190,13 @@ export const PersonasTab: FC<PersonasTabProps> = ({
 			return;
 		}
 
-		const confirmDelete = window.confirm(
-			`Are you sure you want to delete the "${persona.name}" persona?`,
-		);
-		if (!confirmDelete) return;
+		if (
+			!window.confirm(
+				`Are you sure you want to delete the "${persona.name}" persona?`,
+			)
+		) {
+			return;
+		}
 
 		await executeDelete(
 			async () => {
@@ -235,31 +219,38 @@ export const PersonasTab: FC<PersonasTabProps> = ({
 		);
 	}, [personas, searchQuery]);
 
-	const selectedChatTitle =
-		manageableChats.find((c) => c.id === selectedChatId)?.title || "this chat";
+	const personalLabel = currentUser
+		? `You (${currentUser.first_name})`
+		: "Personal Chat";
+
+	const selectedChatTitle = useMemo(() => {
+		if (selectedChatId && selectedChatId === currentUserIdStr) {
+			return personalLabel;
+		}
+		const group = manageableGroupChats.find(
+			(c) => c.chat_id === selectedChatId,
+		);
+		return group ? getChatDisplayName(group) : "this chat";
+	}, [selectedChatId, currentUserIdStr, personalLabel, manageableGroupChats]);
+
+	const hasAnyManageableChat =
+		Boolean(currentUserIdStr) || manageableGroupChats.length > 0;
 
 	return (
 		<div className="space-y-4">
 			<div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
 				<div className="flex min-w-0 items-center gap-2">
-					{manageableChats.length > 0 && (
-						<Select value={selectedChatId} onValueChange={setSelectedChatId}>
-							<SelectTrigger className="w-full text-xs sm:w-[240px]">
-								<SelectValue placeholder="Select chat" />
-							</SelectTrigger>
-							<SelectContent className="max-w-[calc(100vw-2rem)] sm:max-w-md">
-								{manageableChats.map((c) => (
-									<SelectItem key={c.id} value={c.id} className="text-xs">
-										<span
-											className="block max-w-[200px] truncate sm:max-w-[320px]"
-											dir="auto"
-										>
-											{c.title}
-										</span>
-									</SelectItem>
-								))}
-							</SelectContent>
-						</Select>
+					{hasAnyManageableChat && (
+						<ChatSelect
+							value={selectedChatId}
+							onValueChange={setSelectedChatId}
+							chats={manageableGroupChats}
+							currentUser={currentUser}
+							includePersonalOption={Boolean(currentUser)}
+							personalOptionLabel={personalLabel}
+							placeholder="Select chat"
+							triggerClassName="w-full sm:w-[240px]"
+						/>
 					)}
 				</div>
 
@@ -312,21 +303,21 @@ export const PersonasTab: FC<PersonasTabProps> = ({
 			</div>
 
 			{filteredPersonas.length === 0 ? (
-				<div className="rounded-xl border border-dashed border-border bg-card/40 p-10 text-center">
-					<Bot className="mx-auto mb-3 h-6 w-6 text-muted-foreground/50" />
-					<h3 className="text-sm font-medium">No personas found</h3>
-					<p className="mx-auto mt-1 max-w-xs text-xs text-muted-foreground">
-						{searchQuery
+				<EmptyState
+					icon={Bot}
+					title="No personas found"
+					description={
+						searchQuery
 							? "Nothing matched your search."
-							: "Create a persona to shape how the bot speaks."}
-					</p>
-				</div>
+							: "Create a persona to shape how the bot speaks."
+					}
+				/>
 			) : (
 				<div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
 					{filteredPersonas.map((persona) => {
-						const isActiveInSelectedChat =
-							currentActivePersonaId === persona.id ||
-							(!currentActivePersonaId && persona.id === "ket-default");
+						const isActiveInSelectedChat = currentActivePersona
+							? currentActivePersona.id === persona.id
+							: persona.id === DEFAULT_PERSONA_ID;
 						const canEdit =
 							persona.is_system === 0 &&
 							(role === "owner" || persona.created_by === currentUser?.id);

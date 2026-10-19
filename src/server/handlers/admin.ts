@@ -6,6 +6,53 @@ import logger from "../../utils/logger";
 import { ToolTraceLogger } from "../../utils/toolTrace";
 import { errorResponse, jsonResponse } from "../http";
 
+const LOG_LINE_REGEX =
+	/^(\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2}\.\d{3})\s+\[([A-Z]+)\s*\]\s+(.*)$/;
+
+interface ParsedLogLine {
+	id: number;
+	timestamp: string;
+	level: string;
+	message: string;
+	raw: string;
+}
+
+function parseLogLine(line: string, id: number): ParsedLogLine {
+	const match = line.match(LOG_LINE_REGEX);
+	if (!match) {
+		return { id, timestamp: "", level: "INFO", message: line, raw: line };
+	}
+	return {
+		id,
+		timestamp: match[1],
+		level: match[2],
+		message: match[3],
+		raw: line,
+	};
+}
+
+function collectRecentLogs(
+	lines: string[],
+	limit: number,
+	levelFilter: string | undefined,
+	searchFilter: string,
+): ParsedLogLine[] {
+	const hasLevel = Boolean(levelFilter && levelFilter !== "ALL");
+	const results: ParsedLogLine[] = [];
+
+	for (let i = lines.length - 1; i >= 0 && results.length < limit; i--) {
+		const line = lines[i]?.trim();
+		if (!line) continue;
+		if (searchFilter && !line.toLowerCase().includes(searchFilter)) continue;
+
+		const parsed = parseLogLine(line, i);
+		if (hasLevel && parsed.level !== levelFilter) continue;
+		results.push(parsed);
+	}
+
+	return results.reverse();
+}
+
 function handleLogsGet(url: URL, auth: AuthContext): Response {
 	if (!auth.isOwner) {
 		return errorResponse(
@@ -19,50 +66,23 @@ function handleLogsGet(url: URL, auth: AuthContext): Response {
 			url.searchParams.get("type") === "error" ? "error.log" : "app.log";
 		const levelFilter = url.searchParams.get("level")?.toUpperCase();
 		const searchFilter = url.searchParams.get("search")?.toLowerCase() || "";
-		const limit = parseInt(url.searchParams.get("limit") || "150", 10);
+		const rawLimit = Number.parseInt(
+			url.searchParams.get("limit") || "150",
+			10,
+		);
+		const limit = Number.isNaN(rawLimit)
+			? 150
+			: Math.min(500, Math.max(1, rawLimit));
 
 		const logFilePath = path.join(process.cwd(), CONFIG.LOG_DIR, logType);
 		if (!fs.existsSync(logFilePath)) {
 			return jsonResponse({ logs: [] });
 		}
 
-		const rawContent = fs.readFileSync(logFilePath, "utf-8");
-		const lines = rawContent.split("\n").filter((l) => l.trim().length > 0);
-		const recentLines = lines.slice(-limit);
-
-		const parsedLogs = recentLines
-			.map((line, idx) => {
-				const match = line.match(
-					/^(\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2}\.\d{3})\s+\[([A-Z]+)\s*\]\s+(.*)$/,
-				);
-				if (match) {
-					return {
-						id: idx,
-						timestamp: match[1],
-						level: match[2],
-						message: match[3],
-						raw: line,
-					};
-				}
-				return {
-					id: idx,
-					timestamp: "",
-					level: "INFO",
-					message: line,
-					raw: line,
-				};
-			})
-			.filter((log) => {
-				if (levelFilter && levelFilter !== "ALL" && log.level !== levelFilter) {
-					return false;
-				}
-				if (searchFilter && !log.raw.toLowerCase().includes(searchFilter)) {
-					return false;
-				}
-				return true;
-			});
-
-		return jsonResponse({ logs: parsedLogs });
+		const lines = fs.readFileSync(logFilePath, "utf-8").split("\n");
+		return jsonResponse({
+			logs: collectRecentLogs(lines, limit, levelFilter, searchFilter),
+		});
 	} catch (e) {
 		logger.error("[Server] Error reading log file:", e);
 		return errorResponse("Failed to read logs", 500);

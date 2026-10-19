@@ -127,12 +127,7 @@ export const api = {
 				personas: Persona[];
 				activePersonas: Record<string, string | null>;
 			}>("/api/personas"),
-		create: (data: {
-			name: string;
-			description?: string;
-			prompt: string;
-			emoji?: string;
-		}) =>
+		create: (data: { name: string; description?: string; prompt: string }) =>
 			apiFetch<{ success: boolean; persona: Persona }>("/api/personas", {
 				method: "POST",
 				body: JSON.stringify(data),
@@ -143,7 +138,6 @@ export const api = {
 				name?: string;
 				description?: string | null;
 				prompt?: string;
-				emoji?: string;
 			},
 		) =>
 			apiFetch<{ success: boolean; persona: Persona }>(`/api/personas/${id}`, {

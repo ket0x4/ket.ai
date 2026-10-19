@@ -1,38 +1,21 @@
 import type { AuthContext, TelegramUser } from "../../../web/src/types";
-import { db } from "../../db/index";
 import { Repository } from "../../db/repository";
+import { DEFAULT_PERSONA_ID } from "../../db/repository/personas";
 import logger from "../../utils/logger";
 import { errorResponse, jsonResponse } from "../http";
 
 function handlePersonasGet(auth: AuthContext): Response {
 	try {
 		const personas = Repository.getAllPersonas();
-		const activePersonas: Record<string, string | null> = {};
-
-		const chatIdsSet = new Set<string>();
-		if (auth.user) {
-			chatIdsSet.add(auth.user.id.toString());
-		}
-		if (auth.isOwner) {
-			const allChats = db.prepare("SELECT chat_id FROM chats").all() as Array<{
-				chat_id: string;
-			}>;
-			for (const c of allChats) {
-				chatIdsSet.add(c.chat_id);
-			}
-		} else {
-			for (const id of auth.adminChatIds) {
-				chatIdsSet.add(id);
-			}
-			for (const id of auth.memberChatIds) {
-				chatIdsSet.add(id);
-			}
-		}
-
-		for (const chatId of chatIdsSet) {
-			const active = Repository.getActivePersonaForChat(chatId);
-			activePersonas[chatId] = active ? active.id : null;
-		}
+		const activePersonas = auth.isOwner
+			? Repository.getActivePersonasMap()
+			: Repository.getActivePersonasMap(
+					new Set([
+						...(auth.user ? [auth.user.id.toString()] : []),
+						...auth.adminChatIds,
+						...auth.memberChatIds,
+					]),
+				);
 
 		return jsonResponse({
 			personas,
@@ -70,7 +53,7 @@ function resolvePersonaForMutation(
 		};
 	}
 
-	const id = pathname.replace("/api/personas/", "");
+	const id = pathname.slice("/api/personas/".length).trim();
 	if (!id) {
 		return { success: false, response: errorResponse("Invalid persona ID") };
 	}
@@ -126,7 +109,6 @@ async function handlePersonaCreate(
 			name: personaName,
 			description: payload.description,
 			prompt: personaPrompt,
-			emoji: payload.emoji || "",
 			isSystem: false,
 			createdBy: user.id,
 		});
@@ -151,8 +133,14 @@ async function handlePersonaPatch(
 			name?: string;
 			description?: string | null;
 			prompt?: string;
-			emoji?: string;
 		};
+
+		if (body.name !== undefined && !body.name.trim()) {
+			return errorResponse("Persona name cannot be empty");
+		}
+		if (body.prompt !== undefined && !body.prompt.trim()) {
+			return errorResponse("Persona prompt cannot be empty");
+		}
 
 		const updated = Repository.updatePersona(lookup.id, body);
 		if (!updated) {
@@ -209,20 +197,20 @@ async function handlePersonaSelect(
 			);
 		}
 
-		if (personaId && !Repository.getPersonaById(personaId)) {
+		const normalizedId =
+			personaId && personaId !== DEFAULT_PERSONA_ID ? personaId : null;
+
+		if (normalizedId && !Repository.getPersonaById(normalizedId)) {
 			return errorResponse("Persona not found", 404);
 		}
 
-		const success = Repository.setActivePersonaForChat(
-			chatId,
-			personaId || null,
-		);
+		const success = Repository.setActivePersonaForChat(chatId, normalizedId);
 		if (!success) return errorResponse("Failed to set active persona", 500);
 
 		return jsonResponse({
 			success: true,
 			chatId,
-			personaId: personaId || null,
+			personaId: normalizedId,
 		});
 	} catch (e) {
 		logger.error("[Server] Error selecting persona:", e);
@@ -235,20 +223,17 @@ export function handlePersonaRoutes(
 	req: Request,
 	auth: AuthContext,
 ): Promise<Response> | Response | null {
-	if (pathname === "/api/personas" && req.method === "GET") {
-		return handlePersonasGet(auth);
-	}
-	if (pathname === "/api/personas" && req.method === "POST") {
-		return handlePersonaCreate(req, auth);
+	if (pathname === "/api/personas") {
+		if (req.method === "GET") return handlePersonasGet(auth);
+		if (req.method === "POST") return handlePersonaCreate(req, auth);
+		return null;
 	}
 	if (pathname === "/api/personas/select" && req.method === "POST") {
 		return handlePersonaSelect(req, auth);
 	}
-	if (pathname.startsWith("/api/personas/") && req.method === "PATCH") {
-		return handlePersonaPatch(pathname, req, auth);
-	}
-	if (pathname.startsWith("/api/personas/") && req.method === "DELETE") {
-		return handlePersonaDelete(pathname, auth);
+	if (pathname.startsWith("/api/personas/")) {
+		if (req.method === "PATCH") return handlePersonaPatch(pathname, req, auth);
+		if (req.method === "DELETE") return handlePersonaDelete(pathname, auth);
 	}
 	return null;
 }

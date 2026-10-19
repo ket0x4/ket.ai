@@ -96,7 +96,6 @@ export const PersonaModal: FC<PersonaModalProps> = ({
 						name: name.trim(),
 						description: description.trim() || null,
 						prompt: prompt.trim(),
-						emoji: "",
 					});
 					toast.success("Persona updated successfully!");
 				} else {
@@ -104,7 +103,6 @@ export const PersonaModal: FC<PersonaModalProps> = ({
 						name: name.trim(),
 						description: description.trim() || undefined,
 						prompt: prompt.trim(),
-						emoji: "",
 					});
 					toast.success("New persona created successfully!");
 				}
