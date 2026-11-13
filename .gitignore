@@ -34,3 +34,4 @@ Thumbs.db
 !.vscode/settings.json
 !.vscode/extensions.json
 *.tsbuildinfo
+/.commandcode

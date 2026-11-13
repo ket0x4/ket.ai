@@ -5,10 +5,9 @@ import { ChatSelect, EmptyState, SearchInput } from "@/components/common";
 import { Button, Card } from "@/components/ui";
 import { useAsyncAction } from "@/hooks/useAsyncAction";
 import { api } from "@/lib/api";
+import { DEFAULT_PERSONA_ID } from "@/lib/constants";
 import { cn, getChatDisplayName, normalizeSearchText } from "@/lib/utils";
 import type { BaseTabProps, Persona } from "@/types";
-
-const DEFAULT_PERSONA_ID = "ket-default";
 
 interface PersonaCardProps {
 	persona: Persona;
@@ -73,9 +72,7 @@ const PersonaCard: FC<PersonaCardProps> = ({
 						size="sm"
 						variant={isActive ? "secondary" : "outline"}
 						disabled={isActive || isSelecting || !selectedChatId}
-						onClick={() =>
-							onSelect(persona.id === DEFAULT_PERSONA_ID ? null : persona.id)
-						}
+						onClick={() => onSelect(persona.id)}
 						className="flex-1"
 					>
 						{isActive ? "Active here" : "Use here"}
@@ -153,7 +150,7 @@ export const PersonasTab: FC<PersonasTabProps> = ({
 
 	const currentActivePersona = useMemo(() => {
 		const activeId = selectedChatId ? activePersonas[selectedChatId] : null;
-		if (!activeId || activeId === DEFAULT_PERSONA_ID) return null;
+		if (!activeId) return null;
 		return personas.find((p) => p.id === activeId) || null;
 	}, [selectedChatId, activePersonas, personas]);
 

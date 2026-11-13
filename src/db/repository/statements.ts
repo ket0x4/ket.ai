@@ -13,9 +13,6 @@ export const stmts = {
 	getAllPersonas: db.prepare(
 		"SELECT id, name, description, prompt, is_system, created_by, created_at, updated_at FROM personas ORDER BY is_system DESC, created_at DESC",
 	),
-	getPersonaById: db.prepare(
-		"SELECT id, name, description, prompt, is_system, created_by, created_at, updated_at FROM personas WHERE id = ?",
-	),
 	insertPersona: db.prepare(
 		`INSERT INTO personas (id, name, description, prompt, is_system, created_by, created_at, updated_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
