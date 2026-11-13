@@ -41,31 +41,17 @@ its own.
 
 ## Setup
 
-Create a `config.json` in the project root:
+Create a `config.json` in the project root. Every key is required: copy
+`config.example.json`, fill in every value, then start the bot. Missing or
+invalid values abort startup with a list of the exact keys.
 
-```json
-{
-  "telegram_bot_token": "YOUR_TELEGRAM_BOT_TOKEN",
-  "openai_api_key": "YOUR_OPENAI_API_KEY",
-  "openai_base_url": "http://localhost:8080/v1",
-  "openai_model": "default",
-  "openai_embedding_model": "text-embedding-3-small",
-  "openai_embedding_base_url": "",
-  "openai_embedding_api_key": "",
-  "bot_owner_id": 123456789,
-  "chat_history_limit": 8,
-  "default_reply_probability": 0.05
-}
-```
+Environment variables are not used for configuration.
 
-Embeddings can use a separate OpenAI-compatible endpoint and key with
-`openai_embedding_base_url` and `openai_embedding_api_key`. When either is
-omitted or empty, the main `openai_base_url` / `openai_api_key` is used.
-`openai_embedding_model` selects the embedding model independently of the chat
-model.
+Embeddings require their own endpoint and key (`openai_embedding_base_url`,
+`openai_embedding_api_key`); there is no fallback to the main chat API.
 
-See `config.example.json` for all options. You also need a `system.txt` file in
-the project root that defines the bot's persona and instructions.
+You also need a `system.txt` file in the project root that defines the bot's
+persona and instructions.
 
 ### Run locally (Bun)
 
@@ -86,7 +72,9 @@ bun build --compile --minify src/index.ts --outfile ket
 docker compose up --build -d
 ```
 
-The Dockerfile compiles the app into a standalone distroless binary.
+The Dockerfile compiles the app into a standalone distroless binary. In Docker,
+set `sandbox_url` to `http://ket-sandbox:8080` and `web_port` to `3003` in
+`config.json`.
 
 ## Testing
 

@@ -51,35 +51,61 @@ export function snapshotSettings(config: Config): BotSettingsSnapshot {
 	return snapshot as unknown as BotSettingsSnapshot;
 }
 
+export interface SettingsApplyResult {
+	changed: boolean;
+	errors: string[];
+}
+
 /**
- * Applies a sanitized settings patch to the in-memory config and raw config
- * record. Returns true when at least one value changed.
+ * Validates a settings patch and applies it to the in-memory config and raw
+ * config record. Invalid values abort the whole patch.
  */
 export function applySettings(
 	config: Config,
 	raw: Record<string, unknown>,
 	update: BotSettingsUpdate,
-): boolean {
-	const configRecord = config as unknown as Record<string, unknown>;
+): SettingsApplyResult {
+	const pending: Array<{
+		key: keyof typeof configSchema;
+		json: string;
+		value: unknown;
+	}> = [];
+	const errors: string[] = [];
 	const updateRecord = update as Record<string, unknown>;
-	let changed = false;
 
 	for (const key of Object.keys(configSchema) as Array<
 		keyof typeof configSchema
 	>) {
 		const field = configSchema[key] as FieldMeta<unknown>;
-		if (!field.updatable || !field.sanitize) continue;
+		if (!field.updatable) continue;
 		if (!(field.json in updateRecord)) continue;
 
-		const sanitized = field.sanitize(updateRecord[field.json]);
-		if (sanitized === undefined || configRecord[key] === sanitized) {
+		const value = field.coerce(updateRecord[field.json]);
+		if (value === undefined) {
+			errors.push(`${field.json}: missing or invalid`);
 			continue;
 		}
 
-		configRecord[key] = sanitized;
-		raw[field.json] = sanitized;
+		const validationError = field.validate?.(value);
+		if (validationError) {
+			errors.push(`${field.json}: ${validationError}`);
+			continue;
+		}
+
+		pending.push({ key, json: field.json, value });
+	}
+
+	if (errors.length > 0) return { changed: false, errors };
+
+	const configRecord = config as unknown as Record<string, unknown>;
+	let changed = false;
+
+	for (const item of pending) {
+		if (configRecord[item.key] === item.value) continue;
+		configRecord[item.key] = item.value;
+		raw[item.json] = item.value;
 		changed = true;
 	}
 
-	return changed;
+	return { changed, errors };
 }

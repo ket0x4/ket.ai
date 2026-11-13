@@ -1,4 +1,4 @@
-const DEFAULT_MESSAGES = {
+export const MESSAGES = {
 	unauthorized_group_reply:
 		"I don't have permission to talk in this group, I'm out! Contact my owner to add me.",
 	private_chat_unauthorized:
@@ -13,17 +13,4 @@ const DEFAULT_MESSAGES = {
 	not_authorized_command: "Only group admins or my owner can use this command!",
 } as const;
 
-export type Messages = { [K in keyof typeof DEFAULT_MESSAGES]: string };
-
-export function resolveMessages(
-	overrides?: Partial<Record<string, string>>,
-): Messages {
-	const resolved = { ...DEFAULT_MESSAGES } as Record<string, string>;
-	if (overrides && typeof overrides === "object") {
-		for (const key of Object.keys(DEFAULT_MESSAGES)) {
-			const value = overrides[key];
-			if (value) resolved[key] = value;
-		}
-	}
-	return resolved as Messages;
-}
+export type Messages = { [K in keyof typeof MESSAGES]: string };

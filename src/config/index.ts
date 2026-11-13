@@ -1,11 +1,5 @@
-import { IS_TEST } from "./env";
-import {
-	persistConfig,
-	readConfigJson,
-	resolveConfig,
-	validateConfig,
-} from "./load";
-import { type Messages, resolveMessages } from "./messages";
+import { loadConfig, persistConfig, readConfigJson } from "./load";
+import { MESSAGES, type Messages } from "./messages";
 import type { Config } from "./schema";
 import {
 	applySettings,
@@ -15,25 +9,21 @@ import {
 } from "./settings";
 
 const rawConfig = readConfigJson();
-const scalarConfig = resolveConfig(rawConfig);
-const validation = validateConfig(scalarConfig);
+const { config, errors } = loadConfig(rawConfig);
 
-export const CONFIG: Config & { MESSAGES: Messages } = {
-	...scalarConfig,
-	MESSAGES: resolveMessages(rawConfig.messages),
-};
-
-if (validation.fatal.length > 0 && !IS_TEST) {
-	console.error(
-		`FATAL: Missing required configuration: ${validation.fatal.join(", ")}`,
-	);
-	console.error("Please set them in config.json or as environment variables.");
+if (errors.length > 0) {
+	console.error("FATAL: Invalid configuration. Fix config.json and restart:");
+	for (const error of errors) {
+		console.error(`  - ${error}`);
+	}
+	console.error("See config.example.json for the required values.");
 	process.exit(1);
 }
 
-for (const warning of validation.warnings) {
-	console.warn(`WARNING: ${warning}`);
-}
+export const CONFIG: Config & { MESSAGES: Messages } = {
+	...config,
+	MESSAGES,
+};
 
 export type { BotSettingsSnapshot, BotSettingsUpdate };
 
@@ -41,7 +31,9 @@ export function getBotSettingsSnapshot(): BotSettingsSnapshot {
 	return snapshotSettings(CONFIG);
 }
 
-export function updateBotSettings(settings: BotSettingsUpdate): void {
-	if (!applySettings(CONFIG, rawConfig, settings)) return;
-	persistConfig(rawConfig);
+export function updateBotSettings(settings: BotSettingsUpdate): string[] {
+	const { changed, errors } = applySettings(CONFIG, rawConfig, settings);
+	if (errors.length > 0) return errors;
+	if (changed) persistConfig(rawConfig);
+	return [];
 }

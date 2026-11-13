@@ -3,9 +3,7 @@ import { type Config, configSchema, type FieldMeta } from "./schema";
 
 const CONFIG_FILE_PATH = "config.json";
 
-export type ConfigJson = Record<string, unknown> & {
-	messages?: Partial<Record<string, string>>;
-};
+export type ConfigJson = Record<string, unknown>;
 
 export function readConfigJson(path = CONFIG_FILE_PATH): ConfigJson {
 	if (!existsSync(path)) return {};
@@ -21,87 +19,38 @@ export function readConfigJson(path = CONFIG_FILE_PATH): ConfigJson {
 	}
 }
 
-function readEnv(
-	field: FieldMeta<unknown>,
-	env: NodeJS.ProcessEnv,
-): string | undefined {
-	const keys =
-		typeof field.env === "string"
-			? [field.env]
-			: Array.isArray(field.env)
-				? field.env
-				: [];
-
-	for (const key of keys) {
-		const value = env[key];
-		if (value !== undefined) return value;
-	}
-	return undefined;
+export interface LoadedConfig {
+	config: Config;
+	errors: string[];
 }
 
-function resolveField<T>(
-	field: FieldMeta<T>,
-	raw: unknown,
-	env: NodeJS.ProcessEnv,
-): T {
-	const fromConfig = field.coerce(raw);
-	if (fromConfig !== undefined) return fromConfig;
-
-	const envRaw = readEnv(field as FieldMeta<unknown>, env);
-	if (envRaw !== undefined) {
-		const fromEnv = field.parseEnv(envRaw);
-		if (fromEnv !== undefined) return fromEnv;
-	}
-
-	return field.default;
-}
-
-export function resolveConfig(
-	raw: ConfigJson,
-	env: NodeJS.ProcessEnv = process.env,
-): Config {
-	const resolved: Record<string, unknown> = {};
+/**
+ * Resolves every required config value from the raw config.json object.
+ * Missing or invalid values are collected so startup can report them together.
+ */
+export function loadConfig(raw: ConfigJson): LoadedConfig {
+	const values: Record<string, unknown> = {};
+	const errors: string[] = [];
 
 	for (const key of Object.keys(configSchema) as Array<
 		keyof typeof configSchema
 	>) {
 		const field = configSchema[key] as FieldMeta<unknown>;
-		resolved[key] = resolveField(field, raw[field.json], env);
-	}
+		const value = field.coerce(raw[field.json]);
 
-	return resolved as Config;
-}
-
-export interface ConfigValidation {
-	fatal: string[];
-	warnings: string[];
-}
-
-export function validateConfig(config: Config): ConfigValidation {
-	const fatal: string[] = [];
-	const warnings: string[] = [];
-
-	for (const key of Object.keys(configSchema) as Array<
-		keyof typeof configSchema
-	>) {
-		const field = configSchema[key] as FieldMeta<unknown>;
-		const value = config[key];
-
-		if (
-			field.required &&
-			(value === undefined ||
-				value === null ||
-				(typeof value === "string" && !value.trim()))
-		) {
-			fatal.push(String(key));
+		if (value === undefined) {
+			errors.push(`${field.json}: missing or invalid`);
 			continue;
 		}
 
-		const warning = field.validate?.(value);
-		if (warning) warnings.push(`${String(key)} ${warning}`);
+		values[key] = value;
+		const validationError = field.validate?.(value);
+		if (validationError) {
+			errors.push(`${field.json}: ${validationError}`);
+		}
 	}
 
-	return { fatal, warnings };
+	return { config: values as Config, errors };
 }
 
 export function persistConfig(raw: ConfigJson, path = CONFIG_FILE_PATH): void {

@@ -10,7 +10,7 @@ interface ClientSlot {
 function createClient(baseUrl: string, apiKey: string): OpenAI {
 	return new OpenAI({
 		baseURL: baseUrl,
-		apiKey: apiKey || "no-key",
+		apiKey,
 		// Retries are owned by the LLM middleware pipeline, not the SDK.
 		maxRetries: 0,
 	});
@@ -42,13 +42,12 @@ export function getOpenAiClient(): OpenAI {
 }
 
 /**
- * Embedding client. Uses the dedicated embedding endpoint/key when configured,
- * otherwise falls back to the main LLM endpoint/key.
+ * Embedding client. Uses the dedicated embedding endpoint and key.
  */
 export function getOpenAiEmbeddingClient(): OpenAI {
 	return getOrCreate(
 		embeddingSlot,
-		CONFIG.OPENAI_EMBEDDING_BASE_URL || CONFIG.OPENAI_BASE_URL,
-		CONFIG.OPENAI_EMBEDDING_API_KEY || CONFIG.OPENAI_API_KEY,
+		CONFIG.OPENAI_EMBEDDING_BASE_URL,
+		CONFIG.OPENAI_EMBEDDING_API_KEY,
 	);
 }

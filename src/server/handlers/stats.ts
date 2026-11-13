@@ -202,7 +202,10 @@ export async function handleSettings(
 	if (req.method === "PATCH") {
 		try {
 			const body = (await req.json()) as BotSettingsUpdate;
-			updateBotSettings(body);
+			const errors = updateBotSettings(body);
+			if (errors.length > 0) {
+				return errorResponse(`Invalid settings: ${errors.join("; ")}`, 400);
+			}
 			return jsonResponse({
 				success: true,
 				message: "Settings updated successfully",

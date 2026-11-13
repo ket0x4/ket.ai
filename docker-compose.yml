@@ -9,7 +9,6 @@ services:
       - "3003:3003"
     environment:
       - TZ=Europe/Istanbul
-      - SANDBOX_URL=http://ket-sandbox:8080
     volumes:
       - ./config.json:/app/config.json:rw
       - ./system.txt:/app/system.txt:ro

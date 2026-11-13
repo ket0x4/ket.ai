@@ -18,20 +18,6 @@ import { useAsyncAction } from "@/hooks/useAsyncAction";
 import { api } from "@/lib/api";
 import type { BotSettings } from "@/types";
 
-const DEFAULT_SETTINGS: BotSettings = {
-	openai_model: "default",
-	openai_base_url: "http://localhost:8080/v1",
-	openai_embedding_model: "text-embedding-3-small",
-	openai_embedding_base_url: "",
-	default_reply_probability: 0.05,
-	enable_spontaneous_replies: true,
-	chat_history_limit: 20,
-	max_agent_steps: 50,
-	log_level: "info",
-	enable_code_execution: true,
-	enable_fetch_url: true,
-};
-
 const SectionLabel: FC<{ title: string }> = ({ title }) => (
 	<h3 className="text-[11px] font-medium text-muted-foreground">{title}</h3>
 );
@@ -315,17 +301,15 @@ const BehaviorAndLoggingSection: FC<BehaviorAndLoggingSectionProps> = ({
 };
 
 export const BotSettingsCard: FC = () => {
-	const [savedSettings, setSavedSettings] =
-		useState<BotSettings>(DEFAULT_SETTINGS);
-	const [settings, setSettings] = useState<BotSettings>(DEFAULT_SETTINGS);
+	const [savedSettings, setSavedSettings] = useState<BotSettings | null>(null);
+	const [settings, setSettings] = useState<BotSettings | null>(null);
 	const [isLoading, setIsLoading] = useState(true);
 
 	const { isLoading: isSaving, execute: executeSave } = useAsyncAction();
 
 	const applySnapshot = useCallback((data: BotSettings) => {
-		const merged: BotSettings = { ...DEFAULT_SETTINGS, ...data };
-		setSavedSettings(merged);
-		setSettings(merged);
+		setSavedSettings(data);
+		setSettings(data);
 	}, []);
 
 	const loadSettings = useCallback(async () => {
@@ -347,16 +331,18 @@ export const BotSettingsCard: FC = () => {
 	}, [loadSettings]);
 
 	const handlePatch = useCallback((patch: Partial<BotSettings>) => {
-		setSettings((prev) => ({ ...prev, ...patch }));
+		setSettings((prev) => (prev ? { ...prev, ...patch } : prev));
 	}, []);
 
 	const dirtyPatch = useMemo(() => {
 		const patch: Partial<BotSettings> = {};
-		const keys = Object.keys(DEFAULT_SETTINGS) as Array<keyof BotSettings>;
-		for (const k of keys) {
-			if (settings[k] !== savedSettings[k]) {
+		if (!settings || !savedSettings) return patch;
+
+		const keys = Object.keys(settings) as Array<keyof BotSettings>;
+		for (const key of keys) {
+			if (settings[key] !== savedSettings[key]) {
 				// biome-ignore lint/suspicious/noExplicitAny: dynamic key assignment on Partial<BotSettings>
-				(patch as any)[k] = settings[k];
+				(patch as any)[key] = settings[key];
 			}
 		}
 		return patch;
@@ -365,11 +351,12 @@ export const BotSettingsCard: FC = () => {
 	const hasChanges = Object.keys(dirtyPatch).length > 0;
 
 	const handleSaveSettings = async () => {
-		if (!hasChanges) return;
+		const current = settings;
+		if (!hasChanges || !current) return;
 		await executeSave(
 			async () => {
 				const res = await api.settings.update(dirtyPatch);
-				applySnapshot(res.settings ?? settings);
+				applySnapshot(res.settings ?? current);
 			},
 			{
 				successMessage: "Saved.",
@@ -386,7 +373,7 @@ export const BotSettingsCard: FC = () => {
 			</CardHeader>
 
 			<CardContent className="space-y-5">
-				{isLoading && settings === DEFAULT_SETTINGS ? (
+				{!settings ? (
 					<LoadingState className="py-6" />
 				) : (
 					<>

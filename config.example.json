@@ -4,8 +4,8 @@
 	"openai_base_url": "http://localhost:8080/v1",
 	"openai_model": "default",
 	"openai_embedding_model": "text-embedding-3-small",
-	"openai_embedding_base_url": "",
-	"openai_embedding_api_key": "",
+	"openai_embedding_base_url": "http://localhost:8080/v1",
+	"openai_embedding_api_key": "YOUR_OPENAI_API_KEY",
 	"openai_transcribe_model": "whisper-1",
 	"chat_history_limit": 8,
 	"image_history_limit": 5,
@@ -13,6 +13,7 @@
 	"enable_spontaneous_replies": true,
 	"db_path": "bot.db",
 	"bot_owner_id": 123456789,
+	"allowed_chat_ids": [],
 	"enable_code_execution": true,
 	"enable_fetch_url": true,
 	"sandbox_url": "http://localhost:8080",
@@ -28,5 +29,7 @@
 	"init_data_max_age_seconds": 86400,
 	"log_level": "info",
 	"log_dir": "logs",
-	"log_max_size_mb": 5
+	"log_max_size_mb": 5,
+	"web_port": 3000,
+	"web_app_url": "https://your-mini-app.example"
 }
