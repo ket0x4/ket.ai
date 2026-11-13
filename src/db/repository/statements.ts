@@ -96,20 +96,20 @@ export const stmts = {
 	),
 
 	insertMemory: db.prepare(
-		"INSERT INTO memories (chat_id, memory_text, embedding, created_at, user_id, category, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+		"INSERT INTO memories (chat_id, content, embedding, created_at, updated_at, user_id, category, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
 	),
 	getMemories: db.prepare(
-		"SELECT id, memory_text, embedding, created_at, user_id, category, expires_at FROM memories WHERE chat_id = ? ORDER BY created_at ASC",
+		"SELECT id, content, embedding, created_at, updated_at, user_id, category, expires_at FROM memories WHERE chat_id = ? ORDER BY created_at ASC",
 	),
 	deleteMemoryById: db.prepare("DELETE FROM memories WHERE id = ?"),
 	getMemoryById: db.prepare(
-		"SELECT id, chat_id, memory_text, embedding, created_at, user_id, category, expires_at FROM memories WHERE id = ?",
+		"SELECT id, chat_id, content, embedding, created_at, updated_at, user_id, category, expires_at FROM memories WHERE id = ?",
 	),
 	getUserMemberChatIds: db.prepare(
 		"SELECT DISTINCT chat_id FROM messages WHERE user_id = ?",
 	),
 	getUserMemories: db.prepare(
-		"SELECT id, chat_id, memory_text, embedding, created_at, user_id, category, expires_at FROM memories WHERE user_id = ? ORDER BY created_at DESC LIMIT 5000",
+		"SELECT id, chat_id, content, embedding, created_at, updated_at, user_id, category, expires_at FROM memories WHERE user_id = ? ORDER BY created_at DESC LIMIT 5000",
 	),
 	getUserStats: db.prepare(
 		`SELECT 
@@ -136,7 +136,7 @@ export const stmts = {
 		)`,
 	),
 	searchMemoriesFTS: db.prepare(
-		`SELECT m.id, m.memory_text, bm25(memories_fts) as rank
+		`SELECT m.id, m.content AS text, bm25(memories_fts) as rank
      FROM memories_fts fts
      JOIN memories m ON m.id = fts.rowid
      WHERE memories_fts MATCH ? AND m.chat_id = ?
@@ -145,6 +145,9 @@ export const stmts = {
 	),
 	pruneExpiredMemories: db.prepare(
 		"DELETE FROM memories WHERE chat_id = ? AND expires_at IS NOT NULL AND expires_at <= ? RETURNING id",
+	),
+	pruneAllExpiredMemories: db.prepare(
+		"DELETE FROM memories WHERE expires_at IS NOT NULL AND expires_at <= ? RETURNING id",
 	),
 	pruneOldMessages: db.prepare(
 		"DELETE FROM messages WHERE chat_id = ? AND sent_at < ?",
@@ -165,10 +168,10 @@ export const stmts = {
 		`SELECT COUNT(*) as count FROM messages WHERE chat_id = ? AND sent_at >= ?`,
 	),
 	updateMemoryWithEmbedding: db.prepare(
-		"UPDATE memories SET memory_text = ?, category = ?, embedding = ? WHERE id = ?",
+		"UPDATE memories SET content = ?, category = ?, embedding = ?, updated_at = ? WHERE id = ?",
 	),
 	updateMemoryWithoutEmbedding: db.prepare(
-		"UPDATE memories SET memory_text = ?, category = ? WHERE id = ?",
+		"UPDATE memories SET content = ?, category = ?, updated_at = ? WHERE id = ?",
 	),
 	updateMessageText: db.prepare(
 		"UPDATE messages SET text = ? WHERE chat_id = ? AND message_id = ?",

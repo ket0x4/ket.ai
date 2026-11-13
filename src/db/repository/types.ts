@@ -38,15 +38,29 @@ export interface MessageRow {
 	sent_at: number;
 }
 
+export type MemoryCategory = "PROFILE" | "DYNAMIC" | "TEMPORARY";
+
 export interface MemoryItem {
 	id: number;
 	text: string;
 	embedding: Float32Array;
-	normalizedEmbedding?: Float32Array;
 	createdAt: number;
+	updatedAt: number;
 	userId: number | null;
-	category: "PROFILE" | "DYNAMIC" | "TEMPORARY";
+	category: MemoryCategory;
 	expiresAt: number | null;
+}
+
+export interface MemoryRow {
+	id: number;
+	chat_id: string;
+	content: string;
+	embedding: Uint8Array | null;
+	created_at: number;
+	updated_at: number;
+	user_id: number | null;
+	category: MemoryCategory;
+	expires_at: number | null;
 }
 
 /**
@@ -70,7 +84,7 @@ export interface RepositorySelf {
 	): void;
 	setChatAllowed(chatId: string, allowed: boolean): void;
 	isUserOptedOut(userId?: number | null): boolean;
-	getMemories(chatId: string, includeOptedOut?: boolean): MemoryItem[];
+	getMemories(chatId: string): MemoryItem[];
 	sanitizeFtsQuery(query: string): string;
 	getPersonaById(id: string): PersonaRow | null;
 }

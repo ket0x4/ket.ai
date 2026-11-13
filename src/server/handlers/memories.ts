@@ -1,11 +1,7 @@
 import type { AuthContext } from "../../../web/src/types";
 import { db } from "../../db/index";
-import { Repository } from "../../db/repository";
-import { invalidateMemoryCaches } from "../../db/repository/cache";
-import {
-	generateEmbedding,
-	processNewMemory,
-} from "../../services/memory/memory";
+import { type MemoryCategory, Repository } from "../../db/repository";
+import { generateEmbedding, processNewMemory } from "../../services/memory";
 import { isPlaceholderChatTitle } from "../../utils/chatTitle";
 import logger from "../../utils/logger";
 import { errorResponse, jsonResponse } from "../http";
@@ -66,11 +62,11 @@ function buildOwnerMemoryFilter(
 	const conditions: string[] = [];
 	const params: (string | number)[] = [];
 	if (chatIdParam) {
-		conditions.push("chat_id = ?");
+		conditions.push("m.chat_id = ?");
 		params.push(chatIdParam);
 	}
 	if (filterScope === "mine" && userId) {
-		conditions.push("user_id = ?");
+		conditions.push("m.user_id = ?");
 		params.push(userId);
 	}
 	return { conditions, params };
@@ -93,11 +89,11 @@ function buildChatIdMemoryFilter(
 	}
 
 	if (auth.role === "admin") {
-		return { conditions: ["chat_id = ?"], params: [chatIdParam] };
+		return { conditions: ["m.chat_id = ?"], params: [chatIdParam] };
 	}
 
 	return {
-		conditions: ["chat_id = ? AND (user_id = ? OR category = 'PROFILE')"],
+		conditions: ["m.chat_id = ? AND (m.user_id = ? OR m.category = 'PROFILE')"],
 		params: [chatIdParam, auth.user.id],
 	};
 }
@@ -112,12 +108,12 @@ function buildGlobalAdminMemoryFilter(auth: AuthContext): {
 		new Set([...auth.adminChatIds, ...auth.memberChatIds]),
 	);
 	if (allowedChats.length === 0) {
-		return { conditions: ["user_id = ?"], params: [auth.user.id] };
+		return { conditions: ["m.user_id = ?"], params: [auth.user.id] };
 	}
 
 	const placeholders = allowedChats.map(() => "?").join(",");
 	return {
-		conditions: [`(chat_id IN (${placeholders}) OR user_id = ?)`],
+		conditions: [`(m.chat_id IN (${placeholders}) OR m.user_id = ?)`],
 		params: [...allowedChats, auth.user.id],
 	};
 }
@@ -132,7 +128,7 @@ function buildScopedMemoryFilter(
 	}
 	if (!auth.user) return { conditions: [], params: [] };
 	if (filterScope === "mine") {
-		return { conditions: ["user_id = ?"], params: [auth.user.id] };
+		return { conditions: ["m.user_id = ?"], params: [auth.user.id] };
 	}
 	if (chatIdParam) {
 		return buildChatIdMemoryFilter(auth, chatIdParam);
@@ -140,7 +136,7 @@ function buildScopedMemoryFilter(
 	if (auth.role === "admin") {
 		return buildGlobalAdminMemoryFilter(auth);
 	}
-	return { conditions: ["user_id = ?"], params: [auth.user.id] };
+	return { conditions: ["m.user_id = ?"], params: [auth.user.id] };
 }
 
 function handleMemoriesGet(url: URL, auth: AuthContext): Response {
@@ -160,7 +156,8 @@ function handleMemoriesGet(url: URL, auth: AuthContext): Response {
 
 	let query = `
 		SELECT 
-			m.id, m.chat_id, m.memory_text, m.created_at, m.user_id, m.category, m.expires_at,
+			m.id, m.chat_id, m.content AS memory_text, m.created_at, m.updated_at,
+			m.user_id, m.category, m.expires_at,
 			c.title as chat_title,
 			u.first_name as user_first_name,
 			u.username as user_username
@@ -168,17 +165,16 @@ function handleMemoriesGet(url: URL, auth: AuthContext): Response {
 		LEFT JOIN chats c ON m.chat_id = c.chat_id
 		LEFT JOIN users u ON m.user_id = u.user_id
 	`;
-	const conditions = filterRes.conditions.map((cond) =>
-		cond
-			.replace(/\bchat_id\b/g, "m.chat_id")
-			.replace(/\buser_id\b/g, "m.user_id")
-			.replace(/\bcategory\b/g, "m.category"),
-	);
+	const conditions = filterRes.conditions;
 	const params = filterRes.params;
 
 	if (categoryParam) {
 		conditions.push("m.category = ?");
 		params.push(categoryParam);
+	}
+	if (searchParam) {
+		conditions.push("LOWER(m.content) LIKE ?");
+		params.push(`%${searchParam}%`);
 	}
 
 	if (conditions.length > 0) {
@@ -191,6 +187,7 @@ function handleMemoriesGet(url: URL, auth: AuthContext): Response {
 		chat_id: string;
 		memory_text: string;
 		created_at: number;
+		updated_at: number;
 		user_id: number | null;
 		category: string;
 		expires_at: number | null;
@@ -199,28 +196,24 @@ function handleMemoriesGet(url: URL, auth: AuthContext): Response {
 		user_username: string | null;
 	}[];
 
-	const mapped = rows.map((r) => {
-		let chatTitle = r.chat_title;
+	const mapped = rows.map((row) => {
+		let chatTitle = row.chat_title;
 		if (isPlaceholderChatTitle(chatTitle)) {
-			if (auth.user && r.chat_id === auth.user.id.toString()) {
+			if (auth.user && row.chat_id === auth.user.id.toString()) {
 				chatTitle = `Personal Profile (${auth.user.first_name || "Me"})`;
-			} else if (r.user_first_name) {
-				chatTitle = `${r.user_first_name} (Private)`;
+			} else if (row.user_first_name) {
+				chatTitle = `${row.user_first_name} (Private)`;
 			} else {
-				chatTitle = `Group (${r.chat_id})`;
+				chatTitle = `Group (${row.chat_id})`;
 			}
 		}
 		return {
-			...r,
+			...row,
 			chat_title: chatTitle,
 		};
 	});
 
-	const filtered = mapped.filter((r) =>
-		searchParam ? r.memory_text.toLowerCase().includes(searchParam) : true,
-	);
-
-	return jsonResponse(filtered);
+	return jsonResponse(mapped);
 }
 
 async function handleMemoriesPost(
@@ -295,12 +288,16 @@ async function handleMemoryPatch(
 	try {
 		const body = (await req.json()) as {
 			memoryText?: string;
-			category?: string;
+			category?: MemoryCategory;
 		};
 		if (!body.memoryText) return errorResponse("memoryText is required");
 
 		const emb = await generateEmbedding(body.memoryText);
-		Repository.updateMemory(id, body.memoryText, body.category, emb);
+		Repository.updateMemory(id, {
+			content: body.memoryText,
+			category: body.category,
+			embedding: emb,
+		});
 
 		return jsonResponse({
 			success: true,
@@ -337,19 +334,7 @@ async function handleMemoriesPrune(
 			}
 		}
 
-		const now = Math.floor(Date.now() / 1000);
-		let changes = 0;
-		if (body.chatId) {
-			changes = Repository.pruneExpiredMemories(body.chatId);
-		} else {
-			const result = db
-				.prepare(
-					"DELETE FROM memories WHERE expires_at IS NOT NULL AND expires_at <= ?",
-				)
-				.run(now);
-			changes = result.changes;
-			invalidateMemoryCaches();
-		}
+		const changes = Repository.pruneExpiredMemories(body.chatId);
 
 		return jsonResponse({ success: true, prunedCount: changes });
 	} catch (e) {
@@ -367,7 +352,7 @@ function handleMemoriesExport(auth: AuthContext): Response {
 	}
 	try {
 		let query =
-			"SELECT chat_id, memory_text, created_at, user_id, category, expires_at FROM memories";
+			"SELECT chat_id, content AS memory_text, created_at, updated_at, user_id, category, expires_at FROM memories";
 		const params: string[] = [];
 		if (auth.role === "admin") {
 			const placeholders = auth.adminChatIds.map(() => "?").join(",") || "''";

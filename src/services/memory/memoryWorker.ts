@@ -1,8 +1,13 @@
-import type { MessageRow } from "../../db/repository";
+import type { MemoryCategory, MessageRow } from "../../db/repository";
 import { Repository } from "../../db/repository";
 import logger from "../../utils/logger";
 import { openAiProvider } from "../llm/openAiProvider";
-import { processNewMemory } from "./memory";
+import {
+	BACKGROUND_EXTRACTION_INTERVAL,
+	MAX_TRACKED_CHATS,
+	TEMPORARY_MEMORY_TTL_DAYS,
+} from "./constants";
+import { processNewMemory } from "./store";
 
 const MEMORY_UPDATE_ITEM_SCHEMA = {
 	type: "OBJECT",
@@ -32,7 +37,6 @@ const MEMORY_UPDATE_ITEM_SCHEMA = {
 };
 
 const backgroundCounter = new Map<string, number>();
-const MAX_TRACKED_CHATS = 200;
 
 /**
  * Increments message counter for a chat and triggers background memory extraction every 15 messages.
@@ -41,7 +45,7 @@ export async function checkAndRunBackgroundMemoryExtraction(
 	chatIdStr: string,
 ): Promise<void> {
 	const count = (backgroundCounter.get(chatIdStr) || 0) + 1;
-	if (count < 15) {
+	if (count < BACKGROUND_EXTRACTION_INTERVAL) {
 		backgroundCounter.set(chatIdStr, count);
 		// Prune map if it grows too large
 		if (backgroundCounter.size > MAX_TRACKED_CHATS) {
@@ -88,7 +92,7 @@ function getExtractionSchema(): Record<string, unknown> {
 
 function resolveTtl(category: string, ttlDays?: number): number | null {
 	if (typeof ttlDays === "number" && ttlDays > 0) return ttlDays;
-	return category === "TEMPORARY" ? 3 : null;
+	return category === "TEMPORARY" ? TEMPORARY_MEMORY_TTL_DAYS : null;
 }
 
 async function saveExtractedMemories(
@@ -122,13 +126,13 @@ async function saveExtractedMemories(
 		}
 
 		const userName = participants.get(userId) || "User";
-		const cat =
-			(item.category as "PROFILE" | "DYNAMIC" | "TEMPORARY") || "PROFILE";
+		const category: MemoryCategory =
+			(item.category as MemoryCategory) || "PROFILE";
 
 		await processNewMemory(chatIdStr, `${userName}: ${fact}`, {
 			userId,
-			category: cat,
-			ttlDays: resolveTtl(cat, item.ttl_days),
+			category,
+			ttlDays: resolveTtl(category, item.ttl_days),
 		});
 		savedCount++;
 	}

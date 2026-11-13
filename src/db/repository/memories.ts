@@ -6,8 +6,15 @@ import {
 	readThroughUserMemories,
 } from "./cache";
 import { stmts } from "./statements";
-import type { MemoryItem, RepositorySelf } from "./types";
+import type {
+	MemoryCategory,
+	MemoryItem,
+	MemoryRow,
+	RepositorySelf,
+} from "./types";
 import { optedOutUserIds } from "./users";
+
+const MAX_MEMORIES_PER_CHAT = 10_000;
 
 /**
  * Decodes a stored embedding BLOB into an owned Float32Array. An owned copy is
@@ -28,57 +35,54 @@ function decodeEmbedding(bytes: Uint8Array): Float32Array {
 	);
 }
 
-function rowToMemoryItem(row: {
-	id: number;
-	memory_text: string;
-	embedding: Uint8Array | null;
-	created_at: number;
-	user_id: number | null;
-	category: string | null;
-	expires_at: number | null;
-}): MemoryItem {
-	const emb = row.embedding
-		? decodeEmbedding(row.embedding)
-		: new Float32Array(0);
+function encodeEmbedding(embedding: number[] | Float32Array): Buffer {
+	const floats =
+		embedding instanceof Float32Array
+			? new Float32Array(embedding)
+			: new Float32Array(embedding);
+	return Buffer.from(floats.buffer, floats.byteOffset, floats.byteLength);
+}
 
+function rowToMemoryItem(row: MemoryRow): MemoryItem {
 	return {
 		id: row.id,
-		text: row.memory_text,
-		embedding: emb,
-		normalizedEmbedding: emb,
+		text: row.content,
+		embedding: row.embedding
+			? decodeEmbedding(row.embedding)
+			: new Float32Array(0),
 		createdAt: row.created_at,
+		updatedAt: row.updated_at,
 		userId: row.user_id,
-		category:
-			(row.category as "PROFILE" | "DYNAMIC" | "TEMPORARY") || "PROFILE",
+		category: row.category,
 		expiresAt: row.expires_at,
 	};
 }
 
 export const memoryMethods = {
 	/**
-	 * Adds a new memory fact for a chat.
-	 * Enforces a maximum of 10000 memories per chat — oldest is removed when limit is reached.
+	 * Adds a memory fact. Enforces the per-chat limit by removing the oldest
+	 * lowest-priority fact when the limit is reached.
 	 */
 	addMemory(
 		this: RepositorySelf,
 		chatId: string,
-		memoryText: string,
+		content: string,
 		embedding: number[] | Float32Array,
 		options?: {
 			userId?: number | null;
-			category?: "PROFILE" | "DYNAMIC" | "TEMPORARY";
+			category?: MemoryCategory;
 			ttlDays?: number | null;
 		},
 	): void {
 		this.createChat(chatId, "");
+
 		const countResult = stmts.getMemoryCount.get(chatId) as {
 			count: number;
 		} | null;
-		const count = countResult ? countResult.count : 0;
-		if (count >= 10000) {
+		if ((countResult?.count || 0) >= MAX_MEMORIES_PER_CHAT) {
 			stmts.deleteOldestMemory.run(chatId);
 			logger.info(
-				`[Memory] Max memory limit (10000) reached for chat ${chatId}. Oldest memory removed.`,
+				`[Memory] Limit ${MAX_MEMORIES_PER_CHAT} reached for chat ${chatId}; oldest memory removed.`,
 			);
 		}
 
@@ -90,21 +94,11 @@ export const memoryMethods = {
 				? now + options.ttlDays * 86400
 				: null;
 
-		const floatArray =
-			embedding instanceof Float32Array
-				? new Float32Array(embedding)
-				: new Float32Array(embedding);
-
-		const buffer = Buffer.from(
-			floatArray.buffer,
-			floatArray.byteOffset,
-			floatArray.byteLength,
-		);
-
 		stmts.insertMemory.run(
 			chatId,
-			memoryText,
-			buffer,
+			content,
+			encodeEmbedding(embedding),
+			now,
 			now,
 			userId,
 			category,
@@ -114,55 +108,37 @@ export const memoryMethods = {
 	},
 
 	/**
-	 * Retrieves all memory facts for a chat with their embeddings directly from SQLite.
+	 * Retrieves all memory facts for a chat, excluding opted-out users.
 	 */
-	getMemories(
-		this: RepositorySelf,
-		chatId: string,
-		includeOptedOut: boolean = false,
-	): MemoryItem[] {
-		return readThroughChatMemories(
-			`${chatId}|${includeOptedOut ? 1 : 0}`,
-			() => {
-				const rows = stmts.getMemories.all(chatId) as {
-					id: number;
-					memory_text: string;
-					embedding: Uint8Array | null;
-					created_at: number;
-					user_id: number | null;
-					category: string | null;
-					expires_at: number | null;
-				}[];
-
-				const parsed = rows.map(rowToMemoryItem);
-
-				if (includeOptedOut || optedOutUserIds.size === 0) {
-					return parsed;
-				}
-
-				return parsed.filter(
-					(m) => !m.userId || !this.isUserOptedOut(m.userId),
-				);
-			},
-		);
+	getMemories(this: RepositorySelf, chatId: string): MemoryItem[] {
+		return readThroughChatMemories(chatId, () => {
+			const rows = stmts.getMemories.all(chatId) as MemoryRow[];
+			const parsed = rows.map(rowToMemoryItem);
+			if (optedOutUserIds.size === 0) return parsed;
+			return parsed.filter(
+				(memory) => !memory.userId || !this.isUserOptedOut(memory.userId),
+			);
+		});
 	},
 
 	/**
-	 * Prunes expired memories for a chat based on TTL.
+	 * Deletes expired memories for one chat, or for every chat when omitted.
 	 */
-	pruneExpiredMemories(chatId: string): number {
+	pruneExpiredMemories(chatId?: string): number {
 		const now = Math.floor(Date.now() / 1000);
-		const deletedRows = stmts.pruneExpiredMemories.all(chatId, now) as {
-			id: number;
-		}[];
-		const deletedCount = deletedRows.length;
-		if (deletedCount > 0) {
+		const rows = (
+			chatId
+				? stmts.pruneExpiredMemories.all(chatId, now)
+				: stmts.pruneAllExpiredMemories.all(now)
+		) as Array<{ id: number }>;
+
+		if (rows.length > 0) {
 			invalidateMemoryCaches();
 			logger.info(
-				`[Memory] Pruned ${deletedCount} expired memories for chat ${chatId}.`,
+				`[Memory] Pruned ${rows.length} expired memories${chatId ? ` for chat ${chatId}` : ""}.`,
 			);
 		}
-		return deletedCount;
+		return rows.length;
 	},
 
 	/**
@@ -174,13 +150,13 @@ export const memoryMethods = {
 			.replace(/[^\p{L}\p{N}\s_]/gu, " ")
 			.trim()
 			.split(/\s+/)
-			.filter((t) => t.length > 0);
+			.filter((token) => token.length > 0);
 		if (tokens.length === 0) return "";
-		return tokens.map((t) => `"${t}"*`).join(" OR ");
+		return tokens.map((token) => `"${token}"*`).join(" OR ");
 	},
 
 	/**
-	 * Performs Full-Text Search on memories using SQLite FTS5 BM25 ranking.
+	 * Performs full-text search on a single chat using FTS5 BM25 ranking.
 	 */
 	searchMemoriesFTS(
 		this: RepositorySelf,
@@ -190,23 +166,18 @@ export const memoryMethods = {
 	): Array<{ id: number; text: string; rank: number }> {
 		const sanitized = this.sanitizeFtsQuery(query);
 		if (!sanitized) return [];
+
 		try {
-			const rows = stmts.searchMemoriesFTS.all(
-				sanitized,
-				chatId,
-				limit,
-			) as Array<{
+			return stmts.searchMemoriesFTS.all(sanitized, chatId, limit) as Array<{
 				id: number;
-				memory_text: string;
+				text: string;
 				rank: number;
 			}>;
-			return rows.map((r) => ({
-				id: r.id,
-				text: r.memory_text,
-				rank: r.rank,
-			}));
-		} catch (err) {
-			logger.warn(`[Repository] FTS search failed for query "${query}":`, err);
+		} catch (error) {
+			logger.warn(
+				`[Repository] FTS search failed for query "${query}":`,
+				error,
+			);
 			return [];
 		}
 	},
@@ -226,30 +197,37 @@ export const memoryMethods = {
 	},
 
 	/**
-	 * Updates an existing memory's text and category.
+	 * Updates a memory in place. Omitted fields keep their current values.
 	 */
 	updateMemory(
 		id: number,
-		text: string,
-		category?: string,
-		embedding?: number[] | Float32Array,
-	): void {
-		const cat = (category as "PROFILE" | "DYNAMIC" | "TEMPORARY") || "PROFILE";
-		if (embedding && embedding.length > 0) {
-			const floatArray =
-				embedding instanceof Float32Array
-					? new Float32Array(embedding)
-					: new Float32Array(embedding);
-			const buffer = Buffer.from(
-				floatArray.buffer,
-				floatArray.byteOffset,
-				floatArray.byteLength,
+		updates: {
+			content?: string;
+			category?: MemoryCategory;
+			embedding?: number[] | Float32Array;
+		},
+	): MemoryRow | null {
+		const existing = stmts.getMemoryById.get(id) as MemoryRow | null;
+		if (!existing) return null;
+
+		const content = updates.content ?? existing.content;
+		const category = updates.category ?? existing.category;
+		const now = Math.floor(Date.now() / 1000);
+
+		if (updates.embedding && updates.embedding.length > 0) {
+			stmts.updateMemoryWithEmbedding.run(
+				content,
+				category,
+				encodeEmbedding(updates.embedding),
+				now,
+				id,
 			);
-			stmts.updateMemoryWithEmbedding.run(text, cat, buffer, id);
 		} else {
-			stmts.updateMemoryWithoutEmbedding.run(text, cat, id);
+			stmts.updateMemoryWithoutEmbedding.run(content, category, now, id);
 		}
+
 		invalidateMemoryCaches();
+		return { ...existing, content, category, updated_at: now };
 	},
 
 	/**
@@ -263,43 +241,18 @@ export const memoryMethods = {
 	/**
 	 * Retrieves a single memory row by ID.
 	 */
-	getMemoryById(id: number): {
-		id: number;
-		chat_id: string;
-		memory_text: string;
-		created_at: number;
-		user_id: number | null;
-		category: string;
-		expires_at: number | null;
-	} | null {
-		return stmts.getMemoryById.get(id) as {
-			id: number;
-			chat_id: string;
-			memory_text: string;
-			created_at: number;
-			user_id: number | null;
-			category: string;
-			expires_at: number | null;
-		} | null;
+	getMemoryById(id: number): MemoryRow | null {
+		return (stmts.getMemoryById.get(id) as MemoryRow | null) || null;
 	},
 
 	/**
-	 * Retrieves personal memories/facts saved about a specific user across all chats,
-	 * including their embeddings so they can participate in dense (cosine) ranking.
+	 * Retrieves personal memories/facts saved about a specific user across all
+	 * chats, including embeddings for dense ranking.
 	 */
 	getUserAllMemories(this: RepositorySelf, userId: number): MemoryItem[] {
 		if (this.isUserOptedOut(userId)) return [];
 		return readThroughUserMemories(userId, () => {
-			const rows = stmts.getUserMemories.all(userId) as {
-				id: number;
-				chat_id: string;
-				memory_text: string;
-				embedding: Uint8Array | null;
-				created_at: number;
-				user_id: number | null;
-				category: string | null;
-				expires_at: number | null;
-			}[];
+			const rows = stmts.getUserMemories.all(userId) as MemoryRow[];
 			return rows.map(rowToMemoryItem);
 		});
 	},

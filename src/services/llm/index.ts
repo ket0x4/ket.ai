@@ -2,7 +2,7 @@ import { runAgentLoop, toolRegistry } from "../../agent";
 import type { MessageRow } from "../../db/repository";
 import { Repository } from "../../db/repository";
 import logger from "../../utils/logger";
-import { getRelevantMemories, type RetrievedMemory } from "../memory/memory";
+import { getRelevantMemories, type RetrievedMemory } from "../memory";
 import {
 	buildConversationalContextSections,
 	buildConversationalMessages,
@@ -54,14 +54,10 @@ async function loadContextMemories(
 	const queryForMemory = options.isSpontaneous
 		? topicSummary || "General chat"
 		: lastMessageText;
-	const isPrivate = Boolean(
-		targetUserId && chatIdStr === targetUserId.toString(),
-	);
 	return await getRelevantMemories(chatIdStr, queryForMemory, {
 		activeTopic: topicSummary || undefined,
 		history,
 		senderUserId: targetUserId,
-		isPrivateChat: isPrivate,
 	});
 }
 

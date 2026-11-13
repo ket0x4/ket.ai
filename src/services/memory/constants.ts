@@ -1,0 +1,11 @@
+export const DUPLICATE_SIMILARITY = 0.9;
+export const DEFAULT_TOP_K = 5;
+export const DEFAULT_SIMILARITY_THRESHOLD = 0.6;
+export const FTS_SCORE_BOOST = 0.2;
+export const PERSONAL_MEMORY_LIMIT = 2;
+export const CONSOLIDATION_INTERVAL = 20;
+export const CONSOLIDATION_CHUNK_SIZE = 30;
+export const BACKGROUND_EXTRACTION_INTERVAL = 15;
+export const TEMPORARY_MEMORY_TTL_DAYS = 3;
+export const MAX_TRACKED_CHATS = 200;
+export const EMBEDDING_CACHE_SIZE = 100;

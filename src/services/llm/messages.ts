@@ -2,7 +2,7 @@ import { CONFIG } from "../../config";
 import type { MessageRow } from "../../db/repository";
 import { cleanUserText, resolveMessageFallback } from "../../utils/text";
 import { botUsername } from "../bot/instance";
-import type { RetrievedMemory } from "../memory/memory";
+import type { RetrievedMemory } from "../memory";
 import type { PreparedDocumentContext } from "../perception/documentPerception";
 import type {
 	ChatMessage,
