@@ -1,7 +1,6 @@
 import type { Context } from "grammy";
 import type { AgentEventHandler } from "../../agent/events";
 import type { ToolProgressUpdate } from "../../agent/types";
-import { CONFIG } from "../../config";
 import logger from "../../utils/logger";
 
 export interface ToolNotifier {
@@ -40,10 +39,6 @@ function resolveToolStatusMessage(
 	toolName: string,
 	args: Record<string, unknown> = {},
 ): string {
-	if (toolName === "web_search") {
-		return CONFIG.MESSAGES.tool_status_web_search || "🔍 Searching the web...";
-	}
-
 	if (toolName === "execute_code") {
 		return resolveExecuteCodeMessage(args);
 	}

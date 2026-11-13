@@ -1,7 +1,6 @@
 import logger from "../utils/logger";
 import { bashExecutionTool, codeExecutionTool } from "./tools/codeExecution";
 import { fetchUrlTool } from "./tools/fetchUrl";
-import { webSearchTool } from "./tools/webSearch";
 import {
 	editWorkspaceFileTool,
 	listWorkspaceFilesTool,
@@ -22,7 +21,6 @@ class ToolRegistry {
 
 	constructor(preloadDefaults = false) {
 		if (preloadDefaults) {
-			this.tools.set("web_search", webSearchTool);
 			this.tools.set("fetch_url", fetchUrlTool);
 			this.tools.set("execute_code", codeExecutionTool);
 			this.tools.set("execute_bash", bashExecutionTool);

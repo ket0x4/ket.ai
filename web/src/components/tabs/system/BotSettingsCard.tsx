@@ -28,7 +28,6 @@ const DEFAULT_SETTINGS: BotSettings = {
 	chat_history_limit: 20,
 	max_agent_steps: 50,
 	log_level: "info",
-	enable_web_search: true,
 	enable_code_execution: true,
 	enable_fetch_url: true,
 };
@@ -219,12 +218,6 @@ const EngineSettingsSection: FC<EngineSettingsSectionProps> = ({
 			</div>
 
 			<div className="divide-y divide-border/60">
-				<ToggleRow
-					id="toggle-web-search"
-					title="Web search"
-					checked={settings.enable_web_search ?? true}
-					onCheckedChange={(val) => onPatch({ enable_web_search: val })}
-				/>
 				<ToggleRow
 					id="toggle-code-execution"
 					title="Code execution"

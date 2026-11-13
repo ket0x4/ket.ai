@@ -1,5 +1,4 @@
 import type { Bot } from "grammy";
-import { CONFIG } from "../../config/index";
 import { Repository } from "../../db/repository";
 import logger from "../../utils/logger";
 import { botUsername } from "./instance";
@@ -32,13 +31,12 @@ function saveOutgoingMessage(
 	});
 }
 
-const TRANSIENT_STATUS_REGEX = /^(?:🔍|⚡|📦|📄|✏️|📤|📁|🧹|Spawning subagent)/u;
+const TRANSIENT_STATUS_REGEX = /^(?:⚡|📦|📄|✏️|📤|📁|🧹|Spawning subagent)/u;
 
 function isTransientStatusMessage(text: string): boolean {
 	if (!text) return false;
 	const trimmed = text.trim();
 	return (
-		trimmed === CONFIG.MESSAGES.tool_status_web_search ||
 		TRANSIENT_STATUS_REGEX.test(trimmed) ||
 		trimmed.includes("────────────────────────")
 	);

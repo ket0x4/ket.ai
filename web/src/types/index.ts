@@ -104,7 +104,6 @@ export interface BotSettings {
 	chat_history_limit?: number;
 	max_agent_steps?: number;
 	log_level?: string;
-	enable_web_search?: boolean;
 	enable_code_execution?: boolean;
 	enable_fetch_url?: boolean;
 }

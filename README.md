@@ -20,9 +20,9 @@ its own.
   data, edit, and send results back to Telegram.
 - Spontaneous mode: occasionally joins the chat on its own (configurable
   probability).
-- Agentic tool use with safeguards: `web_search`, `fetch_url`,
-  `execute_code` / `execute_bash`, workspace tools (`list`, `search`, `read`,
-  `edit`, `write`, `send`, `reset`), and `update_plan`. The loop tracks a run
+- Agentic tool use with safeguards: `fetch_url`, `execute_code` /
+  `execute_bash`, workspace tools (`list`, `search`, `read`, `edit`, `write`,
+  `send`, `reset`), and `update_plan`. The loop tracks a run
   budget, suppresses repeated identical tool calls, escalates on repeated tool
   failures, and compacts long context.
 - Concurrent processing with `/stop` cancellation and an agent timeout.

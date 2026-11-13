@@ -16,7 +16,6 @@ interface ConfigJson {
 	db_path?: string;
 	bot_owner_id?: number;
 	allowed_chat_ids?: (number | string)[];
-	enable_web_search?: boolean;
 	enable_code_execution?: boolean;
 	sandbox_url?: string;
 	sandbox_timeout_ms?: number;
@@ -93,7 +92,6 @@ const DEFAULT_MESSAGES = {
 	image_processing_failed:
 		"Got confused while looking at the photo, try again later.",
 	not_authorized_command: "Only group admins or my owner can use this command!",
-	tool_status_web_search: "Spawning subagent...",
 };
 
 function resolveMessages(
@@ -167,7 +165,6 @@ export const CONFIG = {
 		: env.ALLOWED_CHAT_IDS
 			? env.ALLOWED_CHAT_IDS.split(",").map((id) => id.trim())
 			: [],
-	ENABLE_WEB_SEARCH: bool(configJson.enable_web_search, "ENABLE_WEB_SEARCH"),
 	ENABLE_CODE_EXECUTION: bool(
 		configJson.enable_code_execution,
 		"ENABLE_CODE_EXECUTION",
@@ -267,7 +264,6 @@ export interface BotSettingsUpdate {
 	default_reply_probability?: number;
 	enable_spontaneous_replies?: boolean;
 	chat_history_limit?: number;
-	enable_web_search?: boolean;
 	enable_code_execution?: boolean;
 	enable_fetch_url?: boolean;
 	sandbox_url?: string;
@@ -286,7 +282,6 @@ const SETTINGS_KEY_MAP: Record<keyof BotSettingsUpdate, keyof typeof CONFIG> = {
 	default_reply_probability: "DEFAULT_REPLY_PROBABILITY",
 	enable_spontaneous_replies: "ENABLE_SPONTANEOUS_REPLIES",
 	chat_history_limit: "CHAT_HISTORY_LIMIT",
-	enable_web_search: "ENABLE_WEB_SEARCH",
 	enable_code_execution: "ENABLE_CODE_EXECUTION",
 	enable_fetch_url: "ENABLE_FETCH_URL",
 	sandbox_url: "SANDBOX_URL",
@@ -327,7 +322,6 @@ const SETTING_SANITIZERS: Record<
 	openai_embedding_api_key: sanitizeOptionalStr,
 	sandbox_url: sanitizeStr,
 	enable_spontaneous_replies: sanitizeBool,
-	enable_web_search: sanitizeBool,
 	enable_code_execution: sanitizeBool,
 	enable_fetch_url: sanitizeBool,
 	default_reply_probability: sanitizeNum(0, 1, false),
@@ -352,7 +346,6 @@ export function getBotSettingsSnapshot() {
 		default_reply_probability: CONFIG.DEFAULT_REPLY_PROBABILITY,
 		enable_spontaneous_replies: CONFIG.ENABLE_SPONTANEOUS_REPLIES,
 		chat_history_limit: CONFIG.CHAT_HISTORY_LIMIT,
-		enable_web_search: CONFIG.ENABLE_WEB_SEARCH,
 		enable_code_execution: CONFIG.ENABLE_CODE_EXECUTION,
 		enable_fetch_url: CONFIG.ENABLE_FETCH_URL,
 		max_agent_steps: CONFIG.MAX_AGENT_STEPS,

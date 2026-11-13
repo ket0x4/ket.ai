@@ -33,8 +33,8 @@ const llmSlot: ClientSlot = { client: null, baseUrl: "", apiKey: "" };
 const embeddingSlot: ClientSlot = { client: null, baseUrl: "", apiKey: "" };
 
 /**
- * Shared OpenAI-compatible client for chat, audio, and web search. Rebuilt when
- * the configured base URL or API key changes so runtime settings updates take
+ * Shared OpenAI-compatible client for chat and audio. Rebuilt when the
+ * configured base URL or API key changes so runtime settings updates take
  * effect immediately.
  */
 export function getOpenAiClient(): OpenAI {

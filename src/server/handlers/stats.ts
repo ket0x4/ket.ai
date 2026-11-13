@@ -99,7 +99,6 @@ function getOwnerStats(): Response {
 		uptimeSeconds: Math.floor(process.uptime()),
 		memoryUsageMb: Math.round((memUsage.heapUsed / 1024 / 1024) * 100) / 100,
 		model: CONFIG.OPENAI_MODEL,
-		webSearch: CONFIG.ENABLE_WEB_SEARCH,
 	});
 }
 
