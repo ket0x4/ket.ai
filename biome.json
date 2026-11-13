@@ -31,6 +31,18 @@
 			}
 		}
 	},
+	"overrides": [
+		{
+			"includes": ["web/src/index.css"],
+			"linter": {
+				"rules": {
+					"complexity": {
+						"noImportantStyles": "off"
+					}
+				}
+			}
+		}
+	],
 	"javascript": {
 		"formatter": {
 			"quoteStyle": "double"

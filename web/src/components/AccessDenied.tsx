@@ -11,7 +11,7 @@ interface AccessDeniedProps {
 
 export const AccessDenied: FC<AccessDeniedProps> = ({
 	title = "Open in Telegram",
-	message = "This console runs inside a Telegram Mini App and verifies your session automatically.",
+	message = "This console verifies your session automatically.",
 	onRetry,
 }) => {
 	const [customInitData, setCustomInitData] = useState("");
@@ -25,30 +25,28 @@ export const AccessDenied: FC<AccessDeniedProps> = ({
 	};
 
 	return (
-		<div className="flex min-h-[100dvh] items-center justify-center p-4">
-			<div className="w-full max-w-sm space-y-6 rounded-xl border border-border bg-card p-6 text-center">
-				<div className="mx-auto flex h-11 w-11 items-center justify-center rounded-lg border border-border text-muted-foreground">
+		<div className="flex min-h-[100dvh] items-center justify-center p-6">
+			<div className="w-full max-w-sm space-y-5 text-center">
+				<div className="mx-auto flex h-10 w-10 items-center justify-center rounded-lg border border-border text-muted-foreground">
 					<ShieldAlert className="h-5 w-5" />
 				</div>
 
-				<div className="space-y-1.5">
+				<div className="space-y-1">
 					<h2 className="text-base font-semibold tracking-tight">{title}</h2>
 					<p className="text-xs leading-relaxed text-muted-foreground">
 						{message}
 					</p>
 				</div>
 
-				<div className="space-y-1.5 rounded-lg border border-border/60 bg-background/40 p-4 text-left text-xs">
-					<div className="font-medium text-foreground">How to open</div>
-					<ol className="list-inside list-decimal space-y-1 text-muted-foreground">
-						<li>Open Telegram and start a chat with your ket.ai bot.</li>
-						<li>
-							Tap <strong>Console</strong> or send <code>/app</code>.
-						</li>
-					</ol>
-				</div>
+				<p className="text-xs text-muted-foreground">
+					Send{" "}
+					<code className="rounded border border-border px-1.5 py-0.5 font-mono text-[11px] text-foreground">
+						/app
+					</code>{" "}
+					to your ket.ai bot.
+				</p>
 
-				<div className="flex flex-col gap-2">
+				<div className="flex flex-col gap-1">
 					<Button onClick={onRetry} className="w-full gap-2">
 						<RefreshCw className="h-4 w-4" />
 						Retry
@@ -61,7 +59,7 @@ export const AccessDenied: FC<AccessDeniedProps> = ({
 						className="gap-1.5 text-xs"
 					>
 						<Terminal className="h-3.5 w-3.5" />
-						{showDevInput ? "Hide developer options" : "Developer session"}
+						{showDevInput ? "Hide developer session" : "Developer session"}
 					</Button>
 				</div>
 
@@ -71,7 +69,7 @@ export const AccessDenied: FC<AccessDeniedProps> = ({
 							htmlFor="dev-init-data"
 							className="text-[11px] text-muted-foreground"
 						>
-							Paste a Telegram initData string for local debugging:
+							Telegram initData
 						</label>
 						<div className="flex gap-2">
 							<Input

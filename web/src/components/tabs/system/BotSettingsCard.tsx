@@ -1,20 +1,5 @@
-import {
-	Code2,
-	Cpu,
-	FileText,
-	Globe,
-	Link2,
-	RotateCcw,
-	Sliders,
-} from "lucide-react";
-import {
-	type ElementType,
-	type FC,
-	useCallback,
-	useEffect,
-	useMemo,
-	useState,
-} from "react";
+import { RotateCcw } from "lucide-react";
+import { type FC, useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { LoadingState, RefreshButton } from "@/components/common";
 import { Button } from "@/components/ui/button";
@@ -46,40 +31,28 @@ const DEFAULT_SETTINGS: BotSettings = {
 	enable_fetch_url: true,
 };
 
-const GroupLabel: FC<{ icon: ElementType; title: string }> = ({
-	icon: Icon,
-	title,
-}) => (
-	<div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-		<Icon className="h-3.5 w-3.5" />
-		<span>{title}</span>
-	</div>
+const SectionLabel: FC<{ title: string }> = ({ title }) => (
+	<h3 className="text-[11px] font-medium text-muted-foreground">{title}</h3>
 );
 
 interface ToggleRowProps {
-	icon?: ElementType;
+	id: string;
 	title: string;
-	description: string;
 	checked: boolean;
 	onCheckedChange: (checked: boolean) => void;
 }
 
 const ToggleRow: FC<ToggleRowProps> = ({
-	icon: Icon,
+	id,
 	title,
-	description,
 	checked,
 	onCheckedChange,
 }) => (
-	<div className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-background/40 p-3">
-		<div className="flex items-center gap-2.5 text-xs">
-			{Icon && <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />}
-			<div>
-				<div className="font-medium text-foreground">{title}</div>
-				<div className="text-muted-foreground">{description}</div>
-			</div>
-		</div>
-		<Switch checked={checked} onCheckedChange={onCheckedChange} />
+	<div className="flex items-center justify-between gap-3 py-2">
+		<label htmlFor={id} className="text-xs text-foreground">
+			{title}
+		</label>
+		<Switch id={id} checked={checked} onCheckedChange={onCheckedChange} />
 	</div>
 );
 
@@ -157,15 +130,15 @@ const EngineSettingsSection: FC<EngineSettingsSectionProps> = ({
 }) => {
 	return (
 		<div className="space-y-3">
-			<GroupLabel icon={Cpu} title="AI engine" />
+			<SectionLabel title="Engine" />
 
-			<div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+			<div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
 				<div className="space-y-1.5">
 					<label
 						htmlFor="input-model-sys"
 						className="text-xs text-muted-foreground"
 					>
-						OpenAI / Local Model
+						Model
 					</label>
 					<Input
 						id="input-model-sys"
@@ -180,7 +153,7 @@ const EngineSettingsSection: FC<EngineSettingsSectionProps> = ({
 						htmlFor="input-openai-baseurl-sys"
 						className="text-xs text-muted-foreground"
 					>
-						Server Base URL
+						Base URL
 					</label>
 					<Input
 						id="input-openai-baseurl-sys"
@@ -192,7 +165,7 @@ const EngineSettingsSection: FC<EngineSettingsSectionProps> = ({
 
 				<ClampedNumberField
 					id="input-agent-steps-sys"
-					label="Max agent steps (1–100)"
+					label="Max steps"
 					value={settings.max_agent_steps ?? 50}
 					min={1}
 					max={100}
@@ -201,7 +174,7 @@ const EngineSettingsSection: FC<EngineSettingsSectionProps> = ({
 
 				<ClampedNumberField
 					id="input-history-limit-sys"
-					label="Context window (1–100 turns)"
+					label="History turns"
 					value={settings.chat_history_limit ?? 20}
 					min={1}
 					max={100}
@@ -209,25 +182,22 @@ const EngineSettingsSection: FC<EngineSettingsSectionProps> = ({
 				/>
 			</div>
 
-			<div className="grid grid-cols-1 gap-2.5 pt-1 sm:grid-cols-2">
+			<div className="divide-y divide-border/60">
 				<ToggleRow
-					icon={Globe}
+					id="toggle-web-search"
 					title="Web search"
-					description="Ground replies with live web results."
 					checked={settings.enable_web_search ?? true}
 					onCheckedChange={(val) => onPatch({ enable_web_search: val })}
 				/>
 				<ToggleRow
-					icon={Code2}
+					id="toggle-code-execution"
 					title="Code execution"
-					description="Run code and workspace tools in sandbox."
 					checked={settings.enable_code_execution ?? true}
 					onCheckedChange={(val) => onPatch({ enable_code_execution: val })}
 				/>
 				<ToggleRow
-					icon={Link2}
+					id="toggle-fetch-url"
 					title="URL reader"
-					description="Fetch and read web pages directly."
 					checked={settings.enable_fetch_url ?? true}
 					onCheckedChange={(val) => onPatch({ enable_fetch_url: val })}
 				/>
@@ -252,19 +222,19 @@ const BehaviorAndLoggingSection: FC<BehaviorAndLoggingSectionProps> = ({
 
 	return (
 		<>
-			<div className="space-y-3 border-t border-border/60 pt-5">
-				<GroupLabel icon={Sliders} title="Behavior" />
+			<div className="space-y-3 border-t border-border/60 pt-4">
+				<SectionLabel title="Behavior" />
 
 				<ToggleRow
-					title="Spontaneous group replies"
-					description="Allow the bot to chime in on group conversations on its own."
+					id="toggle-spontaneous"
+					title="Spontaneous replies"
 					checked={isSpontaneousOn}
 					onCheckedChange={(val) =>
 						onPatch({ enable_spontaneous_replies: val })
 					}
 				/>
 
-				<div className="max-w-sm space-y-2 pt-1">
+				<div className="space-y-2">
 					<div className="flex items-center justify-between text-xs">
 						<span className="text-muted-foreground">Default reply rate</span>
 						<span className="font-mono font-medium text-foreground tnum">
@@ -280,19 +250,20 @@ const BehaviorAndLoggingSection: FC<BehaviorAndLoggingSectionProps> = ({
 						onValueChange={(val) =>
 							onPatch({ default_reply_probability: val[0] / 100 })
 						}
+						aria-label="Default reply rate"
 					/>
 				</div>
 			</div>
 
-			<div className="space-y-3 border-t border-border/60 pt-5">
-				<GroupLabel icon={FileText} title="Logging" />
+			<div className="space-y-2 border-t border-border/60 pt-4">
+				<SectionLabel title="Logging" />
 
 				<div className="max-w-xs space-y-1.5">
 					<label
 						htmlFor="select-log-level-sys"
 						className="text-xs text-muted-foreground"
 					>
-						Minimum log level
+						Level
 					</label>
 					<Select
 						value={settings.log_level || "info"}
@@ -372,7 +343,7 @@ export const BotSettingsCard: FC = () => {
 				applySnapshot(res.settings ?? settings);
 			},
 			{
-				successMessage: "Settings saved!",
+				successMessage: "Saved.",
 				errorMessage: "Save failed",
 			},
 		);
@@ -380,24 +351,20 @@ export const BotSettingsCard: FC = () => {
 
 	return (
 		<Card>
-			<CardHeader className="flex-row items-center justify-between gap-2">
-				<div>
-					<CardTitle>Engine & Runtime</CardTitle>
-					<p className="mt-1 text-xs text-muted-foreground">
-						Model, agent tools, and conversation behavior.
-					</p>
-				</div>
+			<CardHeader className="flex-row items-center justify-between gap-2 py-3">
+				<CardTitle>Configuration</CardTitle>
 				<RefreshButton
 					onClick={loadSettings}
 					isLoading={isLoading}
 					size="icon"
+					variant="ghost"
 					label=""
 				/>
 			</CardHeader>
 
-			<CardContent className="space-y-6">
+			<CardContent className="space-y-5">
 				{isLoading && settings === DEFAULT_SETTINGS ? (
-					<LoadingState text="Loading settings…" className="py-8" />
+					<LoadingState className="py-6" />
 				) : (
 					<>
 						<EngineSettingsSection settings={settings} onPatch={handlePatch} />
@@ -406,7 +373,7 @@ export const BotSettingsCard: FC = () => {
 							onPatch={handlePatch}
 						/>
 
-						<div className="flex items-center justify-end gap-2 border-t border-border/60 pt-5">
+						<div className="flex items-center justify-end gap-1.5 border-t border-border/60 pt-4">
 							{hasChanges && (
 								<Button
 									type="button"
@@ -414,7 +381,7 @@ export const BotSettingsCard: FC = () => {
 									size="sm"
 									onClick={() => setSettings(savedSettings)}
 									disabled={isSaving}
-									className="gap-1.5"
+									className="gap-1"
 								>
 									<RotateCcw className="h-3.5 w-3.5" />
 									<span>Reset</span>
@@ -425,7 +392,7 @@ export const BotSettingsCard: FC = () => {
 								disabled={!hasChanges || isSaving}
 								size="sm"
 							>
-								{isSaving ? "Saving…" : "Save settings"}
+								{isSaving ? "Saving" : "Save"}
 							</Button>
 						</div>
 					</>

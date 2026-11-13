@@ -11,14 +11,14 @@ export interface LoadingStateProps {
 
 export const LoadingState: FC<LoadingStateProps> = ({
 	icon: Icon = Loader2,
-	text = "Loading...",
+	text = "Loading",
 	className,
-	iconClassName = "h-5 w-5 animate-spin text-muted-foreground",
+	iconClassName = "h-4 w-4 animate-spin text-muted-foreground",
 }) => {
 	return (
 		<div
 			className={cn(
-				"flex flex-col items-center justify-center gap-3 py-16 text-muted-foreground",
+				"flex flex-col items-center justify-center gap-2 py-10 text-muted-foreground",
 				className,
 			)}
 		>

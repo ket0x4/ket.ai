@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
  * single accent and small semantic status colors are allowed.
  */
 const badgeVariants = cva(
-	"inline-flex items-center rounded-md border px-2 py-0.5 text-[11px] font-medium leading-none whitespace-nowrap transition-colors focus:outline-none",
+	"inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium leading-none whitespace-nowrap transition-colors focus:outline-none",
 	{
 		variants: {
 			variant: {

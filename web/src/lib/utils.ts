@@ -1,5 +1,4 @@
 import { type ClassValue, clsx } from "clsx";
-import type React from "react";
 import { twMerge } from "tailwind-merge";
 
 export function cn(...inputs: ClassValue[]) {
@@ -21,6 +20,10 @@ export function formatBytes(bytes = 0): string {
 	return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+export function formatCount(value = 0): string {
+	return value.toLocaleString();
+}
+
 export function formatDate(timestamp: number): string {
 	return new Date(timestamp * 1000).toLocaleDateString(undefined, {
 		month: "short",
@@ -37,17 +40,6 @@ export function getErrorMessage(
 	if (err instanceof Error && err.message) return err.message;
 	if (typeof err === "string" && err.trim().length > 0) return err;
 	return fallback;
-}
-
-/**
- * Enables smooth horizontal scrolling using vertical mouse wheel delta on desktop browsers.
- */
-export function handleHorizontalWheelScroll(
-	e: React.WheelEvent<HTMLElement>,
-): void {
-	if (e.deltaY !== 0 && Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
-		e.currentTarget.scrollLeft += e.deltaY;
-	}
 }
 
 export {

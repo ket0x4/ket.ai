@@ -1,4 +1,3 @@
-import { Wrench } from "lucide-react";
 import { type FC, useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { RefreshButton } from "@/components/common";
@@ -29,15 +28,13 @@ export const ToolTracesCard: FC = () => {
 
 	return (
 		<Card>
-			<CardHeader className="flex-row items-center justify-between">
-				<CardTitle className="flex items-center gap-2">
-					<Wrench className="h-4 w-4 text-muted-foreground" />
-					Tool traces
-				</CardTitle>
+			<CardHeader className="flex-row items-center justify-between py-3">
+				<CardTitle>Tool calls</CardTitle>
 				<RefreshButton
 					onClick={loadTraces}
 					isLoading={isLoading}
 					size="icon"
+					variant="ghost"
 					label=""
 				/>
 			</CardHeader>
@@ -46,7 +43,7 @@ export const ToolTracesCard: FC = () => {
 				<div className="max-h-72 space-y-2 overflow-y-auto overflow-x-auto rounded-lg border border-border bg-black/40 p-3 font-mono text-[11px]">
 					{isLoading && traces.length === 0 ? (
 						<div className="py-4 text-center text-muted-foreground">
-							Loading…
+							Loading
 						</div>
 					) : traces.length > 0 ? (
 						traces.map((t) => (
@@ -74,7 +71,7 @@ export const ToolTracesCard: FC = () => {
 						))
 					) : (
 						<div className="py-4 text-center text-muted-foreground">
-							No tool calls recorded.
+							No tool calls.
 						</div>
 					)}
 				</div>

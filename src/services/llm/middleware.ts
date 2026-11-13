@@ -1,9 +1,11 @@
 import logger from "../../utils/logger";
 
 /**
- * Single source of truth for LLM request retry logic. Callers wrap their SDK
- * calls here; the shared rate limiter buckets add serial rate limiting for
- * high-frequency call types (embeddings, transcription).
+ * Middleware pipeline for OpenAI-compatible API calls.
+ *
+ * Every request is wrapped by composable middleware. `withRetry` owns transient
+ * error retries and backoff; `withRateLimit` serializes calls through a shared
+ * bucket. Retry is the outer layer, so each attempt re-enters the rate limiter.
  */
 
 interface ErrorLike {
@@ -23,7 +25,14 @@ function isTransientError(error: unknown): boolean {
 	const code = err.code;
 	const message = err.message || String(error);
 
-	if (status === 429 || (status !== undefined && status >= 500)) return true;
+	if (
+		status === 408 ||
+		status === 409 ||
+		status === 429 ||
+		(status !== undefined && status >= 500)
+	) {
+		return true;
+	}
 	if (
 		code === "ECONNRESET" ||
 		code === "ETIMEDOUT" ||
@@ -55,6 +64,7 @@ function parseTextDelay(str: string): number | null {
 	return null;
 }
 
+/** Reads a server-suggested backoff (e.g. "retry in 3s") from an error. */
 function extractRetryDelayMs(error: unknown): number | null {
 	if (!error) return null;
 
@@ -113,7 +123,24 @@ export const rateLimiters = {
 	transcribe: new RateLimiter(() => 500),
 } as const;
 
-export interface RunWithRetryOptions {
+interface ApiCallContext {
+	/** Label used in retry log lines, e.g. "OpenAI:embedding". */
+	label: string;
+	/** Maximum attempts, including the first one. */
+	retries: number;
+	baseDelayMs: number;
+	delayGrowth: "exponential" | "linear";
+	limiter?: RateLimiter;
+	customIntervalMs?: number;
+}
+
+/** Wraps the next call in the pipeline. */
+type ApiMiddleware = <T>(
+	call: () => Promise<T>,
+	context: ApiCallContext,
+) => Promise<T>;
+
+export interface RunApiCallOptions {
 	retries?: number;
 	baseDelayMs?: number;
 	/** Serial rate limiter to schedule calls through. */
@@ -125,22 +152,17 @@ export interface RunWithRetryOptions {
 	delayGrowth?: "exponential" | "linear";
 }
 
-function parseRetryOptions(
-	options: number | RunWithRetryOptions | undefined,
-	defaultRetries: number,
-	defaultDelayMs: number,
-): Required<Pick<RunWithRetryOptions, "retries" | "baseDelayMs">> &
-	RunWithRetryOptions {
-	if (typeof options === "number") {
-		return { retries: options, baseDelayMs: defaultDelayMs };
-	}
+const DEFAULT_RETRIES = 4;
+const DEFAULT_BASE_DELAY_MS = 5000;
+
+function resolveContext(options: RunApiCallOptions): ApiCallContext {
 	return {
-		retries: options?.retries ?? defaultRetries,
-		baseDelayMs: options?.baseDelayMs ?? defaultDelayMs,
-		limiter: options?.limiter,
-		customIntervalMs: options?.customIntervalMs,
-		logLabel: options?.logLabel,
-		delayGrowth: options?.delayGrowth,
+		label: options.logLabel || "LLM",
+		retries: options.retries ?? DEFAULT_RETRIES,
+		baseDelayMs: options.baseDelayMs ?? DEFAULT_BASE_DELAY_MS,
+		delayGrowth: options.delayGrowth ?? "linear",
+		limiter: options.limiter,
+		customIntervalMs: options.customIntervalMs,
 	};
 }
 
@@ -150,21 +172,9 @@ function resolveRetryWaitMs(error: unknown, currentDelayMs: number): number {
 	return serverDelayMs ?? currentDelayMs + Math.floor(Math.random() * 500);
 }
 
-/** Runs one attempt, through the rate limiter when one is configured. */
-function attemptCall<T>(
-	fn: () => Promise<T>,
-	limiter: RateLimiter | undefined,
-	customIntervalMs: number | undefined,
-): Promise<T> {
-	if (limiter) {
-		return limiter.schedule(fn, { customIntervalMs });
-	}
-	return fn();
-}
-
 function nextDelayMs(
 	currentDelayMs: number,
-	growth: "exponential" | "linear" | undefined,
+	growth: "exponential" | "linear",
 ): number {
 	return growth === "exponential" ? currentDelayMs * 2 : currentDelayMs + 5000;
 }
@@ -183,35 +193,63 @@ async function delayBeforeRetry(
 	await new Promise((resolve) => setTimeout(resolve, waitMs));
 }
 
-/**
- * Runs `fn` with exponential backoff on transient errors. If a server-suggested
- * delay can be parsed from the error, it takes precedence over the backoff.
- */
-export async function runWithRetry<T>(
-	fn: () => Promise<T>,
-	options: number | RunWithRetryOptions = {},
-	defaultRetries = 4,
-	defaultDelayMs = 5000,
-): Promise<T> {
-	const opts = parseRetryOptions(options, defaultRetries, defaultDelayMs);
-	const label = opts.logLabel || "LLM";
-	let currentDelayMs = opts.baseDelayMs;
-	let lastError: unknown;
+/** Retries transient failures with backoff, honoring server-suggested delays. */
+const withRetry: ApiMiddleware = async (call, context) => {
+	let currentDelayMs = context.baseDelayMs;
 
-	for (let i = 0; i < opts.retries; i++) {
+	for (let attempt = 0; attempt < context.retries; attempt++) {
 		try {
-			return await attemptCall(fn, opts.limiter, opts.customIntervalMs);
+			return await call();
 		} catch (error) {
-			lastError = error;
+			const isLastAttempt = attempt >= context.retries - 1;
+			if (!isTransientError(error) || isLastAttempt) throw error;
 
-			if (isTransientError(error) && i < opts.retries - 1) {
-				const waitMs = resolveRetryWaitMs(error, currentDelayMs);
-				await delayBeforeRetry(error, waitMs, label, i + 1, opts.retries);
-				currentDelayMs = nextDelayMs(currentDelayMs, opts.delayGrowth);
-			} else {
-				throw error;
-			}
+			const waitMs = resolveRetryWaitMs(error, currentDelayMs);
+			await delayBeforeRetry(
+				error,
+				waitMs,
+				context.label,
+				attempt + 1,
+				context.retries,
+			);
+			currentDelayMs = nextDelayMs(currentDelayMs, context.delayGrowth);
 		}
 	}
-	throw lastError;
+
+	// Unreachable: the final attempt either returns or throws.
+	throw new Error(`[${context.label}] API call exhausted retries`);
+};
+
+/** Serializes a call through the configured rate limiter, when present. */
+const withRateLimit: ApiMiddleware = (call, context) => {
+	if (!context.limiter) return call();
+	return context.limiter.schedule(call, {
+		customIntervalMs: context.customIntervalMs,
+	});
+};
+
+/**
+ * Composes middleware around `call`. Earlier middleware entries are outer
+ * layers and therefore run first.
+ */
+function applyMiddlewares<T>(
+	call: () => Promise<T>,
+	context: ApiCallContext,
+	middlewares: ApiMiddleware[],
+): Promise<T> {
+	return middlewares.reduceRight<() => Promise<T>>(
+		(next, middleware) => () => middleware(next, context),
+		call,
+	)();
+}
+
+/** Runs an API call through the default retry + rate-limit pipeline. */
+export function runApiCall<T>(
+	call: () => Promise<T>,
+	options: RunApiCallOptions = {},
+): Promise<T> {
+	return applyMiddlewares(call, resolveContext(options), [
+		withRetry,
+		withRateLimit,
+	]);
 }

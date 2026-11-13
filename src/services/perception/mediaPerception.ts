@@ -2,8 +2,8 @@ import { toFile } from "openai";
 import { CONFIG } from "../../config/index";
 import logger from "../../utils/logger";
 import { getOpenAiClient } from "../llm/client";
+import { rateLimiters, runApiCall } from "../llm/middleware";
 import { openAiProvider } from "../llm/openAiProvider";
-import { rateLimiters, runWithRetry } from "../llm/retry";
 
 /** Resolves a likely file extension from an audio MIME type for the upload. */
 function resolveAudioFilename(mimeType: string): string {
@@ -29,7 +29,7 @@ export async function transcribeAudio(
 				type: mimeType,
 			},
 		);
-		const response = await runWithRetry(
+		const response = await runApiCall(
 			() =>
 				getOpenAiClient().audio.transcriptions.create({
 					file: audioFile,

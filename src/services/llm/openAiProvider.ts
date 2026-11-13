@@ -3,7 +3,7 @@ import { extractFunctionCalls } from "../../agent/functionCalls";
 import type { FunctionDeclaration } from "../../agent/types";
 import { CONFIG } from "../../config";
 import { getOpenAiClient } from "./client";
-import { runWithRetry } from "./retry";
+import { runApiCall } from "./middleware";
 import { normalizeSchemaSafely, parseStructuredJson } from "./structuredJson";
 import type {
 	ChatMessage,
@@ -184,7 +184,7 @@ class OpenAiProvider implements LlmProvider {
 			params.response_format = { type: "json_object" };
 		}
 
-		const completion = await runWithRetry(
+		const completion = await runApiCall(
 			() =>
 				client.chat.completions.create(params, {
 					signal: options?.signal,
@@ -236,7 +236,7 @@ class OpenAiProvider implements LlmProvider {
 			| OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming["response_format"]
 			| undefined = isArraySchema ? undefined : { type: "json_object" };
 
-		const completion = await runWithRetry(
+		const completion = await runApiCall(
 			() =>
 				client.chat.completions.create(
 					{

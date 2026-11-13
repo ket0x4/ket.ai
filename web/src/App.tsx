@@ -1,21 +1,14 @@
-import {
-	Bot,
-	Brain,
-	LayoutDashboard,
-	Loader2,
-	Settings,
-	Users,
-} from "lucide-react";
+import { Bot, Brain, Home, Loader2, Settings, Users } from "lucide-react";
 import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { AccessDenied } from "@/components/AccessDenied";
+import { AppNav, type AppNavItem } from "@/components/AppNav";
 import { LoadingState } from "@/components/common/LoadingState";
 import { Header } from "@/components/Header";
 import { DashboardTab } from "@/components/tabs/DashboardTab";
 import { Toaster } from "@/components/ui/sonner";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { api, getTelegramWebApp } from "@/lib/api";
-import { handleHorizontalWheelScroll } from "@/lib/utils";
 import type {
 	Chat,
 	Memory,
@@ -171,8 +164,8 @@ export default function App() {
 	if (!authChecked) {
 		return (
 			<div className="flex min-h-[100dvh] flex-col items-center justify-center gap-3 text-muted-foreground">
-				<Loader2 className="h-6 w-6 animate-spin" />
-				<span className="text-xs">Authenticating…</span>
+				<Loader2 className="h-5 w-5 animate-spin" />
+				<span className="text-xs">Authenticating</span>
 			</div>
 		);
 	}
@@ -181,53 +174,33 @@ export default function App() {
 		return <AccessDenied onRetry={authenticate} />;
 	}
 
-	const navTabs = [
-		{ value: "dashboard", icon: LayoutDashboard, label: "Dashboard" },
-		{
-			value: "memories",
-			icon: Brain,
-			label: "Memory",
-		},
+	const navTabs: AppNavItem[] = [
+		{ value: "dashboard", icon: Home, label: "Home" },
+		{ value: "memories", icon: Brain, label: "Memory" },
 		{ value: "personas", icon: Bot, label: "Personas" },
 		{ value: "groups", icon: Users, label: "Groups" },
 		...(role === "owner"
-			? [{ value: "system", icon: Settings, label: "Settings & Logs" }]
+			? [{ value: "system", icon: Settings, label: "Settings" }]
 			: []),
 	];
 
 	return (
-		<div className="min-h-[100dvh] flex flex-col bg-background text-foreground selection:bg-primary/20">
+		<div className="flex min-h-[100dvh] flex-col bg-background text-foreground selection:bg-primary/20">
 			<Header
 				user={currentUser}
 				role={role}
 				isOnline={true}
 				isOptedOut={isOptedOut}
+				isUpdating={isUpdatingOptOut}
 				onToggleOptOut={() => handleToggleOptOut(!isOptedOut)}
 			/>
 
-			<main className="mx-auto w-full max-w-5xl flex-1 space-y-5 px-3 py-4 sm:px-6 sm:py-6">
-				<Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-					<div
-						className="-mx-1 overflow-x-auto px-1 no-scrollbar touch-pan-x"
-						onWheel={handleHorizontalWheelScroll}
-					>
-						<TabsList className="w-max sm:w-auto">
-							{navTabs.map((t) => {
-								const Icon = t.icon;
-								return (
-									<TabsTrigger
-										key={t.value}
-										value={t.value}
-										className="shrink-0 gap-1.5"
-									>
-										<Icon className="h-3.5 w-3.5" />
-										<span>{t.label}</span>
-									</TabsTrigger>
-								);
-							})}
-						</TabsList>
-					</div>
-
+			<Tabs
+				value={activeTab}
+				onValueChange={setActiveTab}
+				className="flex flex-1 flex-col"
+			>
+				<main className="mx-auto w-full max-w-3xl flex-1 px-4 pb-[calc(5rem+env(safe-area-inset-bottom))] pt-4">
 					<TabsContent value="dashboard">
 						<DashboardTab
 							stats={stats}
@@ -235,22 +208,11 @@ export default function App() {
 							isLoading={isLoadingData}
 							onNavigateToGroups={() => setActiveTab("groups")}
 							onRefresh={loadAppData}
-							isOptedOut={isOptedOut}
-							onToggleOptOut={handleToggleOptOut}
-							isUpdatingOptOut={isUpdatingOptOut}
 						/>
 					</TabsContent>
 
 					<TabsContent value="memories">
-						<Suspense
-							fallback={
-								<LoadingState
-									text="Loading Memories..."
-									icon={Brain}
-									className="py-12"
-								/>
-							}
-						>
+						<Suspense fallback={<LoadingState text="Loading" />}>
 							<MemoriesTab
 								memories={memories}
 								chats={chats}
@@ -270,15 +232,7 @@ export default function App() {
 					</TabsContent>
 
 					<TabsContent value="personas">
-						<Suspense
-							fallback={
-								<LoadingState
-									text="Loading Personas..."
-									icon={Bot}
-									className="py-12"
-								/>
-							}
-						>
+						<Suspense fallback={<LoadingState text="Loading" />}>
 							<PersonasTab
 								chats={chats}
 								currentUser={currentUser}
@@ -299,15 +253,7 @@ export default function App() {
 					</TabsContent>
 
 					<TabsContent value="groups">
-						<Suspense
-							fallback={
-								<LoadingState
-									text="Loading Groups..."
-									icon={Users}
-									className="py-12"
-								/>
-							}
-						>
+						<Suspense fallback={<LoadingState text="Loading" />}>
 							<GroupsTab
 								chats={chats}
 								role={role}
@@ -319,21 +265,15 @@ export default function App() {
 
 					{role === "owner" && (
 						<TabsContent value="system">
-							<Suspense
-								fallback={
-									<LoadingState
-										text="Loading System & Logs..."
-										icon={Settings}
-										className="py-12"
-									/>
-								}
-							>
+							<Suspense fallback={<LoadingState text="Loading" />}>
 								<SystemTab />
 							</Suspense>
 						</TabsContent>
 					)}
-				</Tabs>
-			</main>
+				</main>
+
+				<AppNav items={navTabs} />
+			</Tabs>
 
 			{memoryModal.open && (
 				<Suspense fallback={null}>

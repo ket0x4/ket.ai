@@ -1,4 +1,3 @@
-import { Terminal } from "lucide-react";
 import { type FC, useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { RefreshButton, SearchInput } from "@/components/common";
@@ -84,21 +83,19 @@ export const LiveLogsCard: FC = () => {
 
 	return (
 		<Card>
-			<CardHeader className="flex-row items-center justify-between">
-				<CardTitle className="flex items-center gap-2">
-					<Terminal className="h-4 w-4 text-muted-foreground" />
-					Logs
-				</CardTitle>
+			<CardHeader className="flex-row items-center justify-between py-3">
+				<CardTitle>Logs</CardTitle>
 				<RefreshButton
 					onClick={loadLogs}
 					isLoading={isLoading}
 					size="icon"
+					variant="ghost"
 					label=""
 				/>
 			</CardHeader>
 
-			<CardContent className="space-y-3">
-				<div className="flex flex-col items-stretch justify-between gap-2.5 text-xs sm:flex-row sm:items-center">
+			<CardContent className="space-y-2.5">
+				<div className="flex flex-col items-stretch justify-between gap-2 text-xs sm:flex-row sm:items-center">
 					<div className="flex items-center gap-0.5 overflow-x-auto rounded-lg border border-border p-0.5 no-scrollbar">
 						{LOG_LEVELS.map((lvl) => (
 							<button
@@ -106,7 +103,7 @@ export const LiveLogsCard: FC = () => {
 								key={lvl}
 								onClick={() => setLogLevelFilter(lvl)}
 								className={cn(
-									"rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
+									"rounded-md px-2 py-0.5 text-[10px] font-medium transition-colors",
 									logLevelFilter === lvl
 										? "bg-accent text-foreground"
 										: "text-muted-foreground hover:text-foreground",
@@ -117,12 +114,12 @@ export const LiveLogsCard: FC = () => {
 						))}
 					</div>
 
-					<div className="flex items-center gap-2">
+					<div className="flex items-center gap-1.5">
 						<Select
 							value={logType}
 							onValueChange={(val) => setLogType(val as "app" | "error")}
 						>
-							<SelectTrigger className="h-8 w-32 text-xs">
+							<SelectTrigger className="h-8 w-28 text-xs">
 								<SelectValue />
 							</SelectTrigger>
 							<SelectContent>
@@ -132,20 +129,20 @@ export const LiveLogsCard: FC = () => {
 						</Select>
 
 						<SearchInput
-							placeholder="Filter…"
+							placeholder="Filter"
 							value={logSearch}
 							onChange={setLogSearch}
 							showClearButton
-							containerClassName="flex-1 sm:w-48 sm:flex-none"
+							containerClassName="flex-1 sm:w-40 sm:flex-none"
 							className="h-8 text-xs"
 						/>
 					</div>
 				</div>
 
-				<div className="max-h-80 space-y-0.5 overflow-y-auto overflow-x-auto rounded-lg border border-border bg-black/40 p-3 font-mono text-[11px] leading-relaxed">
+				<div className="max-h-72 space-y-0.5 overflow-y-auto overflow-x-auto rounded-lg border border-border bg-black/40 p-3 font-mono text-[11px] leading-relaxed">
 					{isLoading && logs.length === 0 ? (
 						<div className="py-4 text-center text-muted-foreground">
-							Loading…
+							Loading
 						</div>
 					) : filteredLogs.length > 0 ? (
 						filteredLogs.map((l, idx) => (
@@ -153,7 +150,7 @@ export const LiveLogsCard: FC = () => {
 						))
 					) : (
 						<div className="py-4 text-center text-muted-foreground">
-							No matching entries.
+							No logs.
 						</div>
 					)}
 				</div>

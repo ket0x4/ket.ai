@@ -21,6 +21,8 @@ export function getOpenAiClient(): OpenAI {
 		client = new OpenAI({
 			baseURL: currentBaseUrl,
 			apiKey: currentApiKey,
+			// Retries are owned by the LLM middleware pipeline, not the SDK.
+			maxRetries: 0,
 		});
 		clientBaseUrl = currentBaseUrl;
 		clientApiKey = currentApiKey;

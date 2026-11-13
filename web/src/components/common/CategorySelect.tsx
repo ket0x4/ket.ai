@@ -41,7 +41,7 @@ export const CategorySelect: FC<CategorySelectProps> = ({
 		>
 			<SelectTrigger
 				id={id}
-				className={cn("w-full text-xs h-9 bg-card/60", triggerClassName)}
+				className={cn("w-full text-xs h-9", triggerClassName)}
 			>
 				<SelectValue placeholder={placeholder} />
 			</SelectTrigger>

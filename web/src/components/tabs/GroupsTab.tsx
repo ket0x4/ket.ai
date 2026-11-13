@@ -1,23 +1,15 @@
-import {
-	Brain,
-	MessageSquare,
-	Percent,
-	RefreshCw,
-	ShieldAlert,
-	Users,
-} from "lucide-react";
+import { Users } from "lucide-react";
 import { type FC, useState } from "react";
 import {
 	EmptyState,
 	LoadingState,
+	PageHeader,
 	RefreshButton,
-	SectionHeader,
-	StatBox,
 } from "@/components/common";
 import { Card, Slider, Switch } from "@/components/ui";
 import { useAsyncAction } from "@/hooks/useAsyncAction";
 import { api } from "@/lib/api";
-import { cn, getChatDisplayName } from "@/lib/utils";
+import { cn, formatCount, getChatDisplayName } from "@/lib/utils";
 import type { Chat, UserRole } from "@/types";
 
 interface GroupCardProps {
@@ -41,45 +33,32 @@ const GroupSpontaneousControls: FC<GroupSpontaneousControlsProps> = ({
 	onProbabilityChange,
 	onProbabilityCommit,
 }) => (
-	<div className="space-y-3">
-		<div className="flex items-center justify-between text-xs">
-			<span className="text-muted-foreground">Spontaneous replies</span>
+	<div className="mt-3 space-y-2 border-t border-border/60 pt-3">
+		<div className="flex items-center justify-between gap-3">
+			<span className="text-xs text-muted-foreground">Auto-reply</span>
 			<div className="flex items-center gap-2">
-				<span className="text-[11px] text-muted-foreground">
-					{spontaneousEnabled ? "On" : "Off"}
+				<span className="font-mono text-[11px] text-foreground tnum">
+					{spontaneousEnabled ? `${probability}%` : "Off"}
 				</span>
 				<Switch
 					checked={spontaneousEnabled}
 					onCheckedChange={onToggleSpontaneous}
+					aria-label="Auto-reply"
 				/>
 			</div>
 		</div>
 
-		<div
-			className={cn(
-				"space-y-2 transition-opacity",
-				!spontaneousEnabled && "opacity-50 pointer-events-none",
-			)}
-		>
-			<div className="flex items-center justify-between text-xs">
-				<span className="flex items-center gap-1 text-muted-foreground">
-					<Percent className="h-3 w-3" />
-					Reply probability
-				</span>
-				<span className="font-mono font-medium text-foreground tnum">
-					{spontaneousEnabled ? `${probability}%` : "Off"}
-				</span>
-			</div>
+		{spontaneousEnabled && (
 			<Slider
 				value={[probability]}
 				min={0}
 				max={100}
 				step={1}
-				disabled={!spontaneousEnabled}
 				onValueChange={(val) => onProbabilityChange(val[0])}
 				onValueCommit={onProbabilityCommit}
+				aria-label="Reply probability"
 			/>
-		</div>
+		)}
 	</div>
 );
 
@@ -97,6 +76,7 @@ const GroupAccessControl: FC<{
 				<Switch
 					checked={chat.is_allowed}
 					onCheckedChange={() => onToggleAllowed(chat.chat_id, chat.is_allowed)}
+					aria-label="Allow bot in this group"
 				/>
 			</div>
 		);
@@ -137,9 +117,7 @@ const GroupCard: FC<GroupCardProps> = ({ chat, role, onToggleAllowed }) => {
 					...(shouldRestoreDefault ? { reply_probability: 0.05 } : {}),
 				}),
 			{
-				successMessage: checked
-					? "Spontaneous mode enabled."
-					: "Spontaneous mode disabled.",
+				successMessage: checked ? "Auto-reply on." : "Auto-reply off.",
 				errorMessage: "Update failed",
 			},
 		);
@@ -156,30 +134,20 @@ const GroupCard: FC<GroupCardProps> = ({ chat, role, onToggleAllowed }) => {
 					spontaneous_enabled: nextEnabled,
 				}),
 			{
-				successMessage: `Reply probability updated to ${val[0]}%.`,
+				successMessage: `Reply rate ${val[0]}%.`,
 				errorMessage: "Update failed",
 			},
 		);
 	};
 
-	const groupStats = [
-		{
-			icon: MessageSquare,
-			label: "Msgs",
-			value: chat.stats?.totalMessages ?? 0,
-		},
-		{ icon: Users, label: "Members", value: chat.stats?.uniqueUsers ?? 0 },
-		{ icon: Brain, label: "Memories", value: chat.memoryCount ?? 0 },
-	];
-
 	return (
-		<Card>
-			<div className="flex items-start justify-between gap-3 p-4">
+		<Card className="p-4">
+			<div className="flex items-start justify-between gap-3">
 				<div className="min-w-0">
 					<div className="truncate text-sm font-medium" dir="auto">
 						{getChatDisplayName(chat)}
 					</div>
-					<div className="truncate font-mono text-[11px] text-muted-foreground">
+					<div className="truncate font-mono text-[10px] text-muted-foreground">
 						{chat.chat_id}
 					</div>
 				</div>
@@ -191,36 +159,43 @@ const GroupCard: FC<GroupCardProps> = ({ chat, role, onToggleAllowed }) => {
 				/>
 			</div>
 
-			<div className="space-y-3 border-t border-border/60 p-4">
-				<div className="grid grid-cols-3 gap-1 rounded-lg border border-border/60 bg-background/40 py-2.5">
-					{groupStats.map((stat) => (
-						<StatBox
-							key={stat.label}
-							icon={stat.icon}
-							label={stat.label}
-							value={stat.value}
-							layout="vertical"
-						/>
-					))}
-				</div>
-
-				{isAdmin ? (
-					<GroupSpontaneousControls
-						probability={probability}
-						spontaneousEnabled={spontaneousEnabled}
-						onToggleSpontaneous={handleToggleSpontaneous}
-						onProbabilityChange={setProbability}
-						onProbabilityCommit={handleProbabilityCommit}
-					/>
-				) : (
-					<div className="flex items-center justify-between text-xs text-muted-foreground">
-						<span>Spontaneous replies</span>
-						<span className="font-mono text-foreground tnum">
-							{spontaneousEnabled ? `${probability}%` : "Off"}
-						</span>
-					</div>
-				)}
+			<div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+				<span>
+					<span className="font-mono text-foreground tnum">
+						{formatCount(chat.stats?.totalMessages ?? 0)}
+					</span>{" "}
+					msgs
+				</span>
+				<span>
+					<span className="font-mono text-foreground tnum">
+						{formatCount(chat.stats?.uniqueUsers ?? 0)}
+					</span>{" "}
+					members
+				</span>
+				<span>
+					<span className="font-mono text-foreground tnum">
+						{formatCount(chat.memoryCount ?? 0)}
+					</span>{" "}
+					facts
+				</span>
 			</div>
+
+			{isAdmin ? (
+				<GroupSpontaneousControls
+					probability={probability}
+					spontaneousEnabled={spontaneousEnabled}
+					onToggleSpontaneous={handleToggleSpontaneous}
+					onProbabilityChange={setProbability}
+					onProbabilityCommit={handleProbabilityCommit}
+				/>
+			) : (
+				<div className="mt-3 flex items-center justify-between border-t border-border/60 pt-3 text-[11px]">
+					<span className="text-muted-foreground">Auto-reply</span>
+					<span className="font-mono text-foreground tnum">
+						{spontaneousEnabled ? `${probability}%` : "Off"}
+					</span>
+				</div>
+			)}
 		</Card>
 	);
 };
@@ -246,34 +221,30 @@ export const GroupsTab: FC<GroupsTabProps> = ({
 	) => {
 		const nextAllowed = !currentAllowed;
 		await execute(() => api.chats.update(chatId, { is_allowed: nextAllowed }), {
-			successMessage: nextAllowed
-				? "Group approved for bot usage!"
-				: "Group approval revoked.",
+			successMessage: nextAllowed ? "Group approved." : "Group blocked.",
 			errorMessage: "Update failed",
 			onSuccess: onRefresh,
 		});
 	};
 
 	return (
-		<div className="space-y-4 animate-in fade-in duration-200">
-			<SectionHeader
-				icon={Users}
+		<div className="space-y-4">
+			<PageHeader
 				title="Groups"
-				description={
-					role === "owner"
-						? "Approval status and reply behavior per group."
-						: "Groups you manage."
+				actions={
+					<RefreshButton
+						onClick={onRefresh}
+						isLoading={isLoading}
+						variant="ghost"
+						size="icon"
+						label=""
+					/>
 				}
-				actions={<RefreshButton onClick={onRefresh} isLoading={isLoading} />}
 			/>
 
-			<div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+			<div className="grid grid-cols-1 gap-2.5 md:grid-cols-2">
 				{isLoading && chats.length === 0 ? (
-					<LoadingState
-						icon={RefreshCw}
-						text="Loading groups…"
-						className="col-span-full py-16"
-					/>
+					<LoadingState className="col-span-full" />
 				) : chats.length > 0 ? (
 					chats.map((c) => (
 						<GroupCard
@@ -285,10 +256,10 @@ export const GroupsTab: FC<GroupsTabProps> = ({
 					))
 				) : (
 					<EmptyState
-						icon={ShieldAlert}
-						title="No groups yet"
-						description="Groups appear here once the bot is added to them."
-						className="col-span-full py-16"
+						icon={Users}
+						title="No groups"
+						description="Add the bot to a group to see it here."
+						className="col-span-full"
 					/>
 				)}
 			</div>

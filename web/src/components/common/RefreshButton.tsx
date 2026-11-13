@@ -26,6 +26,8 @@ export const RefreshButton: FC<RefreshButtonProps> = ({
 			size={size}
 			onClick={onClick}
 			disabled={isLoading}
+			title={label || "Refresh"}
+			aria-label={label || "Refresh"}
 			className={cn("h-8 gap-1.5 text-xs", className)}
 		>
 			<RefreshCw className={cn("h-3.5 w-3.5", isLoading && "animate-spin")} />

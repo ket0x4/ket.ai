@@ -7,8 +7,8 @@ import {
 import logger from "../../utils/logger";
 import { dotProduct, normalizeVector } from "../../utils/vector";
 import { getOpenAiClient } from "../llm/client";
+import { rateLimiters, runApiCall } from "../llm/middleware";
 import { openAiProvider } from "../llm/openAiProvider";
-import { rateLimiters, runWithRetry } from "../llm/retry";
 import { expandContextualQuery } from "./queryExpansion";
 
 const newMemoriesCount = new Map<string, number>();
@@ -23,7 +23,7 @@ export async function generateEmbedding(text: string): Promise<number[]> {
 		const cached = queryEmbeddingCache.get(cacheKey);
 		if (cached) return cached;
 
-		const response = await runWithRetry(
+		const response = await runApiCall(
 			() =>
 				getOpenAiClient().embeddings.create({
 					model: CONFIG.OPENAI_EMBEDDING_MODEL,

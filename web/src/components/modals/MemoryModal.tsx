@@ -1,4 +1,3 @@
-import { Edit3, PlusCircle } from "lucide-react";
 import { type FC, type FormEvent, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { CategorySelect, ChatSelect, ModalFooter } from "@/components/common";
@@ -74,12 +73,12 @@ export const MemoryModal: FC<MemoryModalProps> = ({
 		e.preventDefault();
 		const trimmed = memoryText.trim();
 		if (!trimmed) {
-			toast.error("Please enter memory content.");
+			toast.error("Enter a fact.");
 			return;
 		}
 
 		if (!isEdit && !chatId) {
-			toast.error("Please select a target destination.");
+			toast.error("Select a chat.");
 			return;
 		}
 
@@ -98,9 +97,7 @@ export const MemoryModal: FC<MemoryModalProps> = ({
 				});
 			},
 			{
-				successMessage: isEdit
-					? "Memory updated successfully!"
-					: "Fact remembered successfully!",
+				successMessage: isEdit ? "Memory updated." : "Fact added.",
 				errorMessage: "Failed to save memory",
 				onSuccess: () => {
 					onOpenChange(false);
@@ -115,18 +112,9 @@ export const MemoryModal: FC<MemoryModalProps> = ({
 			<DialogContent className="max-h-[85dvh] w-[95vw] max-w-md overflow-y-auto sm:w-full">
 				<form onSubmit={handleSubmit} className="space-y-4">
 					<DialogHeader>
-						<DialogTitle className="flex items-center gap-2">
-							{isEdit ? (
-								<Edit3 className="h-4 w-4 text-muted-foreground" />
-							) : (
-								<PlusCircle className="h-4 w-4 text-muted-foreground" />
-							)}
-							<span>{isEdit ? "Edit memory" : "Add memory fact"}</span>
-						</DialogTitle>
+						<DialogTitle>{isEdit ? "Edit memory" : "Add memory"}</DialogTitle>
 						<DialogDescription>
-							{isEdit
-								? "Update the fact. Embeddings recompute automatically."
-								: "Add persistent knowledge to the memory graph."}
+							{isEdit ? "Update this fact." : "Save a fact for this chat."}
 						</DialogDescription>
 					</DialogHeader>
 
@@ -137,7 +125,7 @@ export const MemoryModal: FC<MemoryModalProps> = ({
 									htmlFor="target-chat-select"
 									className="text-xs text-muted-foreground"
 								>
-									Target chat
+									Chat
 								</label>
 								<ChatSelect
 									id="target-chat-select"
@@ -146,7 +134,7 @@ export const MemoryModal: FC<MemoryModalProps> = ({
 									chats={availableChats}
 									currentUser={currentUser}
 									includePersonalOption={true}
-									placeholder="Select destination…"
+									placeholder="Select chat"
 								/>
 							</div>
 						)}
@@ -156,13 +144,12 @@ export const MemoryModal: FC<MemoryModalProps> = ({
 								htmlFor="memory-category-select"
 								className="text-xs text-muted-foreground"
 							>
-								Category
+								Type
 							</label>
 							<CategorySelect
 								id="memory-category-select"
 								value={category}
 								onValueChange={(val) => setCategory(val as MemoryCategory)}
-								showDescription={true}
 							/>
 						</div>
 
@@ -171,11 +158,11 @@ export const MemoryModal: FC<MemoryModalProps> = ({
 								htmlFor="memory-text-input"
 								className="text-xs text-muted-foreground"
 							>
-								{isEdit ? "Content" : "Fact"}
+								Fact
 							</label>
 							<Textarea
 								id="memory-text-input"
-								placeholder="e.g. Works as a senior engineer using Python and React…"
+								placeholder="e.g. Works as a senior engineer…"
 								value={memoryText}
 								onChange={(e) => setMemoryText(e.target.value)}
 								rows={4}
@@ -187,8 +174,8 @@ export const MemoryModal: FC<MemoryModalProps> = ({
 					<ModalFooter
 						onCancel={() => onOpenChange(false)}
 						isSubmitting={isSubmitting}
-						submitText={isEdit ? "Save" : "Add fact"}
-						submittingText={isEdit ? "Saving…" : "Adding…"}
+						submitText={isEdit ? "Save" : "Add"}
+						submittingText={isEdit ? "Saving" : "Adding"}
 					/>
 				</form>
 			</DialogContent>

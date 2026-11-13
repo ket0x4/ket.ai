@@ -2,12 +2,11 @@ import type { ElementType, FC, ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
 export interface EmptyStateProps {
-	icon: ElementType;
+	icon?: ElementType;
 	title: string;
-	description: string;
+	description?: string;
 	action?: ReactNode;
 	className?: string;
-	bordered?: boolean;
 }
 
 export const EmptyState: FC<EmptyStateProps> = ({
@@ -16,23 +15,22 @@ export const EmptyState: FC<EmptyStateProps> = ({
 	description,
 	action,
 	className,
-	bordered = true,
 }) => {
 	return (
 		<div
 			className={cn(
-				"flex flex-col items-center justify-center gap-2 py-14 text-center",
-				bordered &&
-					"rounded-xl border border-dashed border-border bg-card/40 p-6",
+				"flex flex-col items-center justify-center gap-1.5 py-10 text-center",
 				className,
 			)}
 		>
-			<Icon className="h-6 w-6 text-muted-foreground/50" />
+			{Icon && <Icon className="h-5 w-5 text-muted-foreground/50" />}
 			<div className="text-sm font-medium text-foreground">{title}</div>
-			<p className="max-w-xs text-xs leading-relaxed text-muted-foreground">
-				{description}
-			</p>
-			{action && <div className="mt-2">{action}</div>}
+			{description && (
+				<p className="max-w-[32ch] text-xs leading-relaxed text-muted-foreground">
+					{description}
+				</p>
+			)}
+			{action && <div className="mt-1.5">{action}</div>}
 		</div>
 	);
 };

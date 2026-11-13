@@ -58,7 +58,7 @@ export const ChatSelect: FC<ChatSelectProps> = ({
 		<Select value={value} onValueChange={onValueChange} disabled={disabled}>
 			<SelectTrigger
 				id={id}
-				className={cn("w-full text-xs h-9 bg-card/60", triggerClassName)}
+				className={cn("w-full text-xs h-9", triggerClassName)}
 			>
 				<SelectValue placeholder={placeholder} />
 			</SelectTrigger>

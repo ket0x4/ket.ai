@@ -1,11 +1,21 @@
-import { Bot, Edit3, Plus, Sparkles, Trash2 } from "lucide-react";
+import { Bot, Edit3, Plus, Trash2 } from "lucide-react";
 import { type FC, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { ChatSelect, EmptyState, SearchInput } from "@/components/common";
+import {
+	ChatSelect,
+	EmptyState,
+	PageHeader,
+	SearchInput,
+} from "@/components/common";
 import { Button, Card } from "@/components/ui";
 import { useAsyncAction } from "@/hooks/useAsyncAction";
 import { api } from "@/lib/api";
+<<<<<<< Updated upstream
 import { cn, getChatDisplayName, normalizeSearchText } from "@/lib/utils";
+=======
+import { DEFAULT_PERSONA_ID } from "@/lib/constants";
+import { cn, normalizeSearchText } from "@/lib/utils";
+>>>>>>> Stashed changes
 import type { BaseTabProps, Persona } from "@/types";
 
 const DEFAULT_PERSONA_ID = "ket-default";
@@ -34,40 +44,43 @@ const PersonaCard: FC<PersonaCardProps> = ({
 	const isSystem = persona.is_system === 1;
 
 	return (
-		<Card className={cn(isActive && "border-primary/50")}>
-			<div className="space-y-3 p-4">
-				<div className="flex items-start justify-between gap-3">
-					<div className="min-w-0">
-						<div className="flex items-center gap-2">
-							<h3 className="truncate text-sm font-medium" dir="auto">
-								{persona.name}
-							</h3>
-							<span className="shrink-0 rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground">
-								{isSystem ? "system" : "custom"}
-							</span>
-						</div>
+		<Card className={cn("p-3.5", isActive && "border-primary/40")}>
+			<div className="flex items-start justify-between gap-2">
+				<div className="min-w-0">
+					<div className="flex items-center gap-1.5">
+						<h3 className="truncate text-sm font-medium" dir="auto">
+							{persona.name}
+						</h3>
+						<span className="shrink-0 text-[10px] text-muted-foreground">
+							{isSystem ? "system" : "custom"}
+						</span>
+					</div>
+					{persona.description && (
 						<p
-							className="mt-0.5 line-clamp-2 text-xs text-muted-foreground"
+							className="mt-0.5 line-clamp-2 text-[11px] leading-normal text-muted-foreground"
 							dir="auto"
 						>
-							{persona.description || "No description."}
+							{persona.description}
 						</p>
-					</div>
-					{isActive && (
-						<span className="flex shrink-0 items-center gap-1 text-[11px] text-primary">
-							<span className="h-1.5 w-1.5 rounded-full bg-primary" />
-							active
-						</span>
 					)}
 				</div>
+				{isActive && (
+					<span className="shrink-0 text-[10px] text-primary">active</span>
+				)}
+			</div>
 
-				<div
-					className="line-clamp-3 break-words rounded-lg border border-border/60 bg-background/40 p-2.5 font-mono text-[11px] leading-relaxed text-muted-foreground"
-					dir="auto"
+			<div className="mt-3 flex items-center justify-between gap-2">
+				<Button
+					size="sm"
+					variant={isActive ? "secondary" : "outline"}
+					disabled={isActive || isSelecting || !selectedChatId}
+					onClick={() => onSelect(persona.id)}
+					className="h-7 px-2.5 text-[11px]"
 				>
-					{persona.prompt}
-				</div>
+					{isActive ? "Active" : "Use"}
+				</Button>
 
+<<<<<<< Updated upstream
 				<div className="flex items-center justify-between gap-2 border-t border-border/60 pt-3">
 					<Button
 						size="sm"
@@ -104,6 +117,30 @@ const PersonaCard: FC<PersonaCardProps> = ({
 						</div>
 					)}
 				</div>
+=======
+				{canEdit && (
+					<div className="flex items-center gap-0.5">
+						<Button
+							size="icon"
+							variant="ghost"
+							className="h-7 w-7"
+							onClick={() => onEdit(persona)}
+							title="Edit"
+						>
+							<Edit3 className="h-3.5 w-3.5" />
+						</Button>
+						<Button
+							size="icon"
+							variant="ghost"
+							className="h-7 w-7 hover:text-destructive"
+							onClick={() => onDelete(persona)}
+							title="Delete"
+						>
+							<Trash2 className="h-3.5 w-3.5" />
+						</Button>
+					</div>
+				)}
+>>>>>>> Stashed changes
 			</div>
 		</Card>
 	);
@@ -159,7 +196,7 @@ export const PersonasTab: FC<PersonasTabProps> = ({
 
 	const handleSelectPersona = async (personaId: string | null) => {
 		if (!selectedChatId) {
-			toast.error("Please select a group or chat first");
+			toast.error("Select a chat first.");
 			return;
 		}
 
@@ -174,37 +211,33 @@ export const PersonasTab: FC<PersonasTabProps> = ({
 
 				if (targetId) {
 					const p = personas.find((item) => item.id === targetId);
-					toast.success(`"${p?.name || "Persona"}" activated for this chat!`);
+					toast.success(`"${p?.name || "Persona"}" activated.`);
 				} else {
-					toast.success("Reset to default ket.ai persona.");
+					toast.success("Reset to default.");
 				}
 				await onRefresh();
 			},
-			{ errorMessage: "Error selecting persona" },
+			{ errorMessage: "Could not select persona" },
 		);
 	};
 
 	const handleDeletePersona = async (persona: Persona) => {
 		if (persona.is_system === 1) {
-			toast.error("Built-in system personas cannot be deleted.");
+			toast.error("System personas cannot be deleted.");
 			return;
 		}
 
-		if (
-			!window.confirm(
-				`Are you sure you want to delete the "${persona.name}" persona?`,
-			)
-		) {
+		if (!window.confirm(`Delete "${persona.name}"?`)) {
 			return;
 		}
 
 		await executeDelete(
 			async () => {
 				await api.personas.delete(persona.id);
-				toast.success("Persona deleted successfully");
+				toast.success("Persona deleted.");
 				await onRefresh();
 			},
-			{ errorMessage: "Error deleting persona" },
+			{ errorMessage: "Could not delete persona" },
 		);
 	};
 
@@ -219,101 +252,72 @@ export const PersonasTab: FC<PersonasTabProps> = ({
 		);
 	}, [personas, searchQuery]);
 
-	const personalLabel = currentUser
-		? `You (${currentUser.first_name})`
-		: "Personal Chat";
-
-	const selectedChatTitle = useMemo(() => {
-		if (selectedChatId && selectedChatId === currentUserIdStr) {
-			return personalLabel;
-		}
-		const group = manageableGroupChats.find(
-			(c) => c.chat_id === selectedChatId,
-		);
-		return group ? getChatDisplayName(group) : "this chat";
-	}, [selectedChatId, currentUserIdStr, personalLabel, manageableGroupChats]);
-
 	const hasAnyManageableChat =
 		Boolean(currentUserIdStr) || manageableGroupChats.length > 0;
 
 	return (
 		<div className="space-y-4">
-			<div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-				<div className="flex min-w-0 items-center gap-2">
-					{hasAnyManageableChat && (
+			<PageHeader
+				title="Personas"
+				actions={
+					<Button onClick={onOpenAddModal} size="sm" className="gap-1">
+						<Plus className="h-3.5 w-3.5" />
+						<span>New</span>
+					</Button>
+				}
+			/>
+
+			<div className="space-y-2">
+				{hasAnyManageableChat && (
+					<div className="flex flex-col gap-2 sm:flex-row sm:items-center">
 						<ChatSelect
 							value={selectedChatId}
 							onValueChange={setSelectedChatId}
 							chats={manageableGroupChats}
 							currentUser={currentUser}
 							includePersonalOption={Boolean(currentUser)}
-							personalOptionLabel={personalLabel}
+							personalOptionLabel={
+								currentUser ? `${currentUser.first_name} (you)` : undefined
+							}
 							placeholder="Select chat"
 							triggerClassName="w-full sm:w-[240px]"
 						/>
-					)}
-				</div>
-
-				<div className="flex items-center gap-2">
-					<SearchInput
-						placeholder="Search personas…"
-						value={searchQuery}
-						onChange={setSearchQuery}
-						showClearButton
-						containerClassName="flex-1 sm:w-56 sm:flex-none"
-					/>
-					<Button onClick={onOpenAddModal} size="sm" className="gap-1.5">
-						<Plus className="h-4 w-4" />
-						<span>New</span>
-					</Button>
-				</div>
-			</div>
-
-			<div className="flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3">
-				<Sparkles className="h-4 w-4 shrink-0 text-primary" />
-				<div className="min-w-0 flex-1">
-					<div
-						className="truncate text-[11px] text-muted-foreground"
-						dir="auto"
-					>
-						Active in {selectedChatTitle}
+						<div className="flex min-w-0 items-center gap-1 text-[11px] text-muted-foreground">
+							<span>Active</span>
+							<span className="truncate font-medium text-foreground">
+								{currentActivePersona?.name || "ket.ai"}
+							</span>
+							{currentActivePersona && (
+								<Button
+									variant="ghost"
+									size="sm"
+									onClick={() => handleSelectPersona(null)}
+									disabled={isSelectingPersona}
+									className="h-6 px-1.5 text-[11px]"
+								>
+									Reset
+								</Button>
+							)}
+						</div>
 					</div>
-					<div className="truncate text-sm font-medium" dir="auto">
-						{currentActivePersona
-							? currentActivePersona.name
-							: "ket.ai (default)"}
-					</div>
-				</div>
-				{currentActivePersona && (
-					<Button
-						variant="ghost"
-						size="sm"
-						onClick={() => handleSelectPersona(null)}
-						disabled={isSelectingPersona}
-					>
-						Reset
-					</Button>
 				)}
-			</div>
 
-			<div className="flex items-center justify-between">
-				<span className="text-[11px] text-muted-foreground">
-					{filteredPersonas.length} of {personas.length} personas
-				</span>
+				<SearchInput
+					placeholder="Search personas"
+					value={searchQuery}
+					onChange={setSearchQuery}
+					showClearButton
+				/>
 			</div>
 
 			{filteredPersonas.length === 0 ? (
 				<EmptyState
 					icon={Bot}
-					title="No personas found"
-					description={
-						searchQuery
-							? "Nothing matched your search."
-							: "Create a persona to shape how the bot speaks."
-					}
+					title="No personas"
+					description="Create one to shape how the bot speaks."
 				/>
 			) : (
-				<div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
+				<div className="grid grid-cols-1 gap-2.5 md:grid-cols-2 lg:grid-cols-3">
 					{filteredPersonas.map((persona) => {
 						const isActiveInSelectedChat = currentActivePersona
 							? currentActivePersona.id === persona.id

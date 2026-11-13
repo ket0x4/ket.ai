@@ -1,4 +1,3 @@
-import { Bot, Edit3, PlusCircle, Wand2 } from "lucide-react";
 import { type FC, type FormEvent, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { ModalFooter } from "@/components/common";
@@ -73,19 +72,18 @@ export const PersonaModal: FC<PersonaModalProps> = ({
 		setName(tpl.title);
 		setDescription(tpl.desc);
 		setPrompt(tpl.prompt);
-		toast.info(`"${tpl.title}" template applied`);
 	};
 
 	const handleSubmit = async (e: FormEvent) => {
 		e.preventDefault();
 
 		if (!name.trim()) {
-			toast.error("Please enter a persona name");
+			toast.error("Enter a name.");
 			return;
 		}
 
 		if (!prompt.trim()) {
-			toast.error("Please enter a system prompt instruction");
+			toast.error("Enter a system prompt.");
 			return;
 		}
 
@@ -97,22 +95,19 @@ export const PersonaModal: FC<PersonaModalProps> = ({
 						description: description.trim() || null,
 						prompt: prompt.trim(),
 					});
-					toast.success("Persona updated successfully!");
 				} else {
 					await api.personas.create({
 						name: name.trim(),
 						description: description.trim() || undefined,
 						prompt: prompt.trim(),
 					});
-					toast.success("New persona created successfully!");
 				}
 				onSuccess();
 				onOpenChange(false);
 			},
 			{
-				errorMessage: isEdit
-					? "Error updating persona"
-					: "Error creating persona",
+				successMessage: isEdit ? "Persona updated." : "Persona created.",
+				errorMessage: "Could not save persona",
 			},
 		);
 	};
@@ -121,18 +116,9 @@ export const PersonaModal: FC<PersonaModalProps> = ({
 		<Dialog open={open} onOpenChange={onOpenChange}>
 			<DialogContent className="max-h-[85dvh] w-[95vw] max-w-lg overflow-y-auto sm:w-full">
 				<DialogHeader>
-					<DialogTitle className="flex items-center gap-2">
-						{isEdit ? (
-							<Edit3 className="h-4 w-4 text-muted-foreground" />
-						) : (
-							<Bot className="h-4 w-4 text-muted-foreground" />
-						)}
-						<span>{isEdit ? "Edit persona" : "New persona"}</span>
-					</DialogTitle>
+					<DialogTitle>{isEdit ? "Edit persona" : "New persona"}</DialogTitle>
 					<DialogDescription>
-						{isEdit
-							? "Update how the bot behaves with this persona."
-							: "Define how the bot speaks and behaves."}
+						{isEdit ? "Update this persona." : "Define how the bot speaks."}
 					</DialogDescription>
 				</DialogHeader>
 
@@ -146,7 +132,7 @@ export const PersonaModal: FC<PersonaModalProps> = ({
 						</label>
 						<Input
 							id="persona-name"
-							placeholder="e.g. Architect, Analyst…"
+							placeholder="e.g. Architect"
 							value={name}
 							onChange={(e) => setName(e.target.value)}
 							disabled={isSubmitting}
@@ -161,12 +147,11 @@ export const PersonaModal: FC<PersonaModalProps> = ({
 							htmlFor="persona-description"
 							className="text-xs text-muted-foreground"
 						>
-							Description{" "}
-							<span className="text-muted-foreground/60">(optional)</span>
+							Description <span className="opacity-60">optional</span>
 						</label>
 						<Input
 							id="persona-description"
-							placeholder="e.g. Solution-oriented engineer"
+							placeholder="One line"
 							value={description}
 							onChange={(e) => setDescription(e.target.value)}
 							disabled={isSubmitting}
@@ -176,20 +161,15 @@ export const PersonaModal: FC<PersonaModalProps> = ({
 					</div>
 
 					<div className="space-y-1.5">
-						<div className="flex items-center justify-between">
-							<label
-								htmlFor="persona-prompt"
-								className="text-xs text-muted-foreground"
-							>
-								System prompt
-							</label>
-							<span className="font-mono text-[10px] text-muted-foreground/60 tnum">
-								{prompt.length}
-							</span>
-						</div>
+						<label
+							htmlFor="persona-prompt"
+							className="text-xs text-muted-foreground"
+						>
+							System prompt
+						</label>
 						<Textarea
 							id="persona-prompt"
-							placeholder="Tone, rules, and jargon the bot should follow…"
+							placeholder="Tone and rules…"
 							value={prompt}
 							onChange={(e) => setPrompt(e.target.value)}
 							disabled={isSubmitting}
@@ -201,24 +181,18 @@ export const PersonaModal: FC<PersonaModalProps> = ({
 
 					{!isEdit && (
 						<div className="space-y-2">
-							<div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-								<Wand2 className="h-3.5 w-3.5" />
-								<span>Templates</span>
-							</div>
-							<div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+							<div className="text-xs text-muted-foreground">Templates</div>
+							<div className="grid grid-cols-3 gap-1.5">
 								{INSPIRATION_TEMPLATES.map((tpl) => (
 									<button
 										key={tpl.title}
 										type="button"
 										onClick={() => applyTemplate(tpl)}
-										className="rounded-lg border border-border/60 bg-background/40 p-2.5 text-left transition-colors hover:border-border hover:bg-accent"
+										className="rounded-lg border border-border/60 bg-background/40 px-2 py-1.5 text-left transition-colors hover:border-border hover:bg-accent"
 									>
-										<div className="truncate text-xs font-medium text-foreground">
+										<span className="block truncate text-xs font-medium text-foreground">
 											{tpl.title}
-										</div>
-										<p className="mt-1 line-clamp-2 text-[10px] leading-normal text-muted-foreground">
-											{tpl.desc}
-										</p>
+										</span>
 									</button>
 								))}
 							</div>
@@ -228,8 +202,7 @@ export const PersonaModal: FC<PersonaModalProps> = ({
 					<ModalFooter
 						onCancel={() => onOpenChange(false)}
 						isSubmitting={isSubmitting}
-						submitText={isEdit ? "Save" : "Create persona"}
-						submitIcon={isEdit ? Edit3 : PlusCircle}
+						submitText={isEdit ? "Save" : "Create"}
 					/>
 				</form>
 			</DialogContent>

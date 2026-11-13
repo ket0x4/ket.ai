@@ -1,6 +1,6 @@
 import { CONFIG } from "../../config";
 import { getOpenAiClient } from "../../services/llm/client";
-import { runWithRetry } from "../../services/llm/retry";
+import { runApiCall } from "../../services/llm/middleware";
 import logger from "../../utils/logger";
 import type { AgentTool, ToolExecutionContext } from "../types";
 
@@ -155,7 +155,7 @@ async function performWebSearch(
 	try {
 		logger.info(`[WebSearchTool] Running web search for: "${trimmedQuery}"`);
 
-		const response = await runWithRetry(
+		const response = await runApiCall(
 			() =>
 				getOpenAiClient().responses.create(
 					{

@@ -1,27 +1,28 @@
-import { Download, Edit2, Inbox, Plus, Trash2, Upload } from "lucide-react";
+import {
+	Download,
+	Edit2,
+	Inbox,
+	MoreHorizontal,
+	Plus,
+	Trash2,
+	Upload,
+} from "lucide-react";
 import { type ChangeEvent, type FC, useMemo, useRef, useState } from "react";
 import {
 	CategoryBadge,
 	CategorySelect,
-	ChatSelect,
 	CopyButton,
 	EmptyState,
 	LoadingState,
+	PageHeader,
 	SearchInput,
 } from "@/components/common";
-import {
-	Button,
-	Card,
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from "@/components/ui";
+import { Button, Card } from "@/components/ui";
 import { useAsyncAction } from "@/hooks/useAsyncAction";
 import { api } from "@/lib/api";
 import {
 	cleanMemoryText,
+	cn,
 	formatDate,
 	getChatDisplayName,
 	normalizeSearchText,
@@ -61,40 +62,34 @@ const MemoryCard: FC<MemoryCardProps> = ({
 	const cleanedText = cleanMemoryText(memory.memory_text);
 
 	return (
-		<Card>
-			<div className="space-y-3 p-4">
-				<div className="flex items-center justify-between gap-3">
-					<div className="flex min-w-0 items-center gap-2 text-[11px] text-muted-foreground">
+		<Card className="p-3.5">
+			<div className="space-y-2.5">
+				<div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
+					<div className="flex min-w-0 items-center gap-1.5">
 						<CategoryBadge category={memory.category} />
 						<span className="truncate" dir="auto">
 							{chatLabel}
 						</span>
 						{userName && (
-							<>
-								<span className="text-border">·</span>
-								<span className="truncate" dir="auto">
-									{userName}
-								</span>
-							</>
+							<span className="truncate" dir="auto">
+								· {userName}
+							</span>
 						)}
 					</div>
-					<span className="shrink-0 font-mono text-[11px] text-muted-foreground">
+					<span className="shrink-0 font-mono tnum">
 						{formatDate(memory.created_at)}
 					</span>
 				</div>
 
 				<p
-					className="break-words text-xs leading-relaxed text-foreground/90 sm:text-sm"
+					className="break-words text-sm leading-relaxed text-foreground/90"
 					dir="auto"
 				>
 					{cleanedText}
 				</p>
 
-				<div className="flex items-center justify-between border-t border-border/60 pt-2.5">
-					<CopyButton
-						text={cleanedText}
-						successMessage="Fact copied to clipboard!"
-					/>
+				<div className="flex items-center justify-between border-t border-border/50 pt-2">
+					<CopyButton text={cleanedText} successMessage="Copied." />
 
 					{canEditDelete && (
 						<div className="flex items-center gap-0.5">
@@ -128,20 +123,6 @@ interface MemoriesTabProps extends BaseTabProps<Memory> {
 	memories: Memory[];
 }
 
-function matchesScope(
-	m: Memory,
-	scope: string,
-	user: TelegramUser | null,
-): boolean {
-	if (scope === "mine") {
-		return Boolean(user && m.user_id === user.id);
-	}
-	if (scope === "group") {
-		return !user || m.user_id !== user.id;
-	}
-	return true;
-}
-
 function matchesQuery(m: Memory, query: string): boolean {
 	const trimmed = query.trim();
 	if (!trimmed) return true;
@@ -151,23 +132,38 @@ function matchesQuery(m: Memory, query: string): boolean {
 	const textMatch = normalizeSearchText(cleaned).includes(normQ);
 	const rawMatch = normalizeSearchText(m.memory_text).includes(normQ);
 	const catMatch = normalizeSearchText(m.category || "").includes(normQ);
+	const chatMatch = normalizeSearchText(m.chat_title || "").includes(normQ);
 
-	return textMatch || rawMatch || catMatch;
+	return textMatch || rawMatch || catMatch || chatMatch;
+}
+
+function matchesScope(
+	m: Memory,
+	scope: string,
+	user: TelegramUser | null,
+): boolean {
+	if (scope === "mine") return Boolean(user && m.user_id === user.id);
+	if (scope === "group") return !user || m.user_id !== user.id;
+	return true;
 }
 
 function matchesFilter(
 	m: Memory,
 	scope: string,
-	chat: string,
 	category: string,
 	query: string,
 	user: TelegramUser | null,
 ): boolean {
 	if (!matchesScope(m, scope, user)) return false;
-	if (chat !== "all" && m.chat_id !== chat) return false;
 	if (category !== "all" && m.category !== category) return false;
 	return matchesQuery(m, query);
 }
+
+const SCOPES = [
+	{ value: "mine", label: "Mine" },
+	{ value: "group", label: "Group" },
+	{ value: "all", label: "All" },
+] as const;
 
 export const MemoriesTab: FC<MemoriesTabProps> = ({
 	memories,
@@ -182,8 +178,8 @@ export const MemoriesTab: FC<MemoriesTabProps> = ({
 }) => {
 	const [searchQuery, setSearchQuery] = useState("");
 	const [scopeFilter, setScopeFilter] = useState<string>("mine");
-	const [chatFilter, setChatFilter] = useState<string>("all");
 	const [categoryFilter, setCategoryFilter] = useState<string>("all");
+	const [showTools, setShowTools] = useState(false);
 
 	const { isLoading: isPruning, execute: executePrune } = useAsyncAction();
 	const { execute: executeDelete } = useAsyncAction();
@@ -194,32 +190,12 @@ export const MemoriesTab: FC<MemoriesTabProps> = ({
 
 	const filteredMemories = useMemo(() => {
 		return memories.filter((m) =>
-			matchesFilter(
-				m,
-				scopeFilter,
-				chatFilter,
-				categoryFilter,
-				searchQuery,
-				currentUser,
-			),
+			matchesFilter(m, scopeFilter, categoryFilter, searchQuery, currentUser),
 		);
-	}, [
-		memories,
-		scopeFilter,
-		chatFilter,
-		categoryFilter,
-		searchQuery,
-		currentUser,
-	]);
+	}, [memories, scopeFilter, categoryFilter, searchQuery, currentUser]);
 
 	const handleDelete = async (m: Memory) => {
-		if (
-			!window.confirm(
-				"Are you sure you want to permanently delete this memory?",
-			)
-		) {
-			return;
-		}
+		if (!window.confirm("Delete this memory?")) return;
 
 		await executeDelete(() => api.memories.delete(m.id), {
 			successMessage: "Memory deleted.",
@@ -229,16 +205,13 @@ export const MemoriesTab: FC<MemoriesTabProps> = ({
 	};
 
 	const handlePrune = async () => {
-		if (!window.confirm("Prune all expired temporary memories now?")) return;
+		if (!window.confirm("Prune expired memories?")) return;
 
-		await executePrune(
-			() => api.memories.prune(chatFilter !== "all" ? chatFilter : undefined),
-			{
-				successMessage: (res) => `Pruned ${res.prunedCount} expired memories.`,
-				errorMessage: "Prune failed",
-				onSuccess: onRefresh,
-			},
-		);
+		await executePrune(() => api.memories.prune(), {
+			successMessage: (res) => `Pruned ${res.prunedCount} memories.`,
+			errorMessage: "Prune failed",
+			onSuccess: onRefresh,
+		});
 	};
 
 	const handleExport = async () => {
@@ -256,7 +229,7 @@ export const MemoriesTab: FC<MemoriesTabProps> = ({
 				URL.revokeObjectURL(url);
 			},
 			{
-				successMessage: "Export downloaded!",
+				successMessage: "Exported.",
 				errorMessage: "Export failed",
 			},
 		);
@@ -279,8 +252,7 @@ export const MemoriesTab: FC<MemoriesTabProps> = ({
 				return api.memories.import(list);
 			},
 			{
-				successMessage: (res) =>
-					`Imported ${res?.importedCount ?? 0} memory records!`,
+				successMessage: (res) => `Imported ${res?.importedCount ?? 0} records.`,
 				errorMessage: "Import failed",
 				onSuccess: onRefresh,
 			},
@@ -291,7 +263,7 @@ export const MemoriesTab: FC<MemoriesTabProps> = ({
 
 	const getChatLabel = (m: Memory) => {
 		if (currentUser && m.chat_id === currentUser.id.toString()) {
-			return `You (${currentUser.first_name || "me"})`;
+			return currentUser.first_name || "You";
 		}
 		const found = chats.find((c) => c.chat_id === m.chat_id);
 		if (found) return getChatDisplayName(found);
@@ -299,23 +271,83 @@ export const MemoriesTab: FC<MemoriesTabProps> = ({
 	};
 
 	return (
-		<div className="space-y-4 animate-in fade-in duration-200">
-			<div className="flex flex-col items-stretch justify-between gap-3 sm:flex-row sm:items-center">
+		<div className="space-y-4">
+			<PageHeader
+				title="Memory"
+				actions={
+					<>
+						<Button
+							variant="ghost"
+							size="icon"
+							onClick={() => setShowTools((prev) => !prev)}
+							title="More"
+							aria-label="More"
+							aria-expanded={showTools}
+							aria-controls="memory-tools"
+						>
+							<MoreHorizontal className="h-4 w-4" />
+						</Button>
+						<Button onClick={onOpenAddModal} size="sm" className="gap-1">
+							<Plus className="h-3.5 w-3.5" />
+							<span>Add</span>
+						</Button>
+					</>
+				}
+			/>
+
+			<div className="space-y-2">
 				<SearchInput
-					placeholder="Search memories…"
+					placeholder="Search memories"
 					value={searchQuery}
 					onChange={setSearchQuery}
 					showClearButton
 				/>
 
-				<div className="flex items-center gap-2">
+				<div className="grid grid-cols-2 gap-2">
+					<fieldset
+						aria-label="Memory scope"
+						className="flex min-w-0 items-center gap-0.5 rounded-lg border border-border p-0.5"
+					>
+						{SCOPES.map((scope) => (
+							<button
+								key={scope.value}
+								type="button"
+								onClick={() => setScopeFilter(scope.value)}
+								aria-pressed={scopeFilter === scope.value}
+								className={cn(
+									"flex-1 rounded-md px-2 py-1 text-[11px] font-medium transition-colors",
+									scopeFilter === scope.value
+										? "bg-accent text-foreground"
+										: "text-muted-foreground hover:text-foreground",
+								)}
+							>
+								{scope.label}
+							</button>
+						))}
+					</fieldset>
+					<CategorySelect
+						value={categoryFilter}
+						onValueChange={setCategoryFilter}
+						includeAllOption={true}
+						allOptionLabel="All types"
+						placeholder="All types"
+					/>
+				</div>
+			</div>
+
+			{showTools && (
+				<div
+					id="memory-tools"
+					className="flex flex-wrap items-center gap-1 rounded-lg border border-border bg-card px-1.5 py-1"
+				>
 					<Button
-						variant="outline"
-						size="icon"
+						variant="ghost"
+						size="sm"
 						onClick={handleExport}
-						title="Export as JSON"
+						className="gap-1 text-[11px]"
 					>
 						<Download className="h-3.5 w-3.5" />
+						Export
 					</Button>
 
 					<input
@@ -326,96 +358,53 @@ export const MemoriesTab: FC<MemoriesTabProps> = ({
 						className="hidden"
 					/>
 					<Button
-						variant="outline"
-						size="icon"
+						variant="ghost"
+						size="sm"
 						onClick={() => fileInputRef.current?.click()}
-						title="Import from JSON"
+						className="gap-1 text-[11px]"
 					>
 						<Upload className="h-3.5 w-3.5" />
+						Import
 					</Button>
 
 					{role !== "user" && (
 						<Button
-							variant="outline"
-							size="icon"
+							variant="ghost"
+							size="sm"
 							onClick={handlePrune}
 							disabled={isPruning}
-							title="Prune expired memories"
+							className="gap-1 text-[11px]"
 						>
 							<Trash2 className="h-3.5 w-3.5" />
+							Prune
 						</Button>
 					)}
-
-					<Button onClick={onOpenAddModal} size="sm" className="gap-1.5">
-						<Plus className="h-3.5 w-3.5" />
-						<span>Add</span>
-					</Button>
 				</div>
-			</div>
+			)}
 
-			<div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-				<Select value={scopeFilter} onValueChange={setScopeFilter}>
-					<SelectTrigger className="text-xs">
-						<SelectValue placeholder="Scope" />
-					</SelectTrigger>
-					<SelectContent>
-						<SelectItem value="all" className="text-xs">
-							All scopes
-						</SelectItem>
-						<SelectItem value="mine" className="text-xs">
-							Mine
-						</SelectItem>
-						<SelectItem value="group" className="text-xs">
-							Group
-						</SelectItem>
-					</SelectContent>
-				</Select>
-
-				<ChatSelect
-					value={chatFilter}
-					onValueChange={setChatFilter}
-					chats={chats}
-					includeAllOption={true}
-					allOptionLabel="All groups & chats"
-					placeholder="All groups"
-				/>
-
-				<CategorySelect
-					value={categoryFilter}
-					onValueChange={setCategoryFilter}
-					includeAllOption={true}
-					allOptionLabel="All categories"
-					placeholder="All categories"
-				/>
-			</div>
-
-			<div className="space-y-2.5 pt-1">
+			<div>
 				{isLoading && memories.length === 0 ? (
-					<LoadingState text="Loading memories…" />
+					<LoadingState />
 				) : filteredMemories.length > 0 ? (
-					filteredMemories.map((m) => (
-						<MemoryCard
-							key={m.id}
-							memory={m}
-							role={role}
-							adminChatIds={adminChatIds}
-							currentUser={currentUser}
-							chatLabel={getChatLabel(m)}
-							onEdit={onOpenEditModal}
-							onDelete={handleDelete}
-						/>
-					))
+					<div className="space-y-2">
+						{filteredMemories.map((m) => (
+							<MemoryCard
+								key={m.id}
+								memory={m}
+								role={role}
+								adminChatIds={adminChatIds}
+								currentUser={currentUser}
+								chatLabel={getChatLabel(m)}
+								onEdit={onOpenEditModal}
+								onDelete={handleDelete}
+							/>
+						))}
+					</div>
 				) : (
 					<EmptyState
 						icon={Inbox}
-						title="Nothing here yet"
-						description="No memories matched your filters. Add a fact to get started."
-						action={
-							<Button size="sm" onClick={onOpenAddModal} className="gap-1.5">
-								<Plus className="h-3.5 w-3.5" />
-								Add fact
-							</Button>
-						}
+						title="No memories"
+						description="Add a fact and it will appear here."
 					/>
 				)}
 			</div>
