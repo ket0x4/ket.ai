@@ -6,7 +6,7 @@ import {
 } from "../../db/repository/index";
 import logger from "../../utils/logger";
 import { dotProduct, normalizeVector } from "../../utils/vector";
-import { getOpenAiClient } from "../llm/client";
+import { getOpenAiEmbeddingClient } from "../llm/client";
 import { rateLimiters, runApiCall } from "../llm/middleware";
 import { openAiProvider } from "../llm/openAiProvider";
 import { expandContextualQuery } from "./queryExpansion";
@@ -25,7 +25,7 @@ export async function generateEmbedding(text: string): Promise<number[]> {
 
 		const response = await runApiCall(
 			() =>
-				getOpenAiClient().embeddings.create({
+				getOpenAiEmbeddingClient().embeddings.create({
 					model: CONFIG.OPENAI_EMBEDDING_MODEL,
 					input: trimmed,
 				}),

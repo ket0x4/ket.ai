@@ -21,6 +21,8 @@ import type { BotSettings } from "@/types";
 const DEFAULT_SETTINGS: BotSettings = {
 	openai_model: "default",
 	openai_base_url: "http://localhost:8080/v1",
+	openai_embedding_model: "text-embedding-3-small",
+	openai_embedding_base_url: "",
 	default_reply_probability: 0.05,
 	enable_spontaneous_replies: true,
 	chat_history_limit: 20,
@@ -160,6 +162,40 @@ const EngineSettingsSection: FC<EngineSettingsSectionProps> = ({
 						placeholder="http://localhost:8080/v1"
 						value={settings.openai_base_url ?? ""}
 						onChange={(e) => onPatch({ openai_base_url: e.target.value })}
+					/>
+				</div>
+
+				<div className="space-y-1.5">
+					<label
+						htmlFor="input-embedding-model-sys"
+						className="text-xs text-muted-foreground"
+					>
+						Embedding model
+					</label>
+					<Input
+						id="input-embedding-model-sys"
+						placeholder="text-embedding-3-small"
+						value={settings.openai_embedding_model ?? ""}
+						onChange={(e) =>
+							onPatch({ openai_embedding_model: e.target.value })
+						}
+					/>
+				</div>
+
+				<div className="space-y-1.5">
+					<label
+						htmlFor="input-embedding-baseurl-sys"
+						className="text-xs text-muted-foreground"
+					>
+						Embedding base URL
+					</label>
+					<Input
+						id="input-embedding-baseurl-sys"
+						placeholder="Same as main URL"
+						value={settings.openai_embedding_base_url ?? ""}
+						onChange={(e) =>
+							onPatch({ openai_embedding_base_url: e.target.value })
+						}
 					/>
 				</div>
 

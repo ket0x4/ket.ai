@@ -6,6 +6,8 @@ interface ConfigJson {
 	openai_base_url?: string;
 	openai_model?: string;
 	openai_embedding_model?: string;
+	openai_embedding_base_url?: string;
+	openai_embedding_api_key?: string;
 	openai_transcribe_model?: string;
 	chat_history_limit?: number;
 	image_history_limit?: number;
@@ -120,6 +122,16 @@ export const CONFIG = {
 		configJson.openai_embedding_model,
 		"OPENAI_EMBEDDING_MODEL",
 		"text-embedding-3-small",
+	),
+	OPENAI_EMBEDDING_BASE_URL: str(
+		configJson.openai_embedding_base_url,
+		"OPENAI_EMBEDDING_BASE_URL",
+		"",
+	),
+	OPENAI_EMBEDDING_API_KEY: str(
+		configJson.openai_embedding_api_key,
+		"OPENAI_EMBEDDING_API_KEY",
+		"",
 	),
 	OPENAI_TRANSCRIBE_MODEL: str(
 		configJson.openai_transcribe_model,
@@ -249,6 +261,9 @@ export interface BotSettingsUpdate {
 	openai_model?: string;
 	openai_base_url?: string;
 	openai_api_key?: string;
+	openai_embedding_model?: string;
+	openai_embedding_base_url?: string;
+	openai_embedding_api_key?: string;
 	default_reply_probability?: number;
 	enable_spontaneous_replies?: boolean;
 	chat_history_limit?: number;
@@ -265,6 +280,9 @@ const SETTINGS_KEY_MAP: Record<keyof BotSettingsUpdate, keyof typeof CONFIG> = {
 	openai_model: "OPENAI_MODEL",
 	openai_base_url: "OPENAI_BASE_URL",
 	openai_api_key: "OPENAI_API_KEY",
+	openai_embedding_model: "OPENAI_EMBEDDING_MODEL",
+	openai_embedding_base_url: "OPENAI_EMBEDDING_BASE_URL",
+	openai_embedding_api_key: "OPENAI_EMBEDDING_API_KEY",
 	default_reply_probability: "DEFAULT_REPLY_PROBABILITY",
 	enable_spontaneous_replies: "ENABLE_SPONTANEOUS_REPLIES",
 	chat_history_limit: "CHAT_HISTORY_LIMIT",
@@ -281,6 +299,8 @@ const VALID_LOG_LEVELS = new Set(["debug", "info", "warn", "error"]);
 
 const sanitizeStr = (raw: unknown) =>
 	typeof raw === "string" ? raw.trim() || undefined : undefined;
+const sanitizeOptionalStr = (raw: unknown) =>
+	typeof raw === "string" ? raw.trim() : undefined;
 const sanitizeBool = (raw: unknown) =>
 	typeof raw === "boolean" ? raw : undefined;
 const sanitizeNum =
@@ -302,6 +322,9 @@ const SETTING_SANITIZERS: Record<
 	openai_model: sanitizeStr,
 	openai_base_url: sanitizeStr,
 	openai_api_key: sanitizeStr,
+	openai_embedding_model: sanitizeStr,
+	openai_embedding_base_url: sanitizeOptionalStr,
+	openai_embedding_api_key: sanitizeOptionalStr,
 	sandbox_url: sanitizeStr,
 	enable_spontaneous_replies: sanitizeBool,
 	enable_web_search: sanitizeBool,
@@ -324,6 +347,8 @@ export function getBotSettingsSnapshot() {
 	return {
 		openai_model: CONFIG.OPENAI_MODEL,
 		openai_base_url: CONFIG.OPENAI_BASE_URL,
+		openai_embedding_model: CONFIG.OPENAI_EMBEDDING_MODEL,
+		openai_embedding_base_url: CONFIG.OPENAI_EMBEDDING_BASE_URL,
 		default_reply_probability: CONFIG.DEFAULT_REPLY_PROBABILITY,
 		enable_spontaneous_replies: CONFIG.ENABLE_SPONTANEOUS_REPLIES,
 		chat_history_limit: CONFIG.CHAT_HISTORY_LIMIT,

@@ -96,6 +96,9 @@ export interface BotSettings {
 	openai_model?: string;
 	openai_base_url?: string;
 	openai_api_key?: string;
+	openai_embedding_model?: string;
+	openai_embedding_base_url?: string;
+	openai_embedding_api_key?: string;
 	default_reply_probability?: number;
 	enable_spontaneous_replies?: boolean;
 	chat_history_limit?: number;

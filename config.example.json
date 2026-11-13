@@ -4,6 +4,8 @@
 	"openai_base_url": "http://localhost:8080/v1",
 	"openai_model": "default",
 	"openai_embedding_model": "text-embedding-3-small",
+	"openai_embedding_base_url": "",
+	"openai_embedding_api_key": "",
 	"openai_transcribe_model": "whisper-1",
 	"chat_history_limit": 8,
 	"image_history_limit": 5,
