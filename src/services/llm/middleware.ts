@@ -1,3 +1,4 @@
+import { IS_TEST } from "../../config/env";
 import logger from "../../utils/logger";
 
 /**
@@ -91,10 +92,8 @@ class RateLimiter {
 		fn: () => Promise<T>,
 		options?: { customIntervalMs?: number },
 	): Promise<T> {
-		const isTestEnv =
-			process.env.NODE_ENV === "test" || process.env.BUN_ENV === "test";
 		const interval =
-			options?.customIntervalMs ?? (isTestEnv ? 0 : this.defaultIntervalMs());
+			options?.customIntervalMs ?? (IS_TEST ? 0 : this.defaultIntervalMs());
 
 		const run = async () => {
 			const elapsed = Date.now() - this.lastRequestEndTime;

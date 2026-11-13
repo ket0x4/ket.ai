@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
+import { IS_TEST } from "../../config/env";
 import logger from "../../utils/logger";
 
 const SYSTEM_PROMPT_FILE = "system.txt";
@@ -7,7 +8,7 @@ const TEST_SYSTEM_PROMPT = "You are ket.ai, a helpful AI assistant.";
 
 function loadSystemPrompt(): string {
 	if (!existsSync(SYSTEM_PROMPT_FILE)) {
-		if (process.env.NODE_ENV === "test" || process.env.BUN_ENV === "test") {
+		if (IS_TEST) {
 			return TEST_SYSTEM_PROMPT;
 		}
 		// Throwing (instead of process.exit) still aborts startup, but through a

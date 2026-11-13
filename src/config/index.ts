@@ -1,386 +1,47 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { IS_TEST } from "./env";
+import {
+	persistConfig,
+	readConfigJson,
+	resolveConfig,
+	validateConfig,
+} from "./load";
+import { type Messages, resolveMessages } from "./messages";
+import type { Config } from "./schema";
+import {
+	applySettings,
+	type BotSettingsSnapshot,
+	type BotSettingsUpdate,
+	snapshotSettings,
+} from "./settings";
 
-interface ConfigJson {
-	telegram_bot_token?: string;
-	openai_api_key?: string;
-	openai_base_url?: string;
-	openai_model?: string;
-	openai_embedding_model?: string;
-	openai_embedding_base_url?: string;
-	openai_embedding_api_key?: string;
-	openai_transcribe_model?: string;
-	chat_history_limit?: number;
-	image_history_limit?: number;
-	default_reply_probability?: number;
-	enable_spontaneous_replies?: boolean;
-	db_path?: string;
-	bot_owner_id?: number;
-	allowed_chat_ids?: (number | string)[];
-	enable_code_execution?: boolean;
-	sandbox_url?: string;
-	sandbox_timeout_ms?: number;
-	max_agent_steps?: number;
-	max_identical_tool_calls?: number;
-	max_tool_failures_per_tool?: number;
-	agent_context_max_chars?: number;
-	enable_fetch_url?: boolean;
-	agent_timeout_ms?: number;
-	rate_limit_messages_per_minute?: number;
-	rate_limit_generations_per_minute?: number;
-	rate_limit_api_per_minute?: number;
-	init_data_max_age_seconds?: number;
-	log_level?: string;
+const rawConfig = readConfigJson();
+const scalarConfig = resolveConfig(rawConfig);
+const validation = validateConfig(scalarConfig);
 
-	log_dir?: string;
-	log_max_size_mb?: number;
-	web_port?: number;
-	web_app_url?: string;
-	messages?: Partial<Record<string, string>>;
-}
-
-let configJson: ConfigJson = {};
-const CONFIG_FILE_PATH = "config.json";
-
-if (existsSync(CONFIG_FILE_PATH)) {
-	try {
-		configJson = JSON.parse(readFileSync(CONFIG_FILE_PATH, "utf-8"));
-	} catch (e) {
-		console.error("Error reading or parsing config.json:", e);
-	}
-}
-
-const env = process.env;
-
-function str(val: string | undefined, envKey: string, fallback = ""): string {
-	return val || env[envKey] || fallback;
-}
-
-function num(
-	val: number | undefined,
-	envKey: string | undefined,
-	fallback: number,
-): number {
-	if (typeof val === "number" && !Number.isNaN(val)) return val;
-	const raw = envKey ? env[envKey] : undefined;
-	if (raw !== undefined && raw !== "") {
-		const parsed = Number(raw);
-		if (!Number.isNaN(parsed)) return parsed;
-	}
-	return fallback;
-}
-
-function bool(
-	val: boolean | undefined,
-	envKey: string,
-	fallback = true,
-): boolean {
-	if (typeof val === "boolean") return val;
-	if (env[envKey] !== undefined) return env[envKey] !== "false";
-	return fallback;
-}
-
-const DEFAULT_MESSAGES = {
-	unauthorized_group_reply:
-		"I don't have permission to talk in this group, I'm out! Contact my owner to add me.",
-	private_chat_unauthorized:
-		"Hey I only chat in groups approved by my owner. You can contact my owner to add me to your own group.",
-	empty_reply_fallback: "I didn't know what to say.",
-	error_reply_fallback: "My mind went blank, let's talk later.",
-	empty_image_fallback: "Nice picture, but I didn't know what to say about it.",
-	error_image_fallback:
-		"Couldn't check the photo, must have gotten something in my eye.",
-	image_processing_failed:
-		"Got confused while looking at the photo, try again later.",
-	not_authorized_command: "Only group admins or my owner can use this command!",
+export const CONFIG: Config & { MESSAGES: Messages } = {
+	...scalarConfig,
+	MESSAGES: resolveMessages(rawConfig.messages),
 };
 
-function resolveMessages(
-	overrides?: Partial<Record<string, string>>,
-): typeof DEFAULT_MESSAGES {
-	const resolved = { ...DEFAULT_MESSAGES };
-	if (!overrides) return resolved;
-	for (const key of Object.keys(DEFAULT_MESSAGES) as Array<
-		keyof typeof DEFAULT_MESSAGES
-	>) {
-		if (overrides[key]) resolved[key] = overrides[key] as string;
-	}
-	return resolved;
-}
-
-export const CONFIG = {
-	TELEGRAM_BOT_TOKEN: str(configJson.telegram_bot_token, "TELEGRAM_BOT_TOKEN"),
-	OPENAI_API_KEY: str(configJson.openai_api_key, "OPENAI_API_KEY"),
-	OPENAI_BASE_URL: str(
-		configJson.openai_base_url,
-		"OPENAI_BASE_URL",
-		"http://localhost:8080/v1",
-	),
-	OPENAI_MODEL: str(configJson.openai_model, "OPENAI_MODEL", "default"),
-	OPENAI_EMBEDDING_MODEL: str(
-		configJson.openai_embedding_model,
-		"OPENAI_EMBEDDING_MODEL",
-		"text-embedding-3-small",
-	),
-	OPENAI_EMBEDDING_BASE_URL: str(
-		configJson.openai_embedding_base_url,
-		"OPENAI_EMBEDDING_BASE_URL",
-		"",
-	),
-	OPENAI_EMBEDDING_API_KEY: str(
-		configJson.openai_embedding_api_key,
-		"OPENAI_EMBEDDING_API_KEY",
-		"",
-	),
-	OPENAI_TRANSCRIBE_MODEL: str(
-		configJson.openai_transcribe_model,
-		"OPENAI_TRANSCRIBE_MODEL",
-		"whisper-1",
-	),
-	CHAT_HISTORY_LIMIT: num(
-		configJson.chat_history_limit,
-		"CHAT_HISTORY_LIMIT",
-		20,
-	),
-	IMAGE_HISTORY_LIMIT: num(
-		configJson.image_history_limit,
-		"IMAGE_HISTORY_LIMIT",
-		5,
-	),
-	DEFAULT_REPLY_PROBABILITY: num(
-		configJson.default_reply_probability,
-		"DEFAULT_REPLY_PROBABILITY",
-		0.05,
-	),
-	ENABLE_SPONTANEOUS_REPLIES: bool(
-		configJson.enable_spontaneous_replies,
-		"ENABLE_SPONTANEOUS_REPLIES",
-		true,
-	),
-	DB_PATH: str(configJson.db_path, "DB_PATH", "bot.db"),
-	BOT_OWNER_ID:
-		configJson.bot_owner_id ||
-		(env.BOT_OWNER_ID ? Number.parseInt(env.BOT_OWNER_ID, 10) : undefined),
-	ALLOWED_CHAT_IDS: Array.isArray(configJson.allowed_chat_ids)
-		? configJson.allowed_chat_ids.map((id) => id.toString())
-		: env.ALLOWED_CHAT_IDS
-			? env.ALLOWED_CHAT_IDS.split(",").map((id) => id.trim())
-			: [],
-	ENABLE_CODE_EXECUTION: bool(
-		configJson.enable_code_execution,
-		"ENABLE_CODE_EXECUTION",
-	),
-	SANDBOX_URL:
-		env.SANDBOX_URL || configJson.sandbox_url || "http://localhost:8080",
-	SANDBOX_TIMEOUT_MS: num(
-		configJson.sandbox_timeout_ms,
-		"SANDBOX_TIMEOUT_MS",
-		45000,
-	),
-	MAX_AGENT_STEPS: num(configJson.max_agent_steps, "MAX_AGENT_STEPS", 50),
-	MAX_IDENTICAL_TOOL_CALLS: num(
-		configJson.max_identical_tool_calls,
-		"MAX_IDENTICAL_TOOL_CALLS",
-		1,
-	),
-	MAX_TOOL_FAILURES_PER_TOOL: num(
-		configJson.max_tool_failures_per_tool,
-		"MAX_TOOL_FAILURES_PER_TOOL",
-		3,
-	),
-	AGENT_CONTEXT_MAX_CHARS: num(
-		configJson.agent_context_max_chars,
-		"AGENT_CONTEXT_MAX_CHARS",
-		28000,
-	),
-	ENABLE_FETCH_URL: bool(configJson.enable_fetch_url, "ENABLE_FETCH_URL"),
-	AGENT_TIMEOUT_MS: num(
-		configJson.agent_timeout_ms,
-		"AGENT_TIMEOUT_MS",
-		180000,
-	),
-	RATE_LIMIT_MESSAGES_PER_MINUTE: num(
-		configJson.rate_limit_messages_per_minute,
-		"RATE_LIMIT_MESSAGES_PER_MINUTE",
-		20,
-	),
-	RATE_LIMIT_GENERATIONS_PER_MINUTE: num(
-		configJson.rate_limit_generations_per_minute,
-		"RATE_LIMIT_GENERATIONS_PER_MINUTE",
-		6,
-	),
-	RATE_LIMIT_API_PER_MINUTE: num(
-		configJson.rate_limit_api_per_minute,
-		"RATE_LIMIT_API_PER_MINUTE",
-		120,
-	),
-	INIT_DATA_MAX_AGE_SECONDS: num(
-		configJson.init_data_max_age_seconds,
-		"INIT_DATA_MAX_AGE_SECONDS",
-		86400,
-	),
-	LOG_LEVEL: str(configJson.log_level, "LOG_LEVEL", "info").toLowerCase() as
-		| "debug"
-		| "info"
-		| "warn"
-		| "error",
-	LOG_DIR: str(configJson.log_dir, "LOG_DIR", "logs"),
-	LOG_MAX_SIZE_MB: num(configJson.log_max_size_mb, "LOG_MAX_SIZE_MB", 5),
-	WEB_PORT: num(configJson.web_port, env.PORT ? "PORT" : "WEB_PORT", 3000),
-	WEB_APP_URL: str(configJson.web_app_url, "WEB_APP_URL"),
-	MESSAGES: resolveMessages(configJson.messages),
-};
-
-// Validate critical config — fail fast if essentials are missing
-const missingKeys: string[] = [];
-if (!CONFIG.TELEGRAM_BOT_TOKEN) missingKeys.push("TELEGRAM_BOT_TOKEN");
-
-const isTestEnv = env.NODE_ENV === "test" || env.BUN_ENV === "test";
-
-if (missingKeys.length > 0 && !isTestEnv) {
+if (validation.fatal.length > 0 && !IS_TEST) {
 	console.error(
-		`FATAL: Missing required configuration: ${missingKeys.join(", ")}`,
+		`FATAL: Missing required configuration: ${validation.fatal.join(", ")}`,
 	);
 	console.error("Please set them in config.json or as environment variables.");
 	process.exit(1);
 }
 
-if (CONFIG.CHAT_HISTORY_LIMIT < 1 || CONFIG.CHAT_HISTORY_LIMIT > 100) {
-	console.warn("WARNING: CHAT_HISTORY_LIMIT should be between 1 and 100.");
-}
-if (
-	CONFIG.DEFAULT_REPLY_PROBABILITY < 0 ||
-	CONFIG.DEFAULT_REPLY_PROBABILITY > 1
-) {
-	console.warn("WARNING: DEFAULT_REPLY_PROBABILITY should be between 0 and 1.");
+for (const warning of validation.warnings) {
+	console.warn(`WARNING: ${warning}`);
 }
 
-export interface BotSettingsUpdate {
-	openai_model?: string;
-	openai_base_url?: string;
-	openai_api_key?: string;
-	openai_embedding_model?: string;
-	openai_embedding_base_url?: string;
-	openai_embedding_api_key?: string;
-	default_reply_probability?: number;
-	enable_spontaneous_replies?: boolean;
-	chat_history_limit?: number;
-	enable_code_execution?: boolean;
-	enable_fetch_url?: boolean;
-	sandbox_url?: string;
-	sandbox_timeout_ms?: number;
-	max_agent_steps?: number;
-	log_level?: "debug" | "info" | "warn" | "error";
+export type { BotSettingsSnapshot, BotSettingsUpdate };
+
+export function getBotSettingsSnapshot(): BotSettingsSnapshot {
+	return snapshotSettings(CONFIG);
 }
 
-const SETTINGS_KEY_MAP: Record<keyof BotSettingsUpdate, keyof typeof CONFIG> = {
-	openai_model: "OPENAI_MODEL",
-	openai_base_url: "OPENAI_BASE_URL",
-	openai_api_key: "OPENAI_API_KEY",
-	openai_embedding_model: "OPENAI_EMBEDDING_MODEL",
-	openai_embedding_base_url: "OPENAI_EMBEDDING_BASE_URL",
-	openai_embedding_api_key: "OPENAI_EMBEDDING_API_KEY",
-	default_reply_probability: "DEFAULT_REPLY_PROBABILITY",
-	enable_spontaneous_replies: "ENABLE_SPONTANEOUS_REPLIES",
-	chat_history_limit: "CHAT_HISTORY_LIMIT",
-	enable_code_execution: "ENABLE_CODE_EXECUTION",
-	enable_fetch_url: "ENABLE_FETCH_URL",
-	sandbox_url: "SANDBOX_URL",
-	sandbox_timeout_ms: "SANDBOX_TIMEOUT_MS",
-	max_agent_steps: "MAX_AGENT_STEPS",
-	log_level: "LOG_LEVEL",
-};
-
-const VALID_LOG_LEVELS = new Set(["debug", "info", "warn", "error"]);
-
-const sanitizeStr = (raw: unknown) =>
-	typeof raw === "string" ? raw.trim() || undefined : undefined;
-const sanitizeOptionalStr = (raw: unknown) =>
-	typeof raw === "string" ? raw.trim() : undefined;
-const sanitizeBool = (raw: unknown) =>
-	typeof raw === "boolean" ? raw : undefined;
-const sanitizeNum =
-	(min: number, max: number, round = true) =>
-	(raw: unknown) => {
-		if (typeof raw !== "number" || Number.isNaN(raw)) return undefined;
-		const clamped = Math.min(max, Math.max(min, raw));
-		return round ? Math.round(clamped) : clamped;
-	};
-
-const SETTING_SANITIZERS: Record<
-	keyof BotSettingsUpdate,
-	(raw: unknown) => unknown
-> = {
-	log_level: (raw) => {
-		const lower = typeof raw === "string" ? raw.toLowerCase() : "";
-		return VALID_LOG_LEVELS.has(lower) ? lower : undefined;
-	},
-	openai_model: sanitizeStr,
-	openai_base_url: sanitizeStr,
-	openai_api_key: sanitizeStr,
-	openai_embedding_model: sanitizeStr,
-	openai_embedding_base_url: sanitizeOptionalStr,
-	openai_embedding_api_key: sanitizeOptionalStr,
-	sandbox_url: sanitizeStr,
-	enable_spontaneous_replies: sanitizeBool,
-	enable_code_execution: sanitizeBool,
-	enable_fetch_url: sanitizeBool,
-	default_reply_probability: sanitizeNum(0, 1, false),
-	chat_history_limit: sanitizeNum(1, 100),
-	max_agent_steps: sanitizeNum(1, 100),
-	sandbox_timeout_ms: sanitizeNum(1000, 300000),
-};
-
-function sanitizeSettingValue(
-	key: keyof BotSettingsUpdate,
-	raw: unknown,
-): unknown {
-	return SETTING_SANITIZERS[key]?.(raw);
-}
-
-export function getBotSettingsSnapshot() {
-	return {
-		openai_model: CONFIG.OPENAI_MODEL,
-		openai_base_url: CONFIG.OPENAI_BASE_URL,
-		openai_embedding_model: CONFIG.OPENAI_EMBEDDING_MODEL,
-		openai_embedding_base_url: CONFIG.OPENAI_EMBEDDING_BASE_URL,
-		default_reply_probability: CONFIG.DEFAULT_REPLY_PROBABILITY,
-		enable_spontaneous_replies: CONFIG.ENABLE_SPONTANEOUS_REPLIES,
-		chat_history_limit: CONFIG.CHAT_HISTORY_LIMIT,
-		enable_code_execution: CONFIG.ENABLE_CODE_EXECUTION,
-		enable_fetch_url: CONFIG.ENABLE_FETCH_URL,
-		max_agent_steps: CONFIG.MAX_AGENT_STEPS,
-		log_level: CONFIG.LOG_LEVEL,
-	};
-}
-
-/**
- * Updates bot configuration settings and persists changes to config.json.
- */
 export function updateBotSettings(settings: BotSettingsUpdate): void {
-	const configRecord = CONFIG as Record<string, unknown>;
-	const jsonRecord = configJson as Record<string, unknown>;
-	let changed = false;
-
-	for (const [jsonKey, configKey] of Object.entries(SETTINGS_KEY_MAP) as Array<
-		[keyof BotSettingsUpdate, keyof typeof CONFIG]
-	>) {
-		const sanitized = sanitizeSettingValue(jsonKey, settings[jsonKey]);
-		if (sanitized !== undefined && configRecord[configKey] !== sanitized) {
-			configRecord[configKey] = sanitized;
-			jsonRecord[jsonKey] = sanitized;
-			changed = true;
-		}
-	}
-
-	if (!changed) return;
-
-	try {
-		writeFileSync(
-			CONFIG_FILE_PATH,
-			JSON.stringify(configJson, null, 2),
-			"utf-8",
-		);
-	} catch (e) {
-		console.error("[Config] Error writing config.json:", e);
-	}
+	if (!applySettings(CONFIG, rawConfig, settings)) return;
+	persistConfig(rawConfig);
 }

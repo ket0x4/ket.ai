@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import util from "node:util";
+import { IS_TEST } from "../config/env.js";
 import { CONFIG } from "../config/index.js";
 
 type LogLevel = "debug" | "info" | "warn" | "error";
@@ -38,8 +39,7 @@ class Logger {
 	constructor() {
 		this.logDir = path.resolve(process.cwd(), CONFIG.LOG_DIR);
 		this.minLevel = CONFIG.LOG_LEVEL;
-		this.isTestEnv =
-			process.env.NODE_ENV === "test" || process.env.BUN_ENV === "test";
+		this.isTestEnv = IS_TEST;
 
 		const maxMb = CONFIG.LOG_MAX_SIZE_MB;
 		this.maxBytes =
