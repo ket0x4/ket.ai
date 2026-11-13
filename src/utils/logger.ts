@@ -1,151 +1,47 @@
 import fs from "node:fs";
 import path from "node:path";
-import util from "node:util";
 import { IS_TEST } from "../config/env.js";
 import { CONFIG } from "../config/index.js";
-
-type LogLevel = "debug" | "info" | "warn" | "error";
-
-const LOG_LEVEL_SEVERITY: Record<LogLevel, number> = {
-	debug: 0,
-	info: 1,
-	warn: 2,
-	error: 3,
-};
-
-const COLOR_CODES: Record<LogLevel, string> = {
-	debug: "\x1b[36m", // Cyan
-	info: "\x1b[32m", // Green
-	warn: "\x1b[33m", // Yellow
-	error: "\x1b[31m", // Red
-};
-const RESET_COLOR = "\x1b[0m";
-
-type LogSink = "app" | "error";
+import {
+	formatArgs,
+	formatConsoleLine,
+	formatFileLine,
+	formatTimestamp,
+} from "./log/format";
+import { LOG_LEVEL_SEVERITY } from "./log/levels";
+import { RotatingFileSink } from "./log/sink";
+import type { LogLevel } from "./log/types";
 
 class Logger {
-	private logDir: string;
-	private minLevel: LogLevel;
-	private appLogPath: string;
-	private errorLogPath: string;
-	private maxBytes: number;
-	private isTestEnv: boolean;
-	private appBytes = 0;
-	private errorBytes = 0;
+	private readonly appSink: RotatingFileSink;
+	private readonly errorSink: RotatingFileSink;
+	private readonly isTestEnv: boolean;
 	private appBuffer: string[] = [];
 	private errorBuffer: string[] = [];
 	private flushScheduled = false;
 
 	constructor() {
-		this.logDir = path.resolve(process.cwd(), CONFIG.LOG_DIR);
-		this.minLevel = CONFIG.LOG_LEVEL;
 		this.isTestEnv = IS_TEST;
 
-		const maxMb = CONFIG.LOG_MAX_SIZE_MB;
-		this.maxBytes =
-			typeof maxMb === "number" && maxMb > 0 ? maxMb * 1024 * 1024 : 0;
-
-		this.appLogPath = path.join(this.logDir, "app.log");
-		this.errorLogPath = path.join(this.logDir, "error.log");
-
-		if (!fs.existsSync(this.logDir)) {
-			fs.mkdirSync(this.logDir, { recursive: true });
+		const logDir = path.resolve(process.cwd(), CONFIG.LOG_DIR);
+		if (!fs.existsSync(logDir)) {
+			fs.mkdirSync(logDir, { recursive: true });
 		}
 
-		this.appBytes = this.safeSize(this.appLogPath);
-		this.errorBytes = this.safeSize(this.errorLogPath);
+		const maxBytes = CONFIG.LOG_MAX_SIZE_MB * 1024 * 1024;
+		this.appSink = new RotatingFileSink(path.join(logDir, "app.log"), maxBytes);
+		this.errorSink = new RotatingFileSink(
+			path.join(logDir, "error.log"),
+			maxBytes,
+		);
 	}
 
-	private safeSize(filePath: string): number {
-		try {
-			return fs.statSync(filePath).size;
-		} catch {
-			return 0;
-		}
-	}
-
-	private formatTimestamp(): string {
-		const d = new Date();
-		const pad = (n: number) => n.toString().padStart(2, "0");
-		const ms = d.getMilliseconds().toString().padStart(3, "0");
-		return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${ms}`;
-	}
-
-	private formatArgs(args: unknown[]): string {
-		if (args.length === 0) return "";
-		return args
-			.map((arg) => {
-				if (arg instanceof Error) {
-					return arg.stack || arg.message;
-				}
-				if (typeof arg === "object" && arg !== null) {
-					return util.inspect(arg, { depth: 4, colors: false });
-				}
-				return String(arg);
-			})
-			.join(" ");
-	}
-
-	private currentBytes(sink: LogSink): number {
-		return sink === "app" ? this.appBytes : this.errorBytes;
-	}
-
-	private addBytes(sink: LogSink, bytes: number): void {
-		if (sink === "app") this.appBytes += bytes;
-		else this.errorBytes += bytes;
-	}
-
-	/** Rotates `<file>.log` to `<file>.log.1` once the size limit would be exceeded. */
-	private rotateIfNeeded(
-		filePath: string,
-		sink: LogSink,
-		incomingBytes: number,
-	): void {
-		if (this.maxBytes <= 0) return;
-		if (this.currentBytes(sink) + incomingBytes <= this.maxBytes) return;
-
-		try {
-			const rotated = `${filePath}.1`;
-			fs.rmSync(rotated, { force: true });
-			fs.renameSync(filePath, rotated);
-		} catch {
-			// Rotation is best-effort; on failure we keep appending to the same file.
-		}
-		if (sink === "app") this.appBytes = 0;
-		else this.errorBytes = 0;
-	}
-
-	private prepareAppend(
-		filePath: string,
-		sink: LogSink,
-		lines: string[],
-	): string | null {
-		if (lines.length === 0) return null;
-		const data = `${lines.join("\n")}\n`;
-		const bytes = Buffer.byteLength(data);
-		this.rotateIfNeeded(filePath, sink, bytes);
-		this.addBytes(sink, bytes);
-		return data;
-	}
-
-	/** Non-blocking batched append used in production. */
-	private appendAsync(filePath: string, sink: LogSink, lines: string[]): void {
-		const data = this.prepareAppend(filePath, sink, lines);
-		if (!data) return;
-		fs.appendFile(filePath, data, (e) => {
-			if (e) console.error(`[Logger] Failed to write log to ${filePath}:`, e);
-		});
-	}
-
-	/** Synchronous append used in tests so logs are readable immediately. */
-	private appendSync(filePath: string, sink: LogSink, lines: string[]): void {
-		const data = this.prepareAppend(filePath, sink, lines);
-		if (!data) return;
-		try {
-			fs.appendFileSync(filePath, data, "utf-8");
-		} catch (e) {
-			console.error(`[Logger] Failed to write log to ${filePath}:`, e);
-		}
+	private drain(): { app: string[]; error: string[] } {
+		const app = this.appBuffer;
+		const error = this.errorBuffer;
+		this.appBuffer = [];
+		this.errorBuffer = [];
+		return { app, error };
 	}
 
 	private scheduleFlush(): void {
@@ -154,56 +50,45 @@ class Logger {
 		setImmediate(() => this.flush());
 	}
 
-	/** Flushes buffered log lines to disk without blocking the event loop. */
+	/** Flushes buffered lines without blocking the event loop. */
 	public flush(): void {
 		this.flushScheduled = false;
-		const appLines = this.appBuffer;
-		const errorLines = this.errorBuffer;
-		this.appBuffer = [];
-		this.errorBuffer = [];
-		this.appendAsync(this.appLogPath, "app", appLines);
-		this.appendAsync(this.errorLogPath, "error", errorLines);
+		const { app, error } = this.drain();
+		this.appSink.write(app, false);
+		this.errorSink.write(error, false);
 	}
 
 	/** Synchronously flushes buffers; use during shutdown to avoid losing logs. */
 	public flushSync(): void {
 		this.flushScheduled = false;
-		const appLines = this.appBuffer;
-		const errorLines = this.errorBuffer;
-		this.appBuffer = [];
-		this.errorBuffer = [];
-		this.appendSync(this.appLogPath, "app", appLines);
-		this.appendSync(this.errorLogPath, "error", errorLines);
+		const { app, error } = this.drain();
+		this.appSink.write(app, true);
+		this.errorSink.write(error, true);
 	}
 
 	public log(level: LogLevel, message: string, ...args: unknown[]): void {
-		const activeMinLevel = CONFIG.LOG_LEVEL || this.minLevel;
-		if (LOG_LEVEL_SEVERITY[level] < LOG_LEVEL_SEVERITY[activeMinLevel]) {
+		if (LOG_LEVEL_SEVERITY[level] < LOG_LEVEL_SEVERITY[CONFIG.LOG_LEVEL]) {
 			return;
 		}
 
-		const timestamp = this.formatTimestamp();
-		const formattedMeta = this.formatArgs(args);
-		const fullText = formattedMeta ? `${message} ${formattedMeta}` : message;
+		const timestamp = formatTimestamp();
+		const argsText = formatArgs(args);
+		const fullText = argsText ? `${message} ${argsText}` : message;
 
-		const color = COLOR_CODES[level];
-		const levelBadge = `[${level.toUpperCase()}]`.padEnd(7);
-		const consoleMsg = `${timestamp} ${color}${levelBadge}${RESET_COLOR} ${fullText}`;
-
+		const consoleLine = formatConsoleLine(level, timestamp, fullText);
 		if (level === "error") {
-			console.error(consoleMsg);
+			console.error(consoleLine);
 		} else if (level === "warn") {
-			console.warn(consoleMsg);
+			console.warn(consoleLine);
 		} else {
-			console.log(consoleMsg);
+			console.log(consoleLine);
 		}
 
-		const fileLine = `${timestamp} [${level.toUpperCase().padEnd(5)}] ${fullText}`;
-
+		const fileLine = formatFileLine(level, timestamp, fullText);
 		if (this.isTestEnv) {
-			this.appendSync(this.appLogPath, "app", [fileLine]);
+			this.appSink.write([fileLine], true);
 			if (level === "warn" || level === "error") {
-				this.appendSync(this.errorLogPath, "error", [fileLine]);
+				this.errorSink.write([fileLine], true);
 			}
 			return;
 		}
