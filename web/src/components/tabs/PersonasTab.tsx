@@ -10,15 +10,9 @@ import {
 import { Button, Card } from "@/components/ui";
 import { useAsyncAction } from "@/hooks/useAsyncAction";
 import { api } from "@/lib/api";
-<<<<<<< Updated upstream
-import { cn, getChatDisplayName, normalizeSearchText } from "@/lib/utils";
-=======
 import { DEFAULT_PERSONA_ID } from "@/lib/constants";
 import { cn, normalizeSearchText } from "@/lib/utils";
->>>>>>> Stashed changes
 import type { BaseTabProps, Persona } from "@/types";
-
-const DEFAULT_PERSONA_ID = "ket-default";
 
 interface PersonaCardProps {
 	persona: Persona;
@@ -80,44 +74,6 @@ const PersonaCard: FC<PersonaCardProps> = ({
 					{isActive ? "Active" : "Use"}
 				</Button>
 
-<<<<<<< Updated upstream
-				<div className="flex items-center justify-between gap-2 border-t border-border/60 pt-3">
-					<Button
-						size="sm"
-						variant={isActive ? "secondary" : "outline"}
-						disabled={isActive || isSelecting || !selectedChatId}
-						onClick={() =>
-							onSelect(persona.id === DEFAULT_PERSONA_ID ? null : persona.id)
-						}
-						className="flex-1"
-					>
-						{isActive ? "Active here" : "Use here"}
-					</Button>
-
-					{canEdit && (
-						<div className="flex items-center gap-0.5">
-							<Button
-								size="icon"
-								variant="ghost"
-								className="h-7 w-7"
-								onClick={() => onEdit(persona)}
-								title="Edit"
-							>
-								<Edit3 className="h-3.5 w-3.5" />
-							</Button>
-							<Button
-								size="icon"
-								variant="ghost"
-								className="h-7 w-7 hover:text-destructive"
-								onClick={() => onDelete(persona)}
-								title="Delete"
-							>
-								<Trash2 className="h-3.5 w-3.5" />
-							</Button>
-						</div>
-					)}
-				</div>
-=======
 				{canEdit && (
 					<div className="flex items-center gap-0.5">
 						<Button
@@ -140,7 +96,6 @@ const PersonaCard: FC<PersonaCardProps> = ({
 						</Button>
 					</div>
 				)}
->>>>>>> Stashed changes
 			</div>
 		</Card>
 	);

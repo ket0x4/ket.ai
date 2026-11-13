@@ -23,7 +23,7 @@ import { api } from "@/lib/api";
 import {
 	cleanMemoryText,
 	cn,
-	formatDate,
+	formatRelativeTime,
 	getChatDisplayName,
 	normalizeSearchText,
 } from "@/lib/utils";
@@ -77,7 +77,7 @@ const MemoryCard: FC<MemoryCardProps> = ({
 						)}
 					</div>
 					<span className="shrink-0 font-mono tnum">
-						{formatDate(memory.created_at)}
+						{formatRelativeTime(memory.created_at)}
 					</span>
 				</div>
 

@@ -2,6 +2,8 @@ import { Crown, ShieldCheck, User as UserIcon } from "lucide-react";
 import type { ElementType } from "react";
 import type { MemoryCategory, UserRole } from "@/types";
 
+export const DEFAULT_PERSONA_ID = "ket-default";
+
 export interface CategoryMeta {
 	value: MemoryCategory;
 	label: string;

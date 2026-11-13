@@ -1,65 +1,29 @@
 import { CONFIG } from "../../config/index";
 import { db } from "../index";
+import { normalizePersonaId } from "../personaDefaults";
+import {
+	invalidatePersonaCaches,
+	readActivePersonaMap,
+	readPersonaCaches,
+	updateCachedActivePersona,
+} from "./cache";
 import { stmts } from "./statements";
 import type { PersonaRow, RepositorySelf } from "./types";
-
-export const DEFAULT_PERSONA_ID = "ket-default";
-
-let personasListCache: PersonaRow[] | null = null;
-let personasByIdCache: Map<string, PersonaRow> | null = null;
-let chatActivePersonaCache: Map<string, string> | null = null;
-
-export function invalidatePersonaCaches(): void {
-	personasListCache = null;
-	personasByIdCache = null;
-	chatActivePersonaCache = null;
-}
-
-function getPersonaCache(): {
-	list: PersonaRow[];
-	byId: Map<string, PersonaRow>;
-} {
-	if (!personasListCache || !personasByIdCache) {
-		const rows = stmts.getAllPersonas.all() as PersonaRow[];
-		personasListCache = rows;
-		personasByIdCache = new Map(rows.map((r) => [r.id, r]));
-	}
-	return { list: personasListCache, byId: personasByIdCache };
-}
-
-function getActivePersonaMapCache(): Map<string, string> {
-	if (!chatActivePersonaCache) {
-		const rows = stmts.getAllChatActivePersonas.all() as Array<{
-			chat_id: string;
-			active_persona_id: string;
-		}>;
-		const map = new Map<string, string>();
-		for (const row of rows) {
-			if (
-				row.active_persona_id &&
-				row.active_persona_id !== DEFAULT_PERSONA_ID
-			) {
-				map.set(row.chat_id, row.active_persona_id);
-			}
-		}
-		chatActivePersonaCache = map;
-	}
-	return chatActivePersonaCache;
-}
 
 export const personaMethods = {
 	/**
 	 * Retrieves all available personas (system presets + custom user-created).
 	 */
 	getAllPersonas(): PersonaRow[] {
-		return getPersonaCache().list;
+		// Copy the cached list so callers cannot mutate shared cache state.
+		return [...readPersonaCaches().list];
 	},
 
 	/**
 	 * Retrieves a specific persona by its unique ID.
 	 */
 	getPersonaById(id: string): PersonaRow | null {
-		return getPersonaCache().byId.get(id) ?? null;
+		return readPersonaCaches().byId.get(id) ?? null;
 	},
 
 	/**
@@ -72,7 +36,6 @@ export const personaMethods = {
 			name: string;
 			description?: string | null;
 			prompt: string;
-			isSystem?: boolean;
 			createdBy?: number | null;
 		},
 	): PersonaRow {
@@ -80,7 +43,6 @@ export const personaMethods = {
 			params.id ||
 			`custom_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
 		const now = Math.floor(Date.now() / 1000);
-		const isSys = params.isSystem ? 1 : 0;
 		const name = params.name.trim();
 		const description = params.description?.trim() || null;
 		const prompt = params.prompt.trim();
@@ -91,7 +53,7 @@ export const personaMethods = {
 			name,
 			description,
 			prompt,
-			isSys,
+			0,
 			createdBy,
 			now,
 			now,
@@ -103,7 +65,7 @@ export const personaMethods = {
 			name,
 			description,
 			prompt,
-			is_system: isSys,
+			is_system: 0,
 			created_by: createdBy,
 			created_at: now,
 			updated_at: now,
@@ -111,7 +73,7 @@ export const personaMethods = {
 	},
 
 	/**
-	 * Updates an existing custom persona.
+	 * Updates an existing custom persona. System personas are immutable.
 	 */
 	updatePersona(
 		this: RepositorySelf,
@@ -123,7 +85,7 @@ export const personaMethods = {
 		},
 	): PersonaRow | null {
 		const existing = this.getPersonaById(id);
-		if (!existing) return null;
+		if (!existing || existing.is_system === 1) return null;
 
 		const name =
 			updates.name !== undefined ? updates.name.trim() : existing.name;
@@ -173,7 +135,7 @@ export const personaMethods = {
 		this: RepositorySelf,
 		chatId: string,
 	): PersonaRow | null {
-		const activeId = getActivePersonaMapCache().get(chatId);
+		const activeId = readActivePersonaMap().get(chatId);
 		if (!activeId) return null;
 		return this.getPersonaById(activeId);
 	},
@@ -185,8 +147,8 @@ export const personaMethods = {
 		this: RepositorySelf,
 		chatIds?: Iterable<string>,
 	): Record<string, string | null> {
-		const activeMap = getActivePersonaMapCache();
-		const { byId } = getPersonaCache();
+		const activeMap = readActivePersonaMap();
+		const { byId } = readPersonaCaches();
 		const result: Record<string, string | null> = {};
 
 		if (!chatIds) {
@@ -213,8 +175,7 @@ export const personaMethods = {
 		chatId: string,
 		personaId: string | null,
 	): boolean {
-		const normalizedId =
-			personaId && personaId !== DEFAULT_PERSONA_ID ? personaId : null;
+		const normalizedId = normalizePersonaId(personaId);
 
 		if (normalizedId && !this.getPersonaById(normalizedId)) {
 			return false;
@@ -224,13 +185,7 @@ export const personaMethods = {
 		stmts.insertChat.run(chatId, "", CONFIG.DEFAULT_REPLY_PROBABILITY, 0, now);
 		stmts.setChatActivePersona.run(normalizedId, chatId);
 
-		if (chatActivePersonaCache) {
-			if (normalizedId) {
-				chatActivePersonaCache.set(chatId, normalizedId);
-			} else {
-				chatActivePersonaCache.delete(chatId);
-			}
-		}
+		updateCachedActivePersona(chatId, normalizedId);
 		return true;
 	},
 };

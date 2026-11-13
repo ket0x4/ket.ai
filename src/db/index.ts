@@ -3,6 +3,7 @@ import { existsSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { CONFIG } from "../config/index";
 import logger from "../utils/logger";
+import { DEFAULT_PERSONA_ID, DEFAULT_PERSONA_SEED } from "./personaDefaults";
 
 // Ensure database directory exists with local fallback if root path is not writable (e.g. /app in Docker vs local macOS)
 let dbPath = CONFIG.DB_PATH;
@@ -112,7 +113,6 @@ function runMigrations() {
       name TEXT NOT NULL,
       description TEXT,
       prompt TEXT NOT NULL,
-      emoji TEXT DEFAULT '',
       is_system INTEGER DEFAULT 0,
       created_by INTEGER,
       created_at INTEGER NOT NULL,
@@ -124,6 +124,20 @@ function runMigrations() {
     CREATE INDEX IF NOT EXISTS idx_personas_created_by
     ON personas(created_by);
   `);
+
+	// Drop the unused legacy `emoji` column from databases created before it was
+	// removed from the schema. `ALTER TABLE ... DROP COLUMN` needs SQLite 3.35+.
+	try {
+		const personaColumns = db
+			.prepare("PRAGMA table_info(personas)")
+			.all() as Array<{ name: string }>;
+		if (personaColumns.some((col) => col.name === "emoji")) {
+			db.run("ALTER TABLE personas DROP COLUMN emoji");
+			logger.info("[DB Migration] Dropped unused personas.emoji column.");
+		}
+	} catch (e) {
+		logger.debug("[DB Migration] personas emoji cleanup skipped:", e);
+	}
 
 	db.run(`
     CREATE TABLE IF NOT EXISTS messages (
@@ -245,9 +259,12 @@ function seedDefaultPersonas() {
 	const now = Math.floor(Date.now() / 1000);
 
 	try {
-		db.run("DELETE FROM personas WHERE is_system = 1 AND id != 'ket-default'");
+		db.run("DELETE FROM personas WHERE is_system = 1 AND id != ?", [
+			DEFAULT_PERSONA_ID,
+		]);
 		db.run(
-			"UPDATE chats SET active_persona_id = NULL WHERE active_persona_id IS NOT NULL AND (active_persona_id = 'ket-default' OR active_persona_id NOT IN (SELECT id FROM personas))",
+			"UPDATE chats SET active_persona_id = NULL WHERE active_persona_id IS NOT NULL AND (active_persona_id = ? OR active_persona_id NOT IN (SELECT id FROM personas))",
+			[DEFAULT_PERSONA_ID],
 		);
 	} catch (e) {
 		logger.debug("[DB Seed] Clean legacy system personas skipped:", e);
@@ -264,10 +281,10 @@ function seedDefaultPersonas() {
 
 	try {
 		insertStmt.run(
-			"ket-default",
-			"ket.ai Standard",
-			"Default smart, witty, and balanced ket.ai conversation style.",
-			"Be a friendly, smart, witty, and natural conversation partner. Use fluent, modern, and natural language, avoiding robotic or artificial phrases. Never use emojis in your responses.",
+			DEFAULT_PERSONA_SEED.id,
+			DEFAULT_PERSONA_SEED.name,
+			DEFAULT_PERSONA_SEED.description,
+			DEFAULT_PERSONA_SEED.prompt,
 			now,
 			now,
 		);

@@ -1,4 +1,6 @@
-import type { MemoryItem } from "./types";
+import { DEFAULT_PERSONA_ID } from "../personaDefaults";
+import { stmts } from "./statements";
+import type { MemoryItem, PersonaRow } from "./types";
 
 // Read-through cache for memory rows. Memory retrieval previously re-read every
 // embedding BLOB from SQLite (up to 10k rows x 3072 floats) on *every* inbound
@@ -81,4 +83,60 @@ export function readThroughUserMemories(
 	}
 
 	return items;
+}
+
+// Personas are few and change rarely, so they are cached read-through until any
+// persona or chat-assignment mutation invalidates the whole snapshot.
+let personasListCache: PersonaRow[] | null = null;
+let personasByIdCache: Map<string, PersonaRow> | null = null;
+let chatActivePersonaCache: Map<string, string> | null = null;
+
+export function invalidatePersonaCaches(): void {
+	personasListCache = null;
+	personasByIdCache = null;
+	chatActivePersonaCache = null;
+}
+
+export function readPersonaCaches(): {
+	list: PersonaRow[];
+	byId: Map<string, PersonaRow>;
+} {
+	if (!personasListCache || !personasByIdCache) {
+		const rows = stmts.getAllPersonas.all() as PersonaRow[];
+		personasListCache = rows;
+		personasByIdCache = new Map(rows.map((row) => [row.id, row]));
+	}
+	return { list: personasListCache, byId: personasByIdCache };
+}
+
+export function readActivePersonaMap(): Map<string, string> {
+	if (!chatActivePersonaCache) {
+		const rows = stmts.getAllChatActivePersonas.all() as Array<{
+			chat_id: string;
+			active_persona_id: string;
+		}>;
+		const map = new Map<string, string>();
+		for (const row of rows) {
+			if (
+				row.active_persona_id &&
+				row.active_persona_id !== DEFAULT_PERSONA_ID
+			) {
+				map.set(row.chat_id, row.active_persona_id);
+			}
+		}
+		chatActivePersonaCache = map;
+	}
+	return chatActivePersonaCache;
+}
+
+export function updateCachedActivePersona(
+	chatId: string,
+	personaId: string | null,
+): void {
+	if (!chatActivePersonaCache) return;
+	if (personaId) {
+		chatActivePersonaCache.set(chatId, personaId);
+	} else {
+		chatActivePersonaCache.delete(chatId);
+	}
 }

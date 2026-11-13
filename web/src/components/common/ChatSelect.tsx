@@ -46,8 +46,8 @@ export const ChatSelect: FC<ChatSelectProps> = ({
 }) => {
 	const currentUserIdStr = currentUser ? currentUser.id.toString() : null;
 	const defaultPersonalLabel = currentUser
-		? `Personal Profile (${currentUser.first_name || "Me"})`
-		: "Personal Profile";
+		? `${currentUser.first_name || "Me"} (you)`
+		: "Personal";
 
 	const filteredChats =
 		includePersonalOption && currentUserIdStr

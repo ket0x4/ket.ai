@@ -1,6 +1,6 @@
 import type { AuthContext, TelegramUser } from "../../../web/src/types";
+import { normalizePersonaId } from "../../db/personaDefaults";
 import { Repository } from "../../db/repository";
-import { DEFAULT_PERSONA_ID } from "../../db/repository/personas";
 import logger from "../../utils/logger";
 import { errorResponse, jsonResponse } from "../http";
 
@@ -33,11 +33,7 @@ function requireAuthUser(auth: AuthContext): TelegramUser | null {
 }
 
 type PersonaLookupResult =
-	| {
-			success: true;
-			id: string;
-			persona: NonNullable<ReturnType<typeof Repository.getPersonaById>>;
-	  }
+	| { success: true; id: string }
 	| { success: false; response: Response };
 
 function resolvePersonaForMutation(
@@ -87,7 +83,7 @@ function resolvePersonaForMutation(
 		};
 	}
 
-	return { success: true, id, persona };
+	return { success: true, id };
 }
 
 async function handlePersonaCreate(
@@ -109,7 +105,6 @@ async function handlePersonaCreate(
 			name: personaName,
 			description: payload.description,
 			prompt: personaPrompt,
-			isSystem: false,
 			createdBy: user.id,
 		});
 
@@ -197,8 +192,7 @@ async function handlePersonaSelect(
 			);
 		}
 
-		const normalizedId =
-			personaId && personaId !== DEFAULT_PERSONA_ID ? personaId : null;
+		const normalizedId = normalizePersonaId(personaId);
 
 		if (normalizedId && !Repository.getPersonaById(normalizedId)) {
 			return errorResponse("Persona not found", 404);
