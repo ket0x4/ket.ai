@@ -3,7 +3,7 @@ import { existsSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { CONFIG } from "../config/index";
 import logger from "../utils/logger";
-import { runMigrations } from "./migrations";
+import { createSchema } from "./schema";
 import { seedDefaultPersonas } from "./seed";
 
 // Ensure the database directory exists. Fall back to a local data directory
@@ -32,5 +32,5 @@ db.run("PRAGMA temp_store=MEMORY");
 db.run("PRAGMA busy_timeout=5000");
 db.run("PRAGMA foreign_keys=ON");
 
-runMigrations(db);
+createSchema(db);
 seedDefaultPersonas(db);
