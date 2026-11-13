@@ -7,13 +7,13 @@ import {
 import { CONFIG } from "../config";
 import { Repository } from "../db/repository/index";
 import { withChatLock, withTyping } from "../services/bot/index";
+import { type GeneratedMediaArtifact, LlmService } from "../services/llm/index";
+import { isDirectMediaInteraction } from "../services/mediaHelper";
+import { checkAndRunBackgroundMemoryExtraction } from "../services/memory/memoryWorker";
 import {
 	prepareDocumentContext,
 	stageDocumentInWorkspace,
-} from "../services/gemini/documentPerception";
-import { checkAndRunBackgroundMemoryExtraction } from "../services/gemini/memoryWorker";
-import { type GeneratedMediaArtifact, LlmService } from "../services/llm/index";
-import { isDirectMediaInteraction } from "../services/mediaHelper";
+} from "../services/perception/documentPerception";
 import logger from "../utils/logger";
 import {
 	downloadTelegramFile,

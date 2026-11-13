@@ -2,7 +2,7 @@ import type { AgentEventHandler } from "../../agent/events";
 import type { RawFunctionCall } from "../../agent/functionCalls";
 import type { FunctionDeclaration } from "../../agent/types";
 import type { MessageRow } from "../../db/repository";
-import type { PreparedDocumentContext } from "../gemini/documentPerception";
+import type { PreparedDocumentContext } from "../perception/documentPerception";
 
 export interface ChatMessage {
 	role: "system" | "user" | "assistant" | "tool";
@@ -20,24 +20,17 @@ export interface LlmChatOptions {
 	responseFormat?: "text" | "json";
 	jsonSchema?: Record<string, unknown>;
 	systemInstruction?: string;
-	/**
-	 * Enables the provider's "reasoning" mode for multi-step agent turns.
-	 * Providers that have no such concept ignore this.
-	 */
-	agenticThinking?: boolean;
 }
 
 export interface LlmChatResult {
 	text: string;
 	toolCalls: RawFunctionCall[];
-	/** Raw provider response fragments, kept for finish-reason / block inspection. */
+	/** Raw provider response fragments, kept for finish-reason inspection. */
 	choices?: unknown[];
-	candidates?: unknown[];
-	promptFeedback?: { blockReason?: unknown };
 }
 
 export interface LlmProvider {
-	readonly name: "gemini" | "openai";
+	readonly name: "openai";
 	/** Single-turn or agent-step model call with optional tool use. */
 	chat(
 		messages: ChatMessage[],

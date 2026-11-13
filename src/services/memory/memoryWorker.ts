@@ -1,7 +1,7 @@
 import type { MessageRow } from "../../db/repository";
 import { Repository } from "../../db/repository";
 import logger from "../../utils/logger";
-import { getLlmProvider } from "../llm/index";
+import { openAiProvider } from "../llm/openAiProvider";
 import { processNewMemory } from "./memory";
 
 const MEMORY_UPDATE_ITEM_SCHEMA = {
@@ -151,7 +151,7 @@ async function runBackgroundMemoryExtraction(chatIdStr: string): Promise<void> {
 	);
 
 	try {
-		const extractedList = await getLlmProvider().generateStructured<unknown[]>(
+		const extractedList = await openAiProvider.generateStructured<unknown[]>(
 			prompt,
 			getExtractionSchema(),
 			"You are a quiet background memory analyzer for a Telegram group bot. Extract factual details about users. Output strictly JSON.",

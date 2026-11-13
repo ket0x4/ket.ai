@@ -1,13 +1,14 @@
 # Ket AI - Telegram Bot
 
 Ket is an AI bot that joins Telegram groups and chats like a fun, opinionated
-buddy rather than a formal assistant. It is powered by Google Gemini, follows
-the conversation, remembers context, and can jump in on its own.
+buddy rather than a formal assistant. It is powered by any OpenAI API-compatible
+LLM endpoint, follows the conversation, remembers context, and can jump in on
+its own.
 
 ## Features
 
-- Gemini-backed replies (`gemini-3.8-flash` / `gemini-3.5-flash-lite`) with
-  conversation context.
+- Replies through any OpenAI-compatible API (OpenAI, llama-server, vLLM, etc.)
+  with conversation context.
 - Hybrid vector memory (RAG) per group: up to 10,000 facts, indexed by user,
   ranked by similarity plus recency, with TTL categories and automatic
   replacement of outdated facts.
@@ -34,7 +35,7 @@ the conversation, remembers context, and can jump in on its own.
 - Runtime: Bun
 - Language: TypeScript
 - Database: `bun:sqlite`
-- AI: `@google/genai` (Google Gemini)
+- AI: `openai` SDK (any OpenAI-compatible endpoint)
 - Telegram: grammY (long polling)
 - Containerization: Docker (distroless binary)
 
@@ -45,8 +46,9 @@ Create a `config.json` in the project root:
 ```json
 {
   "telegram_bot_token": "YOUR_TELEGRAM_BOT_TOKEN",
-  "gemini_api_key": "YOUR_GEMINI_API_KEY",
-  "gemini_model": "gemini-3.8-flash",
+  "openai_api_key": "YOUR_OPENAI_API_KEY",
+  "openai_base_url": "http://localhost:8080/v1",
+  "openai_model": "default",
   "bot_owner_id": 123456789,
   "chat_history_limit": 8,
   "default_reply_probability": 0.05
@@ -85,5 +87,5 @@ The Dockerfile compiles the app into a standalone distroless binary.
 
 ## License
 
-Developed for private use. Follow the Telegram API and Google API terms of
+Developed for private use. Follow the Telegram API and OpenAI API terms of
 service when using it.

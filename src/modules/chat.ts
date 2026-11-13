@@ -10,18 +10,18 @@ import { startGeneration } from "../services/bot/generation";
 import { botUsername, withChatLock, withTyping } from "../services/bot/index";
 import { checkRateLimit } from "../services/bot/rateLimit";
 import {
-	type PreparedDocumentContext,
-	prepareDocumentContext,
-	sanitizeDocumentFilename,
-	stageDocumentInWorkspace,
-} from "../services/gemini/documentPerception";
-import { checkAndRunBackgroundMemoryExtraction } from "../services/gemini/memoryWorker";
-import {
 	type GeneratedMediaArtifact,
 	LlmService,
 	type ReplyContextInfo,
 	type TargetMessageInfo,
 } from "../services/llm/index";
+import { checkAndRunBackgroundMemoryExtraction } from "../services/memory/memoryWorker";
+import {
+	type PreparedDocumentContext,
+	prepareDocumentContext,
+	sanitizeDocumentFilename,
+	stageDocumentInWorkspace,
+} from "../services/perception/documentPerception";
 import logger from "../utils/logger";
 import {
 	downloadTelegramFileById,

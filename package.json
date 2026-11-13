@@ -19,7 +19,6 @@
 		"knip": "knip"
 	},
 	"dependencies": {
-		"@google/genai": "^2.21.0",
 		"@grammyjs/runner": "^2.0.3",
 		"grammy": "^1.46.0",
 		"openai": "^7.34.0"

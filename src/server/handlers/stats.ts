@@ -98,11 +98,7 @@ function getOwnerStats(): Response {
 		topChats,
 		uptimeSeconds: Math.floor(process.uptime()),
 		memoryUsageMb: Math.round((memUsage.heapUsed / 1024 / 1024) * 100) / 100,
-		model:
-			CONFIG.LLM_PROVIDER === "openai"
-				? CONFIG.OPENAI_MODEL
-				: CONFIG.GEMINI_MODEL,
-		llm_provider: CONFIG.LLM_PROVIDER,
+		model: CONFIG.OPENAI_MODEL,
 		webSearch: CONFIG.ENABLE_WEB_SEARCH,
 	});
 }

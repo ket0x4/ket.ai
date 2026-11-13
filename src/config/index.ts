@@ -2,12 +2,11 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 
 interface ConfigJson {
 	telegram_bot_token?: string;
-	llm_provider?: "gemini" | "openai";
-	gemini_api_key?: string;
-	gemini_model?: string;
 	openai_api_key?: string;
 	openai_base_url?: string;
 	openai_model?: string;
+	openai_embedding_model?: string;
+	openai_transcribe_model?: string;
 	chat_history_limit?: number;
 	image_history_limit?: number;
 	default_reply_probability?: number;
@@ -20,13 +19,10 @@ interface ConfigJson {
 	sandbox_url?: string;
 	sandbox_timeout_ms?: number;
 	max_agent_steps?: number;
-	max_tool_output_tokens?: number;
-	enable_agent_thinking?: boolean;
 	max_identical_tool_calls?: number;
 	max_tool_failures_per_tool?: number;
 	agent_context_max_chars?: number;
 	enable_fetch_url?: boolean;
-	gemini_min_request_interval_ms?: number;
 	agent_timeout_ms?: number;
 	rate_limit_messages_per_minute?: number;
 	rate_limit_generations_per_minute?: number;
@@ -87,11 +83,10 @@ const DEFAULT_MESSAGES = {
 		"I don't have permission to talk in this group, I'm out! Contact my owner to add me.",
 	private_chat_unauthorized:
 		"Hey I only chat in groups approved by my owner. You can contact my owner to add me to your own group.",
-	gemini_empty_reply_fallback: "I didn't know what to say.",
-	gemini_error_reply_fallback: "My mind went blank, let's talk later.",
-	gemini_empty_image_fallback:
-		"Nice picture, but I didn't know what to say about it.",
-	gemini_error_image_fallback:
+	empty_reply_fallback: "I didn't know what to say.",
+	error_reply_fallback: "My mind went blank, let's talk later.",
+	empty_image_fallback: "Nice picture, but I didn't know what to say about it.",
+	error_image_fallback:
 		"Couldn't check the photo, must have gotten something in my eye.",
 	image_download_failed: "Couldn't download the photo, Telegram blocked it.",
 	image_processing_failed:
@@ -116,17 +111,6 @@ function resolveMessages(
 
 export const CONFIG = {
 	TELEGRAM_BOT_TOKEN: str(configJson.telegram_bot_token, "TELEGRAM_BOT_TOKEN"),
-	LLM_PROVIDER: str(
-		configJson.llm_provider,
-		"LLM_PROVIDER",
-		"gemini",
-	).toLowerCase() as "gemini" | "openai",
-	GEMINI_API_KEY: str(configJson.gemini_api_key, "GEMINI_API_KEY"),
-	GEMINI_MODEL: str(
-		configJson.gemini_model,
-		"GEMINI_MODEL",
-		"gemini-3.8-flash",
-	),
 	OPENAI_API_KEY: str(configJson.openai_api_key, "OPENAI_API_KEY"),
 	OPENAI_BASE_URL: str(
 		configJson.openai_base_url,
@@ -134,6 +118,16 @@ export const CONFIG = {
 		"http://localhost:8080/v1",
 	),
 	OPENAI_MODEL: str(configJson.openai_model, "OPENAI_MODEL", "default"),
+	OPENAI_EMBEDDING_MODEL: str(
+		configJson.openai_embedding_model,
+		"OPENAI_EMBEDDING_MODEL",
+		"text-embedding-3-small",
+	),
+	OPENAI_TRANSCRIBE_MODEL: str(
+		configJson.openai_transcribe_model,
+		"OPENAI_TRANSCRIBE_MODEL",
+		"whisper-1",
+	),
 	CHAT_HISTORY_LIMIT: num(
 		configJson.chat_history_limit,
 		"CHAT_HISTORY_LIMIT",
@@ -176,15 +170,6 @@ export const CONFIG = {
 		45000,
 	),
 	MAX_AGENT_STEPS: num(configJson.max_agent_steps, "MAX_AGENT_STEPS", 50),
-	MAX_TOOL_OUTPUT_TOKENS: num(
-		configJson.max_tool_output_tokens,
-		"MAX_TOOL_OUTPUT_TOKENS",
-		8192,
-	),
-	ENABLE_AGENT_THINKING: bool(
-		configJson.enable_agent_thinking,
-		"ENABLE_AGENT_THINKING",
-	),
 	MAX_IDENTICAL_TOOL_CALLS: num(
 		configJson.max_identical_tool_calls,
 		"MAX_IDENTICAL_TOOL_CALLS",
@@ -201,11 +186,6 @@ export const CONFIG = {
 		28000,
 	),
 	ENABLE_FETCH_URL: bool(configJson.enable_fetch_url, "ENABLE_FETCH_URL"),
-	GEMINI_MIN_REQUEST_INTERVAL_MS: num(
-		configJson.gemini_min_request_interval_ms,
-		"GEMINI_MIN_REQUEST_INTERVAL_MS",
-		3500,
-	),
 	AGENT_TIMEOUT_MS: num(
 		configJson.agent_timeout_ms,
 		"AGENT_TIMEOUT_MS",
@@ -246,7 +226,6 @@ export const CONFIG = {
 // Validate critical config — fail fast if essentials are missing
 const missingKeys: string[] = [];
 if (!CONFIG.TELEGRAM_BOT_TOKEN) missingKeys.push("TELEGRAM_BOT_TOKEN");
-if (!CONFIG.GEMINI_API_KEY) missingKeys.push("GEMINI_API_KEY");
 
 const isTestEnv = env.NODE_ENV === "test" || env.BUN_ENV === "test";
 
@@ -269,8 +248,6 @@ if (
 }
 
 export interface BotSettingsUpdate {
-	llm_provider?: "gemini" | "openai";
-	gemini_model?: string;
 	openai_model?: string;
 	openai_base_url?: string;
 	openai_api_key?: string;
@@ -280,17 +257,13 @@ export interface BotSettingsUpdate {
 	enable_web_search?: boolean;
 	enable_code_execution?: boolean;
 	enable_fetch_url?: boolean;
-	enable_agent_thinking?: boolean;
 	sandbox_url?: string;
 	sandbox_timeout_ms?: number;
 	max_agent_steps?: number;
-	gemini_min_request_interval_ms?: number;
 	log_level?: "debug" | "info" | "warn" | "error";
 }
 
 const SETTINGS_KEY_MAP: Record<keyof BotSettingsUpdate, keyof typeof CONFIG> = {
-	llm_provider: "LLM_PROVIDER",
-	gemini_model: "GEMINI_MODEL",
 	openai_model: "OPENAI_MODEL",
 	openai_base_url: "OPENAI_BASE_URL",
 	openai_api_key: "OPENAI_API_KEY",
@@ -300,11 +273,9 @@ const SETTINGS_KEY_MAP: Record<keyof BotSettingsUpdate, keyof typeof CONFIG> = {
 	enable_web_search: "ENABLE_WEB_SEARCH",
 	enable_code_execution: "ENABLE_CODE_EXECUTION",
 	enable_fetch_url: "ENABLE_FETCH_URL",
-	enable_agent_thinking: "ENABLE_AGENT_THINKING",
 	sandbox_url: "SANDBOX_URL",
 	sandbox_timeout_ms: "SANDBOX_TIMEOUT_MS",
 	max_agent_steps: "MAX_AGENT_STEPS",
-	gemini_min_request_interval_ms: "GEMINI_MIN_REQUEST_INTERVAL_MS",
 	log_level: "LOG_LEVEL",
 };
 
@@ -326,13 +297,10 @@ const SETTING_SANITIZERS: Record<
 	keyof BotSettingsUpdate,
 	(raw: unknown) => unknown
 > = {
-	llm_provider: (raw) =>
-		raw === "gemini" || raw === "openai" ? raw : undefined,
 	log_level: (raw) => {
 		const lower = typeof raw === "string" ? raw.toLowerCase() : "";
 		return VALID_LOG_LEVELS.has(lower) ? lower : undefined;
 	},
-	gemini_model: sanitizeStr,
 	openai_model: sanitizeStr,
 	openai_base_url: sanitizeStr,
 	openai_api_key: sanitizeStr,
@@ -341,12 +309,10 @@ const SETTING_SANITIZERS: Record<
 	enable_web_search: sanitizeBool,
 	enable_code_execution: sanitizeBool,
 	enable_fetch_url: sanitizeBool,
-	enable_agent_thinking: sanitizeBool,
 	default_reply_probability: sanitizeNum(0, 1, false),
 	chat_history_limit: sanitizeNum(1, 100),
 	max_agent_steps: sanitizeNum(1, 100),
 	sandbox_timeout_ms: sanitizeNum(1000, 300000),
-	gemini_min_request_interval_ms: sanitizeNum(0, 60000),
 };
 
 function sanitizeSettingValue(
@@ -358,8 +324,6 @@ function sanitizeSettingValue(
 
 export function getBotSettingsSnapshot() {
 	return {
-		llm_provider: CONFIG.LLM_PROVIDER,
-		gemini_model: CONFIG.GEMINI_MODEL,
 		openai_model: CONFIG.OPENAI_MODEL,
 		openai_base_url: CONFIG.OPENAI_BASE_URL,
 		default_reply_probability: CONFIG.DEFAULT_REPLY_PROBABILITY,
@@ -368,7 +332,6 @@ export function getBotSettingsSnapshot() {
 		enable_web_search: CONFIG.ENABLE_WEB_SEARCH,
 		enable_code_execution: CONFIG.ENABLE_CODE_EXECUTION,
 		enable_fetch_url: CONFIG.ENABLE_FETCH_URL,
-		enable_agent_thinking: CONFIG.ENABLE_AGENT_THINKING,
 		max_agent_steps: CONFIG.MAX_AGENT_STEPS,
 		log_level: CONFIG.LOG_LEVEL,
 	};

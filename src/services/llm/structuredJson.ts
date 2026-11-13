@@ -91,7 +91,7 @@ const normalizedSchemaCache = new WeakMap<object, unknown>();
 
 /**
  * Lowercases JSON Schema type keywords so OpenAI-compatible endpoints accept
- * schemas authored in Gemini's uppercase convention. Results are cached.
+ * schemas authored in the uppercase convention. Results are cached.
  */
 export function normalizeSchemaSafely(schema: unknown): unknown {
 	if (!schema || typeof schema !== "object") return schema;

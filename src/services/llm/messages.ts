@@ -2,8 +2,8 @@ import { CONFIG } from "../../config";
 import type { MessageRow } from "../../db/repository";
 import { cleanUserText, resolveMessageFallback } from "../../utils/text";
 import { botUsername } from "../bot/instance";
-import type { PreparedDocumentContext } from "../gemini/documentPerception";
-import type { RetrievedMemory } from "../gemini/memory";
+import type { RetrievedMemory } from "../memory/memory";
+import type { PreparedDocumentContext } from "../perception/documentPerception";
 import type {
 	ChatMessage,
 	GenerateResponseOptions,
@@ -385,16 +385,16 @@ export function resolveMediaFallbacks(
 		return {
 			instruction:
 				"The user is referring to or asking about the attached photo. Analyze the photo and answer their message/question, or make a natural, fitting comment about the photo in the context of the conversation.",
-			fallbackEmpty: CONFIG.MESSAGES.gemini_empty_image_fallback,
-			fallbackError: CONFIG.MESSAGES.gemini_error_image_fallback,
+			fallbackEmpty: CONFIG.MESSAGES.empty_image_fallback,
+			fallbackError: CONFIG.MESSAGES.error_image_fallback,
 			mediaFallbackText: "[Photo]",
 		};
 	}
 
 	return {
 		instruction: undefined,
-		fallbackEmpty: CONFIG.MESSAGES.gemini_empty_reply_fallback,
-		fallbackError: CONFIG.MESSAGES.gemini_error_reply_fallback,
+		fallbackEmpty: CONFIG.MESSAGES.empty_reply_fallback,
+		fallbackError: CONFIG.MESSAGES.error_reply_fallback,
 		mediaFallbackText: "[Media]",
 	};
 }

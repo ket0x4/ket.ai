@@ -7,8 +7,8 @@ import {
 	getAudioMimeType,
 	isDownloadError,
 } from "../../utils/mediaDownloader";
-import { describeImage, transcribeAudio } from "../gemini/mediaPerception";
-import { checkAndRunBackgroundMemoryExtraction } from "../gemini/memoryWorker";
+import { checkAndRunBackgroundMemoryExtraction } from "../memory/memoryWorker";
+import { describeImage, transcribeAudio } from "../perception/mediaPerception";
 
 async function processBackgroundVoice(
 	ctx: Context,

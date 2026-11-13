@@ -1,7 +1,6 @@
 import { CONFIG } from "../../config";
-import { ai } from "../../services/gemini/client";
-import { getThinkingConfig } from "../../services/gemini/thinking";
-import { geminiRunWithRetry } from "../../services/llm/retry";
+import { getOpenAiClient } from "../../services/llm/client";
+import { runWithRetry } from "../../services/llm/retry";
 import logger from "../../utils/logger";
 import type { AgentTool, ToolExecutionContext } from "../types";
 
@@ -55,25 +54,25 @@ function setCachedSearch(
 }
 
 function buildSearchResults(
-	chunks: Array<{ web?: { uri?: string; title?: string } }>,
+	annotations: Array<{ url?: string; title?: string }>,
 	summary: string,
 ): SearchResult[] {
 	const results: SearchResult[] = [];
 	const seen = new Set<string>();
-	for (const chunk of chunks) {
-		const uri = chunk.web?.uri;
-		if (uri && !seen.has(uri)) {
-			seen.add(uri);
+	for (const annotation of annotations) {
+		const url = annotation.url;
+		if (url && !seen.has(url)) {
+			seen.add(url);
 			results.push({
-				title: chunk.web?.title || "Web Source",
-				url: uri,
+				title: annotation.title || "Web Source",
+				url,
 			});
 		}
 	}
 
 	if (results.length === 0 && summary) {
 		results.push({
-			title: "Google Search Result",
+			title: "Web Search Result",
 			snippet: summary,
 		});
 	}
@@ -81,8 +80,53 @@ function buildSearchResults(
 	return results;
 }
 
+/** Collects url citation annotations from one output_text content block. */
+function collectContentAnnotations(
+	content: {
+		type?: string;
+		annotations?: Array<{ type?: string; url?: string; title?: string }>;
+	},
+	annotations: Array<{ url?: string; title?: string }>,
+): void {
+	if (content?.type !== "output_text") return;
+	for (const annotation of content.annotations ?? []) {
+		if (annotation?.url) {
+			annotations.push({ url: annotation.url, title: annotation.title });
+		}
+	}
+}
+
+/** Collects url citations from the Responses API output message contents. */
+function collectCitations(output: unknown[]): Array<{
+	url?: string;
+	title?: string;
+}> {
+	const annotations: Array<{ url?: string; title?: string }> = [];
+	for (const item of output) {
+		const message = item as {
+			type?: string;
+			content?: Array<{
+				type?: string;
+				annotations?: Array<{
+					type?: string;
+					url?: string;
+					title?: string;
+				}>;
+			}>;
+		};
+		if (message?.type !== "message" || !Array.isArray(message.content)) {
+			continue;
+		}
+		for (const content of message.content) {
+			collectContentAnnotations(content, annotations);
+		}
+	}
+	return annotations;
+}
+
 /**
- * Performs a web search using Gemini API with Google Search Grounding and in-memory caching.
+ * Performs a web search using the OpenAI Responses API web search tool and
+ * in-memory caching.
  */
 async function performWebSearch(
 	query: string,
@@ -109,36 +153,27 @@ async function performWebSearch(
 	}
 
 	try {
-		logger.info(
-			`[WebSearchTool] Running Gemini Google Search for: "${trimmedQuery}"`,
+		logger.info(`[WebSearchTool] Running web search for: "${trimmedQuery}"`);
+
+		const response = await runWithRetry(
+			() =>
+				getOpenAiClient().responses.create(
+					{
+						model: CONFIG.OPENAI_MODEL,
+						tools: [{ type: "web_search" }],
+						input: `Search the web and provide concise, accurate facts, numbers, and dates for: ${trimmedQuery}`,
+					},
+					{ signal },
+				),
+			{ baseDelayMs: 2000, logLabel: "OpenAI:websearch" },
 		);
 
-		const response = await geminiRunWithRetry(() =>
-			ai.models.generateContent({
-				model: CONFIG.GEMINI_MODEL,
-				contents: `Search the web and provide concise, accurate facts, numbers, and dates for: ${trimmedQuery}`,
-				config: {
-					tools: [{ googleSearch: {} }],
-					maxOutputTokens: 1024,
-					thinkingConfig: getThinkingConfig(CONFIG.GEMINI_MODEL, {
-						isAgentic: false,
-					}),
-					abortSignal: signal,
-				},
-			}),
-		);
-
-		const summary = response.text?.trim() || "";
-		const metadata = response.candidates?.[0]?.groundingMetadata;
-		const searchQueries =
-			metadata?.webSearchQueries || (trimmedQuery ? [trimmedQuery] : []);
-		const results = buildSearchResults(
-			metadata?.groundingChunks || [],
-			summary,
-		);
+		const summary = (response.output_text || "").trim();
+		const citations = collectCitations(response.output ?? []);
+		const results = buildSearchResults(citations, summary);
 
 		logger.info(
-			`[WebSearchTool] Gemini Search returned ${results.length} sources for query: "${trimmedQuery}"`,
+			`[WebSearchTool] Web search returned ${results.length} sources for query: "${trimmedQuery}"`,
 		);
 
 		const noResultsNote =
@@ -151,17 +186,14 @@ async function performWebSearch(
 			summary,
 			results,
 			count: results.length,
-			search_queries: searchQueries,
+			search_queries: [trimmedQuery],
 			...(noResultsNote && { system_note: noResultsNote }),
 		};
 
 		setCachedSearch(normalizedKey, output);
 		return output;
 	} catch (error) {
-		logger.error(
-			"[WebSearchTool] Failed to execute Gemini Google Search:",
-			error,
-		);
+		logger.error("[WebSearchTool] Failed to execute web search:", error);
 		return {
 			query: trimmedQuery,
 			summary: "",
