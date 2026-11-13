@@ -88,12 +88,10 @@ const DEFAULT_MESSAGES = {
 	empty_image_fallback: "Nice picture, but I didn't know what to say about it.",
 	error_image_fallback:
 		"Couldn't check the photo, must have gotten something in my eye.",
-	image_download_failed: "Couldn't download the photo, Telegram blocked it.",
 	image_processing_failed:
 		"Got confused while looking at the photo, try again later.",
 	not_authorized_command: "Only group admins or my owner can use this command!",
 	tool_status_web_search: "Spawning subagent...",
-	tool_status_code_execution: "⚡ Executing code in sandbox...",
 };
 
 function resolveMessages(

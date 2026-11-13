@@ -85,13 +85,7 @@ export const LiveLogsCard: FC = () => {
 		<Card>
 			<CardHeader className="flex-row items-center justify-between py-3">
 				<CardTitle>Logs</CardTitle>
-				<RefreshButton
-					onClick={loadLogs}
-					isLoading={isLoading}
-					size="icon"
-					variant="ghost"
-					label=""
-				/>
+				<RefreshButton onClick={loadLogs} isLoading={isLoading} />
 			</CardHeader>
 
 			<CardContent className="space-y-2.5">

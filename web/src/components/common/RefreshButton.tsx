@@ -6,32 +6,22 @@ import { cn } from "@/lib/utils";
 interface RefreshButtonProps {
 	onClick: () => void | Promise<void>;
 	isLoading?: boolean;
-	label?: string;
-	variant?: "outline" | "ghost" | "default" | "secondary";
-	size?: "default" | "sm" | "lg" | "icon";
-	className?: string;
 }
 
 export const RefreshButton: FC<RefreshButtonProps> = ({
 	onClick,
 	isLoading = false,
-	label = "Refresh",
-	variant = "outline",
-	size = "sm",
-	className,
 }) => {
 	return (
 		<Button
-			variant={variant}
-			size={size}
+			variant="ghost"
+			size="icon"
 			onClick={onClick}
 			disabled={isLoading}
-			title={label || "Refresh"}
-			aria-label={label || "Refresh"}
-			className={cn("h-8 gap-1.5 text-xs", className)}
+			title="Refresh"
+			aria-label="Refresh"
 		>
 			<RefreshCw className={cn("h-3.5 w-3.5", isLoading && "animate-spin")} />
-			{label && <span>{label}</span>}
 		</Button>
 	);
 };

@@ -79,41 +79,6 @@ export const userMethods = {
 	},
 
 	/**
-	 * Returns all currently opted-out user IDs.
-	 */
-	getOptedOutUserIds(): number[] {
-		return Array.from(optedOutUserIds);
-	},
-
-	/**
-	 * Returns all currently opted-out usernames.
-	 */
-	getOptedOutUsernames(): string[] {
-		return Array.from(optedOutUsernames);
-	},
-
-	/**
-	 * Looks up a Telegram user by username or first name.
-	 */
-	getUserByName(name: string): {
-		user_id: number;
-		username: string | null;
-		first_name: string | null;
-		last_updated: number;
-	} | null {
-		if (!name?.trim()) return null;
-		const clean = name.trim().toLowerCase();
-		return (
-			(stmts.findUserByName.get(clean, clean) as {
-				user_id: number;
-				username: string | null;
-				first_name: string | null;
-				last_updated: number;
-			} | null) || null
-		);
-	},
-
-	/**
 	 * Retrieves all chat IDs where a specific user has interacted.
 	 */
 	getUserMemberChatIds(userId: number): string[] {

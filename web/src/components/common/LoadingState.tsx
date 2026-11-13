@@ -1,19 +1,15 @@
 import { Loader2 } from "lucide-react";
-import type { ElementType, FC } from "react";
+import type { FC } from "react";
 import { cn } from "@/lib/utils";
 
 export interface LoadingStateProps {
-	icon?: ElementType;
 	text?: string;
 	className?: string;
-	iconClassName?: string;
 }
 
 export const LoadingState: FC<LoadingStateProps> = ({
-	icon: Icon = Loader2,
 	text = "Loading",
 	className,
-	iconClassName = "h-4 w-4 animate-spin text-muted-foreground",
 }) => {
 	return (
 		<div
@@ -22,7 +18,7 @@ export const LoadingState: FC<LoadingStateProps> = ({
 				className,
 			)}
 		>
-			<Icon className={iconClassName} />
+			<Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
 			<span className="text-xs">{text}</span>
 		</div>
 	);

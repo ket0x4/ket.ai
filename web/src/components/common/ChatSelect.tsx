@@ -1,5 +1,4 @@
 import type { FC } from "react";
-import { Badge } from "@/components/ui/badge";
 import {
 	Select,
 	SelectContent,
@@ -17,15 +16,9 @@ export interface ChatSelectProps {
 	chats: Chat[];
 	currentUser?: TelegramUser | null;
 	placeholder?: string;
-	includeAllOption?: boolean;
-	allOptionLabel?: string;
 	includePersonalOption?: boolean;
 	personalOptionLabel?: string;
-	showMemoryCount?: boolean;
-	disabled?: boolean;
-	className?: string;
 	triggerClassName?: string;
-	contentClassName?: string;
 }
 
 export const ChatSelect: FC<ChatSelectProps> = ({
@@ -35,14 +28,9 @@ export const ChatSelect: FC<ChatSelectProps> = ({
 	chats,
 	currentUser,
 	placeholder = "Select destination...",
-	includeAllOption = false,
-	allOptionLabel = "All Groups & Chats",
 	includePersonalOption = false,
 	personalOptionLabel,
-	showMemoryCount = false,
-	disabled = false,
 	triggerClassName,
-	contentClassName,
 }) => {
 	const currentUserIdStr = currentUser ? currentUser.id.toString() : null;
 	const defaultPersonalLabel = currentUser
@@ -55,22 +43,14 @@ export const ChatSelect: FC<ChatSelectProps> = ({
 			: chats;
 
 	return (
-		<Select value={value} onValueChange={onValueChange} disabled={disabled}>
+		<Select value={value} onValueChange={onValueChange}>
 			<SelectTrigger
 				id={id}
 				className={cn("w-full text-xs h-9", triggerClassName)}
 			>
 				<SelectValue placeholder={placeholder} />
 			</SelectTrigger>
-			<SelectContent
-				className={cn("max-w-[calc(100vw-2rem)] sm:max-w-md", contentClassName)}
-			>
-				{includeAllOption && (
-					<SelectItem value="all" className="text-xs">
-						{allOptionLabel}
-					</SelectItem>
-				)}
-
+			<SelectContent className="max-w-[calc(100vw-2rem)] sm:max-w-md">
 				{includePersonalOption && currentUserIdStr && (
 					<SelectItem value={currentUserIdStr} className="text-xs">
 						<span className="truncate block max-w-[240px]">
@@ -81,22 +61,12 @@ export const ChatSelect: FC<ChatSelectProps> = ({
 
 				{filteredChats.map((c) => (
 					<SelectItem key={c.chat_id} value={c.chat_id} className="text-xs">
-						<div className="flex items-center justify-between gap-2 min-w-0">
-							<span
-								dir="auto"
-								className="truncate block max-w-[200px] sm:max-w-[280px]"
-							>
-								{getChatDisplayName(c)}
-							</span>
-							{showMemoryCount && (
-								<Badge
-									variant="outline"
-									className="text-[10px] font-mono px-1.5 py-0 h-4 bg-secondary/60 shrink-0 ml-1"
-								>
-									{c.memoryCount ?? 0} mems
-								</Badge>
-							)}
-						</div>
+						<span
+							dir="auto"
+							className="truncate block max-w-[200px] sm:max-w-[280px]"
+						>
+							{getChatDisplayName(c)}
+						</span>
 					</SelectItem>
 				))}
 			</SelectContent>

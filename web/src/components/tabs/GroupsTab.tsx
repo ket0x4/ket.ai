@@ -231,15 +231,7 @@ export const GroupsTab: FC<GroupsTabProps> = ({
 		<div className="space-y-4">
 			<PageHeader
 				title="Groups"
-				actions={
-					<RefreshButton
-						onClick={onRefresh}
-						isLoading={isLoading}
-						variant="ghost"
-						size="icon"
-						label=""
-					/>
-				}
+				actions={<RefreshButton onClick={onRefresh} isLoading={isLoading} />}
 			/>
 
 			<div className="grid grid-cols-1 gap-2.5 md:grid-cols-2">

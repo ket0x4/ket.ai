@@ -1,11 +1,10 @@
-import type { ElementType, FC, ReactNode } from "react";
+import type { ElementType, FC } from "react";
 import { cn } from "@/lib/utils";
 
 export interface EmptyStateProps {
 	icon?: ElementType;
 	title: string;
 	description?: string;
-	action?: ReactNode;
 	className?: string;
 }
 
@@ -13,7 +12,6 @@ export const EmptyState: FC<EmptyStateProps> = ({
 	icon: Icon,
 	title,
 	description,
-	action,
 	className,
 }) => {
 	return (
@@ -30,7 +28,6 @@ export const EmptyState: FC<EmptyStateProps> = ({
 					{description}
 				</p>
 			)}
-			{action && <div className="mt-1.5">{action}</div>}
 		</div>
 	);
 };

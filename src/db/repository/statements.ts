@@ -40,7 +40,6 @@ export const stmts = {
        first_name = excluded.first_name,
        last_updated = excluded.last_updated`,
 	),
-	getUser: db.prepare("SELECT * FROM users WHERE user_id = ?"),
 	insertUserWithOptOut: db.prepare(
 		`INSERT INTO users (user_id, username, first_name, is_opted_out, last_updated) VALUES (?, ?, ?, ?, ?)
      ON CONFLICT(user_id) DO UPDATE SET
@@ -83,12 +82,6 @@ export const stmts = {
      FROM messages m 
      LEFT JOIN users u ON m.user_id = u.user_id 
      WHERE m.chat_id = ? AND m.message_id = ?`,
-	),
-	findUserByName: db.prepare(
-		`SELECT user_id, username, first_name, last_updated 
-     FROM users 
-     WHERE LOWER(first_name) = LOWER(?) OR LOWER(username) = LOWER(?) 
-     ORDER BY last_updated DESC LIMIT 1`,
 	),
 	getMessageCount: db.prepare(
 		"SELECT COUNT(*) as count FROM messages WHERE chat_id = ?",

@@ -183,15 +183,7 @@ export const DashboardTab: FC<DashboardTabProps> = ({
 		<div className="space-y-4">
 			<PageHeader
 				title="Overview"
-				actions={
-					<RefreshButton
-						onClick={onRefresh}
-						isLoading={isLoading}
-						variant="ghost"
-						size="icon"
-						label=""
-					/>
-				}
+				actions={<RefreshButton onClick={onRefresh} isLoading={isLoading} />}
 			/>
 
 			<div className="grid grid-cols-3 divide-x divide-border overflow-hidden rounded-xl border border-border bg-card">

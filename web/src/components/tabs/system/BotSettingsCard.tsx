@@ -353,13 +353,7 @@ export const BotSettingsCard: FC = () => {
 		<Card>
 			<CardHeader className="flex-row items-center justify-between gap-2 py-3">
 				<CardTitle>Configuration</CardTitle>
-				<RefreshButton
-					onClick={loadSettings}
-					isLoading={isLoading}
-					size="icon"
-					variant="ghost"
-					label=""
-				/>
+				<RefreshButton onClick={loadSettings} isLoading={isLoading} />
 			</CardHeader>
 
 			<CardContent className="space-y-5">

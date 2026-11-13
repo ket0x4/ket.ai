@@ -253,14 +253,6 @@ export const memoryMethods = {
 	},
 
 	/**
-	 * Clears all memories for a chat.
-	 */
-	clearMemories(chatId: string): void {
-		stmts.deleteMemories.run(chatId);
-		invalidateMemoryCaches();
-	},
-
-	/**
 	 * Returns the total count of memories stored for a given chat ID.
 	 */
 	getMemoryCount(chatId: string): number {
@@ -289,19 +281,6 @@ export const memoryMethods = {
 			category: string;
 			expires_at: number | null;
 		} | null;
-	},
-
-	/**
-	 * Gets memories associated with a specific user in a chat.
-	 */
-	getUserMemories(
-		this: RepositorySelf,
-		chatId: string,
-		userId: number,
-	): MemoryItem[] {
-		if (this.isUserOptedOut(userId)) return [];
-		const all = this.getMemories(chatId);
-		return all.filter((m) => m.userId === userId);
 	},
 
 	/**

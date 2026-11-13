@@ -30,13 +30,7 @@ export const ToolTracesCard: FC = () => {
 		<Card>
 			<CardHeader className="flex-row items-center justify-between py-3">
 				<CardTitle>Tool calls</CardTitle>
-				<RefreshButton
-					onClick={loadTraces}
-					isLoading={isLoading}
-					size="icon"
-					variant="ghost"
-					label=""
-				/>
+				<RefreshButton onClick={loadTraces} isLoading={isLoading} />
 			</CardHeader>
 
 			<CardContent>
