@@ -3,7 +3,7 @@ import { type Config, configSchema, type FieldMeta } from "./schema";
 
 const CONFIG_FILE_PATH = "config.json";
 
-export type ConfigJson = Record<string, unknown>;
+type ConfigJson = Record<string, unknown>;
 
 export function readConfigJson(path = CONFIG_FILE_PATH): ConfigJson {
 	if (!existsSync(path)) return {};
@@ -19,7 +19,7 @@ export function readConfigJson(path = CONFIG_FILE_PATH): ConfigJson {
 	}
 }
 
-export interface LoadedConfig {
+interface LoadedConfig {
 	config: Config;
 	errors: string[];
 }

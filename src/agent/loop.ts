@@ -13,7 +13,7 @@ import type { FunctionDeclaration } from "./types";
 type AgentLoopOptions = ToolExecutionOptions;
 
 /** Provider-agnostic generation config for the whole loop. */
-export interface AgentLoopConfig {
+interface AgentLoopConfig {
 	systemInstruction?: string;
 	maxOutputTokens?: number;
 	tools?: FunctionDeclaration[];

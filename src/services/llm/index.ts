@@ -16,11 +16,7 @@ import { ensureTopicSummary, summarizeTopic } from "./topicSummary";
 import type { GenerateReplyOptions, GenerateResponseOptions } from "./types";
 
 export type { GeneratedMediaArtifact } from "../../agent/index";
-export type {
-	GenerateReplyOptions,
-	ReplyContextInfo,
-	TargetMessageInfo,
-} from "./types";
+export type { ReplyContextInfo, TargetMessageInfo } from "./types";
 
 function resolveGenerationFailure(
 	error: unknown,

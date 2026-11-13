@@ -139,7 +139,7 @@ type ApiMiddleware = <T>(
 	context: ApiCallContext,
 ) => Promise<T>;
 
-export interface RunApiCallOptions {
+interface RunApiCallOptions {
 	retries?: number;
 	baseDelayMs?: number;
 	/** Serial rate limiter to schedule calls through. */

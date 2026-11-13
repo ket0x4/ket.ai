@@ -1,6 +1,6 @@
 export const DEFAULT_PERSONA_ID = "ket-default";
 
-export interface DefaultPersonaSeed {
+interface DefaultPersonaSeed {
 	id: string;
 	name: string;
 	description: string;

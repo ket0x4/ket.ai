@@ -51,7 +51,7 @@ export function snapshotSettings(config: Config): BotSettingsSnapshot {
 	return snapshot as unknown as BotSettingsSnapshot;
 }
 
-export interface SettingsApplyResult {
+interface SettingsApplyResult {
 	changed: boolean;
 	errors: string[];
 }

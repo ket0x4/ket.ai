@@ -25,7 +25,7 @@ export const CONFIG: Config & { MESSAGES: Messages } = {
 	MESSAGES,
 };
 
-export type { BotSettingsSnapshot, BotSettingsUpdate };
+export type { BotSettingsUpdate };
 
 export function getBotSettingsSnapshot(): BotSettingsSnapshot {
 	return snapshotSettings(CONFIG);

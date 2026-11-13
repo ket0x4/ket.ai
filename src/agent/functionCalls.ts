@@ -4,7 +4,7 @@ export interface RawFunctionCall {
 	args?: Record<string, unknown>;
 }
 
-export interface ModelResponseLike {
+interface ModelResponseLike {
 	toolCalls?: RawFunctionCall[];
 	choices?: unknown[];
 }

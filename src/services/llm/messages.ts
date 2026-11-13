@@ -350,7 +350,7 @@ export function shouldEnableToolsForTurn(
 	return !options.isSpontaneous;
 }
 
-export interface MediaFallbacks {
+interface MediaFallbacks {
 	instruction?: string;
 	fallbackEmpty: string;
 	fallbackError: string;
