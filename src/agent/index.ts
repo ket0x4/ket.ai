@@ -1,7 +1,7 @@
-import { type AgentEventHandler, mergeAgentEventHandlers } from "./events";
+import { mergeAgentEventHandlers } from "./events";
 import { runAgentLoop } from "./loop";
 import { toolRegistry } from "./registry";
 import type { GeneratedMediaArtifact } from "./types";
 
-export type { AgentEventHandler, GeneratedMediaArtifact };
+export type { GeneratedMediaArtifact };
 export { mergeAgentEventHandlers, runAgentLoop, toolRegistry };

@@ -1,7 +1,5 @@
 import { CONFIG } from "../config";
-import { ai } from "../services/gemini/client";
-import { getThinkingConfig, runWithRetry } from "../services/gemini/utils";
-import { openAiProvider } from "../services/llm/openAiProvider";
+import { getLlmProvider } from "../services/llm/providerSelector";
 import type { ChatMessage } from "../services/llm/types";
 import logger from "../utils/logger";
 import type { AgentEvent, AgentEventHandler } from "./events";
@@ -9,14 +7,17 @@ import {
 	executeFunctionCallsInParallel,
 	type ToolExecutionOptions,
 } from "./executor";
-import {
-	extractFunctionCalls,
-	type ModelResponseLike,
-	type RawFunctionCall,
-} from "./functionCalls";
-import { toolRegistry } from "./registry";
+import { extractFunctionCalls, type RawFunctionCall } from "./functionCalls";
+import type { FunctionDeclaration } from "./types";
 
 type AgentLoopOptions = ToolExecutionOptions;
+
+/** Provider-agnostic generation config for the whole loop. */
+export interface AgentLoopConfig {
+	systemInstruction?: string;
+	maxOutputTokens?: number;
+	tools?: FunctionDeclaration[];
+}
 
 const BLOCKING_FINISH_REASONS = new Set([
 	"SAFETY",
@@ -27,7 +28,7 @@ const BLOCKING_FINISH_REASONS = new Set([
 	"IMAGE_SAFETY",
 ]);
 
-const COMPACT_TEXT_PART_LIMIT = 1500;
+const COMPACT_TEXT_LIMIT = 1500;
 const COMPACT_TOOL_RESULT_LIMIT = 800;
 const COMPACT_TOOL_FIELD_LIMIT = 400;
 const COMPACT_KEEP_RECENT_TURNS = 4;
@@ -41,138 +42,255 @@ const TRUNCATED_RESULT_FIELDS = [
 	"summary",
 ] as const;
 
-function convertToolParts(
-	toolParts: Array<Record<string, unknown>>,
-	text: string,
-): ChatMessage[] {
-	const out: ChatMessage[] = toolParts.map((tp) => {
-		const result = (tp.response as { result?: unknown })?.result ?? tp.response;
-		return {
-			role: "tool",
-			toolName: typeof tp.name === "string" ? tp.name : undefined,
-			toolCallId: typeof tp.id === "string" ? tp.id : undefined,
-			content:
-				typeof result === "string" ? result : JSON.stringify(result ?? {}),
-		};
-	});
-	if (text) {
-		out.push({ role: "user", content: text });
-	}
-	return out;
-}
-
-function convertUserParts(
-	parts: Array<Record<string, unknown>>,
-): ChatMessage[] {
-	let text = "";
-	let media: { buffer: Buffer; mimeType: string } | undefined;
-	const toolParts: Array<Record<string, unknown>> = [];
-
-	for (const part of parts) {
-		if (typeof part.text === "string") {
-			text = text ? `${text}\n${part.text}` : part.text;
-		} else if (part.inlineData) {
-			const inline = part.inlineData as { data: string; mimeType: string };
-			media = {
-				buffer: Buffer.from(inline.data, "base64"),
-				mimeType: inline.mimeType,
-			};
-		} else if (part.functionResponse) {
-			toolParts.push(part.functionResponse as Record<string, unknown>);
-		}
-	}
-
-	if (toolParts.length > 0) {
-		return convertToolParts(toolParts, text);
-	}
-	return [{ role: "user", content: text || null, media }];
-}
-
-function convertModelParts(parts: Array<Record<string, unknown>>): ChatMessage {
-	let text = "";
-	const toolCalls: RawFunctionCall[] = [];
-
-	for (const part of parts) {
-		if (typeof part.text === "string") {
-			text = text ? `${text}\n${part.text}` : part.text;
-		} else if (part.functionCall) {
-			const fc = part.functionCall as {
-				id?: string;
-				name: string;
-				args?: Record<string, unknown>;
-			};
-			toolCalls.push({
-				id: fc.id,
-				name: fc.name,
-				args: fc.args || {},
-			});
-		}
-	}
-
-	return {
-		role: "assistant",
-		content: text || null,
-		toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
-	};
-}
-
-function convertSingleContentEntry(
-	entry: Record<string, unknown>,
-): ChatMessage[] {
-	const role = String(entry.role || "");
-	if (
-		!entry.parts &&
-		(entry.content !== undefined || entry.toolCalls || role === "tool")
-	) {
-		return [entry as unknown as ChatMessage];
-	}
-
-	const parts = Array.isArray(entry.parts)
-		? (entry.parts as Array<Record<string, unknown>>)
-		: [];
-
-	if (role === "user") return convertUserParts(parts);
-	if (role === "model" || role === "assistant") {
-		return [convertModelParts(parts)];
-	}
-	return [];
-}
-
-function convertContentsToChatMessages(
-	contents: Array<Record<string, unknown>>,
-): ChatMessage[] {
-	return contents.flatMap(convertSingleContentEntry);
-}
-
 function generateTraceId(): string {
 	return `trace_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
 }
 
-interface ModelStepResponse extends ModelResponseLike {
-	text?: string;
-	promptFeedback?: { blockReason?: unknown };
+// --- Context compaction -----------------------------------------------------
+
+function compactTextValue(text: string): string {
+	if (text.length <= COMPACT_TEXT_LIMIT || text.endsWith(COMPACTED_MARKER)) {
+		return text;
+	}
+	return `${text.slice(0, COMPACT_TEXT_LIMIT)}\n${COMPACTED_MARKER}`;
 }
 
-function extractResponseText(response: ModelStepResponse): string {
-	if (response.text?.trim()) return response.text.trim();
-	const firstChoice = response.choices?.[0] as
-		| { message?: { content?: unknown } }
-		| undefined;
-	return typeof firstChoice?.message?.content === "string"
-		? firstChoice.message.content.trim()
-		: "";
+function shrinkToolResultObject(
+	result: Record<string, unknown>,
+): Record<string, unknown> {
+	const out: Record<string, unknown> = {};
+	for (const [k, v] of Object.entries(result)) {
+		if (k === "system_note" || k === "results" || k === "matches") continue;
+		if (
+			typeof v === "string" &&
+			(TRUNCATED_RESULT_FIELDS as readonly string[]).includes(k) &&
+			v.length > COMPACT_TOOL_FIELD_LIMIT
+		) {
+			out[k] = `${v.slice(0, COMPACT_TOOL_FIELD_LIMIT)}...${COMPACTED_MARKER}`;
+		} else {
+			out[k] = v;
+		}
+	}
+	return out;
 }
+
+/** Compacts oversized tool-result payloads from older turns. */
+function compactToolMessage(msg: ChatMessage): ChatMessage {
+	const serialized = msg.content ?? "";
+	if (
+		serialized.length <= COMPACT_TOOL_RESULT_LIMIT ||
+		serialized.includes(COMPACTED_MARKER)
+	) {
+		return msg;
+	}
+
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(serialized);
+	} catch {
+		return {
+			...msg,
+			content: `${serialized.slice(0, COMPACT_TOOL_FIELD_LIMIT)}...${COMPACTED_MARKER}`,
+		};
+	}
+
+	const compactedResult =
+		parsed && typeof parsed === "object" && !Array.isArray(parsed)
+			? shrinkToolResultObject(parsed as Record<string, unknown>)
+			: `${serialized.slice(0, COMPACT_TOOL_FIELD_LIMIT)}...${COMPACTED_MARKER}`;
+
+	return { ...msg, content: JSON.stringify(compactedResult) };
+}
+
+function compactMessage(msg: ChatMessage, shrinkText: boolean): ChatMessage {
+	if (msg.role === "tool") return compactToolMessage(msg);
+
+	if (shrinkText && typeof msg.content === "string") {
+		const nextContent = compactTextValue(msg.content);
+		return nextContent === msg.content ? msg : { ...msg, content: nextContent };
+	}
+	return msg;
+}
+
+function estimateMessageChars(msg: ChatMessage): number {
+	if (typeof msg.content === "string") return msg.content.length;
+	// Avoid stringifying base64 media buffers.
+	return msg.media ? 256 : 0;
+}
+
+function estimateMessagesChars(messages: ChatMessage[]): number {
+	let total = 0;
+	for (const msg of messages) {
+		total += estimateMessageChars(msg);
+		if (Array.isArray(msg.toolCalls)) {
+			for (const fc of msg.toolCalls) {
+				try {
+					total += JSON.stringify(fc.args ?? {}).length;
+				} catch {
+					// ignore unserializable args
+				}
+			}
+		}
+	}
+	return total;
+}
+
+/**
+ * Proactively compacts tool results and long text older than the most recent
+ * turns so multi-step loops do not re-send kilobytes of stale context on every
+ * subsequent step.
+ */
+function compactMessages(
+	messages: ChatMessage[],
+	maxChars: number,
+	keepRecentTurns: number = COMPACT_KEEP_RECENT_TURNS,
+): ChatMessage[] {
+	if (messages.length <= keepRecentTurns + 1) return messages;
+
+	const shrinkText = estimateMessagesChars(messages) > maxChars;
+	const cutoff = Math.max(1, messages.length - keepRecentTurns);
+	const compacted = [...messages];
+	for (let i = 1; i < cutoff; i++) {
+		compacted[i] = compactMessage(compacted[i], shrinkText);
+	}
+	return compacted;
+}
+
+// --- Tool-call governance ---------------------------------------------------
+
+function sortedKeys(value: unknown): unknown {
+	if (Array.isArray(value)) return value.map(sortedKeys);
+	if (value && typeof value === "object") {
+		const out: Record<string, unknown> = {};
+		for (const key of Object.keys(value as Record<string, unknown>).sort()) {
+			out[key] = sortedKeys((value as Record<string, unknown>)[key]);
+		}
+		return out;
+	}
+	return value;
+}
+
+function fingerprintToolCall(fc: RawFunctionCall): string {
+	const args = fc.args ?? {};
+	try {
+		return `${fc.name}::${JSON.stringify(sortedKeys(args))}`;
+	} catch {
+		return `${fc.name}::${JSON.stringify(args)}`;
+	}
+}
+
+function buildSuppressedToolMessage(
+	fc: RawFunctionCall,
+	note: string,
+): ChatMessage {
+	return {
+		role: "tool",
+		toolName: fc.name,
+		toolCallId: fc.id,
+		content: JSON.stringify({
+			error: "duplicate_tool_call_suppressed",
+			system_note: note,
+		}),
+	};
+}
+
+function buildToolMessage(fc: RawFunctionCall, result: unknown): ChatMessage {
+	return {
+		role: "tool",
+		toolName: fc.name,
+		toolCallId: fc.id,
+		content: typeof result === "string" ? result : JSON.stringify(result ?? {}),
+	};
+}
+
+interface PartitionedToolCalls {
+	toRun: RawFunctionCall[];
+	responses: Map<RawFunctionCall, ChatMessage>;
+	suppressed: Array<{ toolName: string; reason: string }>;
+}
+
+function partitionToolCalls(
+	functionCalls: RawFunctionCall[],
+	callCounts: Map<string, number>,
+): PartitionedToolCalls {
+	const toRun: RawFunctionCall[] = [];
+	const responses = new Map<RawFunctionCall, ChatMessage>();
+	const suppressed: Array<{ toolName: string; reason: string }> = [];
+
+	for (const fc of functionCalls) {
+		const fingerprint = fingerprintToolCall(fc);
+		const count = (callCounts.get(fingerprint) || 0) + 1;
+		callCounts.set(fingerprint, count);
+
+		if (count > CONFIG.MAX_IDENTICAL_TOOL_CALLS) {
+			suppressed.push({
+				toolName: fc.name,
+				reason: `Identical call repeated ${count} times; suppressed.`,
+			});
+			responses.set(
+				fc,
+				buildSuppressedToolMessage(
+					fc,
+					"Identical tool call already executed. Use the previous result or answer now.",
+				),
+			);
+		} else {
+			toRun.push(fc);
+		}
+	}
+
+	return { toRun, responses, suppressed };
+}
+
+function resultIsFailure(result: unknown): boolean {
+	if (!result || typeof result !== "object" || Array.isArray(result)) {
+		return false;
+	}
+	const record = result as { error?: unknown; success?: unknown };
+	return Boolean(record.error) || record.success === false;
+}
+
+function trackFailures(
+	ranResults: unknown[],
+	toRun: RawFunctionCall[],
+	failureCounts: Map<string, number>,
+): string[] {
+	const notes: string[] = [];
+
+	ranResults.forEach((result, index) => {
+		const name = toRun[index]?.name || "unknown";
+		if (!resultIsFailure(result)) {
+			failureCounts.set(name, 0);
+			return;
+		}
+		const failures = (failureCounts.get(name) || 0) + 1;
+		failureCounts.set(name, failures);
+		if (failures >= CONFIG.MAX_TOOL_FAILURES_PER_TOOL) {
+			notes.push(
+				`Tool '${name}' failed ${failures}x in a row. Change approach or answer with available info.`,
+			);
+		}
+	});
+
+	return notes;
+}
+
+// --- Model response inspection ---------------------------------------------
 
 function inspectNoToolCallResponse(
-	response: ModelStepResponse,
+	response: {
+		text: string;
+		candidates?: unknown[];
+		promptFeedback?: { blockReason?: unknown };
+	},
 	traceId: string,
 	step: number,
 ): { text: string; blocked: boolean } {
-	const text = extractResponseText(response);
+	const text = response.text;
 	const firstCandidate = response.candidates?.[0] as
 		| { finishReason?: unknown }
 		| undefined;
-	const firstChoice = response.choices?.[0] as
+	const firstChoice = (response as { choices?: unknown[] }).choices?.[0] as
 		| { finish_reason?: unknown }
 		| undefined;
 	const finishReason = String(
@@ -203,320 +321,12 @@ function inspectNoToolCallResponse(
 	return { text, blocked };
 }
 
-function sortedKeys(value: unknown): unknown {
-	if (Array.isArray(value)) return value.map(sortedKeys);
-	if (value && typeof value === "object") {
-		const out: Record<string, unknown> = {};
-		for (const key of Object.keys(value as Record<string, unknown>).sort()) {
-			out[key] = sortedKeys((value as Record<string, unknown>)[key]);
-		}
-		return out;
-	}
-	return value;
-}
-
-function fingerprintToolCall(fc: RawFunctionCall): string {
-	const args = fc.args ?? {};
-	try {
-		return `${fc.name}::${JSON.stringify(sortedKeys(args))}`;
-	} catch {
-		return `${fc.name}::${JSON.stringify(args)}`;
-	}
-}
-
-function shrinkToolResultObject(
-	result: Record<string, unknown>,
-): Record<string, unknown> {
-	const out: Record<string, unknown> = {};
-	for (const [k, v] of Object.entries(result)) {
-		if (k === "system_note" || k === "results" || k === "matches") continue;
-		if (
-			typeof v === "string" &&
-			(TRUNCATED_RESULT_FIELDS as readonly string[]).includes(k) &&
-			v.length > COMPACT_TOOL_FIELD_LIMIT
-		) {
-			out[k] = `${v.slice(0, COMPACT_TOOL_FIELD_LIMIT)}...${COMPACTED_MARKER}`;
-		} else {
-			out[k] = v;
-		}
-	}
-	return out;
-}
-
-function compactFunctionResponsePart(
-	part: Record<string, unknown>,
-): Record<string, unknown> {
-	const functionResponse = part.functionResponse as
-		| { response?: { result?: unknown }; _compacted?: boolean }
-		| undefined;
-	if (!functionResponse || functionResponse._compacted) return part;
-
-	let serialized = "";
-	try {
-		serialized = JSON.stringify(functionResponse.response ?? {});
-	} catch {
-		return part;
-	}
-	if (serialized.length <= COMPACT_TOOL_RESULT_LIMIT) return part;
-
-	const rawResult = functionResponse.response?.result;
-	const compactedResult =
-		rawResult && typeof rawResult === "object" && !Array.isArray(rawResult)
-			? shrinkToolResultObject(rawResult as Record<string, unknown>)
-			: `${serialized.slice(0, COMPACT_TOOL_FIELD_LIMIT)}...${COMPACTED_MARKER}`;
-
-	return {
-		...part,
-		functionResponse: {
-			...functionResponse,
-			_compacted: true,
-			response: { result: compactedResult },
-		},
-	};
-}
-
-function compactTextValue(text: string): string {
-	if (
-		text.length <= COMPACT_TEXT_PART_LIMIT ||
-		text.endsWith(COMPACTED_MARKER)
-	) {
-		return text;
-	}
-	return `${text.slice(0, COMPACT_TEXT_PART_LIMIT)}\n${COMPACTED_MARKER}`;
-}
-
-function compactEntry(
-	entry: Record<string, unknown>,
-	shrinkText: boolean,
-): Record<string, unknown> {
-	if (shrinkText && typeof entry.content === "string") {
-		const nextContent = compactTextValue(entry.content);
-		return nextContent === entry.content
-			? entry
-			: { ...entry, content: nextContent };
-	}
-
-	const parts = Array.isArray(entry.parts)
-		? (entry.parts as Array<Record<string, unknown>>)
-		: null;
-	if (!parts) return entry;
-
-	const compactedParts = parts.map((part) => {
-		if (!part || typeof part !== "object") return part;
-		if (shrinkText && typeof part.text === "string") {
-			const nextText = compactTextValue(part.text);
-			return nextText === part.text ? part : { ...part, text: nextText };
-		}
-		return compactFunctionResponsePart(part);
-	});
-
-	return { ...entry, parts: compactedParts };
-}
-
-function estimatePartChars(part: Record<string, unknown>): number {
-	if (typeof part.text === "string") return part.text.length;
-	if (part.inlineData) return 256; // Avoid stringifying base64 media buffers
-	try {
-		return JSON.stringify(part).length;
-	} catch {
-		return 0;
-	}
-}
-
-function estimateContentsChars(
-	contents: Array<Record<string, unknown>>,
-): number {
-	let total = 0;
-	for (const entry of contents) {
-		if (typeof entry.content === "string") {
-			total += entry.content.length;
-		}
-		if (Array.isArray(entry.parts)) {
-			for (const part of entry.parts) {
-				if (part && typeof part === "object") {
-					total += estimatePartChars(part as Record<string, unknown>);
-				}
-			}
-		}
-	}
-	return total;
-}
-
-/**
- * Proactively compacts tool results older than the most recent turns so multi-step
- * loops do not re-send multi-kilobyte tool outputs on every subsequent step.
- */
-function compactContents(
-	contents: Array<Record<string, unknown>>,
-	maxChars: number,
-	keepRecentTurns: number = COMPACT_KEEP_RECENT_TURNS,
-): Array<Record<string, unknown>> {
-	if (contents.length <= keepRecentTurns + 1) return contents;
-
-	const shrinkText = estimateContentsChars(contents) > maxChars;
-	const cutoff = Math.max(1, contents.length - keepRecentTurns);
-	for (let i = 1; i < cutoff; i++) {
-		contents[i] = compactEntry(contents[i], shrinkText);
-	}
-	return contents;
-}
-
-function buildSuppressedResponse(
-	fc: RawFunctionCall,
-	note: string,
-): Record<string, unknown> {
-	const functionResponse: Record<string, unknown> = {
-		name: fc.name,
-		response: {
-			result: {
-				error: "duplicate_tool_call_suppressed",
-				system_note: note,
-			},
-		},
-	};
-	if (fc.id) functionResponse.id = fc.id;
-	return { functionResponse };
-}
-
-function resultIsFailure(part: Record<string, unknown>): boolean {
-	const functionResponse = part.functionResponse as
-		| { response?: { result?: unknown } }
-		| undefined;
-	const result = functionResponse?.response?.result;
-	if (!result || typeof result !== "object") return false;
-	const record = result as { error?: unknown; success?: unknown };
-	return Boolean(record.error) || record.success === false;
-}
-
-function toolNameOf(part: Record<string, unknown>): string | undefined {
-	return (part.functionResponse as { name?: string } | undefined)?.name;
-}
-
-async function generateFinalSummary(
-	contents: Array<Record<string, unknown>>,
-	genConfig: Record<string, unknown>,
-	signal?: AbortSignal,
-): Promise<string> {
-	if (CONFIG.LLM_PROVIDER === "openai") {
-		const messages = convertContentsToChatMessages(contents);
-		const result = await openAiProvider.chat(messages, {
-			systemInstruction: genConfig.systemInstruction as string | undefined,
-			maxTokens: 1024,
-			signal,
-		});
-		return result.text;
-	}
-
-	const finalResponse = await runWithRetry(() =>
-		ai.models.generateContent({
-			model: CONFIG.GEMINI_MODEL,
-			// biome-ignore lint/suspicious/noExplicitAny: SDK expects content structure
-			contents: contents as any,
-			config: {
-				...genConfig,
-				tools: undefined,
-				maxOutputTokens: 1024,
-				thinkingConfig: getThinkingConfig(CONFIG.GEMINI_MODEL, {
-					isAgentic: false,
-				}),
-				abortSignal: signal,
-				// biome-ignore lint/suspicious/noExplicitAny: SDK expects config structure
-			} as any,
-		}),
-	);
-	return finalResponse.text?.trim() || "";
-}
-
-async function finalizeAfterToolExecution(
-	contents: Array<Record<string, unknown>>,
-	genConfig: Record<string, unknown>,
-	responseText: string,
-	executedTools: boolean,
-	signal: AbortSignal | undefined,
-	traceId: string,
-): Promise<string> {
-	if (responseText || !executedTools || signal?.aborted) {
-		return responseText;
-	}
-	try {
-		logger.info(
-			`[Agent:${traceId}] Generating final summary after tool execution...`,
-		);
-		return await generateFinalSummary(contents, genConfig, signal);
-	} catch (err) {
-		logger.warn(`[Agent:${traceId}] Error generating final summary:`, err);
-		return responseText;
-	}
-}
-
-interface PartitionedToolCalls {
-	toRun: RawFunctionCall[];
-	responses: Map<RawFunctionCall, Record<string, unknown>>;
-	suppressed: Array<{ toolName: string; reason: string }>;
-}
-
-function partitionToolCalls(
-	functionCalls: RawFunctionCall[],
-	callCounts: Map<string, number>,
-): PartitionedToolCalls {
-	const toRun: RawFunctionCall[] = [];
-	const responses = new Map<RawFunctionCall, Record<string, unknown>>();
-	const suppressed: Array<{ toolName: string; reason: string }> = [];
-
-	for (const fc of functionCalls) {
-		const fingerprint = fingerprintToolCall(fc);
-		const count = (callCounts.get(fingerprint) || 0) + 1;
-		callCounts.set(fingerprint, count);
-
-		if (count > CONFIG.MAX_IDENTICAL_TOOL_CALLS) {
-			suppressed.push({
-				toolName: fc.name,
-				reason: `Identical call repeated ${count} times; suppressed.`,
-			});
-			responses.set(
-				fc,
-				buildSuppressedResponse(
-					fc,
-					"Identical tool call already executed. Use the previous result or answer now.",
-				),
-			);
-		} else {
-			toRun.push(fc);
-		}
-	}
-
-	return { toRun, responses, suppressed };
-}
-
-function trackFailures(
-	ranParts: Array<Record<string, unknown>>,
-	toRun: RawFunctionCall[],
-	failureCounts: Map<string, number>,
-): string[] {
-	const notes: string[] = [];
-
-	ranParts.forEach((part, index) => {
-		const name = toolNameOf(part) || toRun[index]?.name || "unknown";
-		if (!resultIsFailure(part)) {
-			failureCounts.set(name, 0);
-			return;
-		}
-		const failures = (failureCounts.get(name) || 0) + 1;
-		failureCounts.set(name, failures);
-		if (failures >= CONFIG.MAX_TOOL_FAILURES_PER_TOOL) {
-			notes.push(
-				`Tool '${name}' failed ${failures}x in a row. Change approach or answer with available info.`,
-			);
-		}
-	});
-
-	return notes;
-}
+// --- Tool step --------------------------------------------------------------
 
 interface ToolStepInput {
-	contents: Array<Record<string, unknown>>;
+	messages: ChatMessage[];
 	functionCalls: RawFunctionCall[];
-	response: ModelStepResponse;
+	response: { text: string };
 	stepOptions: AgentLoopOptions;
 	step: number;
 	maxSteps: number;
@@ -530,7 +340,7 @@ async function processToolStep(
 	input: ToolStepInput,
 ): Promise<{ aborted: boolean; ranAny: boolean }> {
 	const {
-		contents,
+		messages,
 		functionCalls,
 		response,
 		stepOptions,
@@ -542,23 +352,12 @@ async function processToolStep(
 		dispatch,
 	} = input;
 
-	const firstCandidate = response.candidates?.[0] as
-		| { content?: Record<string, unknown> }
-		| undefined;
-	const fallbackParts: Array<Record<string, unknown>> = [];
-	const preambleText = extractResponseText(response);
-	if (preambleText) {
-		fallbackParts.push({ text: preambleText });
-	}
-	for (const fc of functionCalls) {
-		fallbackParts.push({ functionCall: fc });
-	}
-	contents.push(
-		firstCandidate?.content ?? {
-			role: "model",
-			parts: fallbackParts,
-		},
-	);
+	// Record the model turn: preamble text (if any) plus the requested calls.
+	messages.push({
+		role: "assistant",
+		content: response.text || null,
+		toolCalls: functionCalls,
+	});
 
 	const { toRun, responses, suppressed } = partitionToolCalls(
 		functionCalls,
@@ -576,15 +375,15 @@ async function processToolStep(
 		});
 	}
 
-	const ranParts =
+	const ranResults =
 		toRun.length > 0
 			? await executeFunctionCallsInParallel(toRun, stepOptions, step)
 			: [];
 	toRun.forEach((fc, index) => {
-		responses.set(fc, ranParts[index]);
+		responses.set(fc, buildToolMessage(fc, ranResults[index]));
 	});
 
-	const notices = trackFailures(ranParts, toRun, failureCounts);
+	const notices = trackFailures(ranResults, toRun, failureCounts);
 	const remaining = maxSteps - step;
 	if (remaining <= 2) {
 		notices.push(
@@ -594,13 +393,16 @@ async function processToolStep(
 		);
 	}
 
-	const orderedParts = functionCalls
-		.map((fc) => responses.get(fc))
-		.filter((part): part is Record<string, unknown> => Boolean(part));
-	if (notices.length > 0) {
-		orderedParts.push({ text: `[Agent Notice] ${notices.join(" ")}` });
+	for (const fc of functionCalls) {
+		const toolMessage = responses.get(fc);
+		if (toolMessage) messages.push(toolMessage);
 	}
-	contents.push({ role: "user", parts: orderedParts });
+	if (notices.length > 0) {
+		messages.push({
+			role: "user",
+			content: `[Agent Notice] ${notices.join(" ")}`,
+		});
+	}
 
 	await dispatch({
 		type: "step-complete",
@@ -629,74 +431,51 @@ function makeEventDispatcher(
 	};
 }
 
-function normalizeGeminiTools(rawTools: unknown): unknown {
-	if (!Array.isArray(rawTools) || rawTools.length === 0) return undefined;
-	const first = rawTools[0] as Record<string, unknown> | undefined;
-	if (first && ("functionDeclarations" in first || "googleSearch" in first)) {
-		return rawTools;
-	}
-	return [{ functionDeclarations: rawTools }];
-}
+// --- Finalization -----------------------------------------------------------
 
-function resolveOpenAiTools(rawTools: unknown) {
-	if (Array.isArray(rawTools) && rawTools.length > 0) {
-		const first = rawTools[0] as Record<string, unknown> | undefined;
-		if (first && Array.isArray(first.functionDeclarations)) {
-			return first.functionDeclarations;
-		}
-		return rawTools;
-	}
-	const declarations = toolRegistry.getFunctionDeclarations();
-	return declarations.length > 0 ? declarations : undefined;
-}
-
-async function callModelForStep(
-	compactedContents: Array<Record<string, unknown>>,
-	genConfig: Record<string, unknown>,
-	step: number,
+async function generateFinalSummary(
+	messages: ChatMessage[],
+	config: AgentLoopConfig,
 	signal?: AbortSignal,
-): Promise<ModelStepResponse> {
-	if (CONFIG.LLM_PROVIDER === "openai") {
-		const chatMessages = convertContentsToChatMessages(compactedContents);
-		const tools = resolveOpenAiTools(genConfig.tools);
-		const isJson = !tools && genConfig.responseMimeType === "application/json";
-		return await openAiProvider.chat(chatMessages, {
-			systemInstruction: genConfig.systemInstruction as string | undefined,
-			tools,
-			maxTokens:
-				typeof genConfig.maxOutputTokens === "number"
-					? genConfig.maxOutputTokens
-					: 2048,
-			responseFormat: isJson ? "json" : "text",
-			signal,
-		});
+): Promise<string> {
+	const result = await getLlmProvider().chat(messages, {
+		systemInstruction: config.systemInstruction,
+		maxTokens: 1024,
+		agenticThinking: false,
+		signal,
+	});
+	return result.text;
+}
+
+async function finalizeAfterToolExecution(
+	messages: ChatMessage[],
+	config: AgentLoopConfig,
+	responseText: string,
+	executedTools: boolean,
+	signal: AbortSignal | undefined,
+	traceId: string,
+): Promise<string> {
+	if (responseText || !executedTools || signal?.aborted) {
+		return responseText;
 	}
-
-	const tools = normalizeGeminiTools(genConfig.tools);
-	const thinkingConfig =
-		genConfig.thinkingConfig ??
-		getThinkingConfig(CONFIG.GEMINI_MODEL, {
-			isAgentic: step > 1,
-		});
-
-	return (await runWithRetry(() =>
-		ai.models.generateContent({
-			model: CONFIG.GEMINI_MODEL,
-			// biome-ignore lint/suspicious/noExplicitAny: SDK expects content structure
-			contents: compactedContents as any,
-			config: {
-				...genConfig,
-				tools,
-				thinkingConfig,
-				abortSignal: signal,
-				// biome-ignore lint/suspicious/noExplicitAny: SDK expects config structure
-			} as any,
-		}),
-	)) as ModelStepResponse;
+	try {
+		logger.info(
+			`[Agent:${traceId}] Generating final summary after tool execution...`,
+		);
+		return await generateFinalSummary(messages, config, signal);
+	} catch (err) {
+		logger.warn(`[Agent:${traceId}] Error generating final summary:`, err);
+		return responseText;
+	}
 }
 
 function resolveNoToolTurn(
-	response: ModelStepResponse,
+	response: {
+		text: string;
+		candidates?: unknown[];
+		promptFeedback?: { blockReason?: unknown };
+		choices?: unknown[];
+	},
 	traceId: string,
 	step: number,
 	alreadyRetried: boolean,
@@ -717,15 +496,22 @@ function resolveLoopOptions(options: AgentLoopOptions): {
 	return { traceId, stepOptions: { ...options, traceId, sentFiles } };
 }
 
+/**
+ * Runs the multi-step agent loop: model call → tool execution → repeat, until
+ * the model produces a final text answer or the step budget is exhausted.
+ * All provider specifics (wire format, retries, thinking config) live inside
+ * the selected `LlmProvider`.
+ */
 export async function runAgentLoop(
-	contents: Array<Record<string, unknown>>,
-	genConfig: Record<string, unknown>,
+	messages: ChatMessage[],
+	config: AgentLoopConfig,
 	options: AgentLoopOptions = {},
 ): Promise<string> {
 	const { signal } = options;
 	const { traceId, stepOptions } = resolveLoopOptions(options);
 	const maxSteps = CONFIG.MAX_AGENT_STEPS;
 	const dispatch = makeEventDispatcher(options.onEvent, traceId);
+	const provider = getLlmProvider();
 
 	let responseText = "";
 	let executedTools = false;
@@ -743,16 +529,14 @@ export async function runAgentLoop(
 
 		await dispatch({ type: "step-start", step, maxSteps });
 
-		const compactedContents = compactContents(
-			contents,
-			CONFIG.AGENT_CONTEXT_MAX_CHARS,
-		);
-		const response = await callModelForStep(
-			compactedContents,
-			genConfig,
-			step,
+		const compacted = compactMessages(messages, CONFIG.AGENT_CONTEXT_MAX_CHARS);
+		const response = await provider.chat(compacted, {
+			tools: config.tools,
+			systemInstruction: config.systemInstruction,
+			maxTokens: config.maxOutputTokens,
+			agenticThinking: step > 1,
 			signal,
-		);
+		});
 
 		const functionCalls = extractFunctionCalls(response);
 		if (functionCalls.length === 0) {
@@ -777,7 +561,7 @@ export async function runAgentLoop(
 		);
 
 		const { aborted, ranAny } = await processToolStep({
-			contents,
+			messages,
 			functionCalls,
 			response,
 			stepOptions,
@@ -801,8 +585,8 @@ export async function runAgentLoop(
 	}
 
 	return finalizeAfterToolExecution(
-		contents,
-		genConfig,
+		messages,
+		config,
 		responseText,
 		executedTools,
 		signal,

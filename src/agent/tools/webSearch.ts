@@ -1,6 +1,7 @@
 import { CONFIG } from "../../config";
 import { ai } from "../../services/gemini/client";
-import { getThinkingConfig, runWithRetry } from "../../services/gemini/utils";
+import { getThinkingConfig } from "../../services/gemini/thinking";
+import { geminiRunWithRetry } from "../../services/llm/retry";
 import logger from "../../utils/logger";
 import type { AgentTool, ToolExecutionContext } from "../types";
 
@@ -112,7 +113,7 @@ async function performWebSearch(
 			`[WebSearchTool] Running Gemini Google Search for: "${trimmedQuery}"`,
 		);
 
-		const response = await runWithRetry(() =>
+		const response = await geminiRunWithRetry(() =>
 			ai.models.generateContent({
 				model: CONFIG.GEMINI_MODEL,
 				contents: `Search the web and provide concise, accurate facts, numbers, and dates for: ${trimmedQuery}`,

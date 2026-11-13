@@ -1,8 +1,9 @@
 import { CONFIG } from "../../config/index";
 import logger from "../../utils/logger";
 import { openAiProvider } from "../llm/openAiProvider";
+import { geminiRunWithRetry } from "../llm/retry";
 import { ai } from "./client";
-import { getThinkingConfig, runWithRetry } from "./utils";
+import { getThinkingConfig } from "./thinking";
 
 /**
  * Transcribes an audio buffer (voice note or audio file) using the dedicated
@@ -13,7 +14,7 @@ export async function transcribeAudio(
 	mimeType: string = "audio/ogg",
 ): Promise<string> {
 	try {
-		const response = await runWithRetry(
+		const response = await geminiRunWithRetry(
 			() =>
 				ai.models.generateContent({
 					model: "gemini-3.5-transcribe",
@@ -77,7 +78,7 @@ Do not comment, interpret, or make assumptions; provide only factual content. Re
 			return res.text;
 		}
 
-		const response = await runWithRetry(() =>
+		const response = await geminiRunWithRetry(() =>
 			ai.models.generateContent({
 				model: CONFIG.GEMINI_MODEL,
 				contents: [

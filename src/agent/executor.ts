@@ -15,28 +15,14 @@ export interface ToolExecutionOptions {
 	sentFiles?: Set<string>;
 }
 
-function buildFunctionResponse(
-	fc: RawFunctionCall,
-	result: unknown,
-): Record<string, unknown> {
-	const functionResponseObj: Record<string, unknown> = {
-		name: fc.name,
-		response: { result },
-	};
-	if (fc.id) {
-		functionResponseObj.id = fc.id;
-	}
-	return { functionResponse: functionResponseObj };
-}
-
 /**
  * Executes a single function call: runs the tool, logs a trace, delivers any
- * generated media artifacts, and returns an LLM-safe functionResponse part.
+ * generated media artifacts, and returns the LLM-safe sanitized result.
  */
 async function executeSingleToolCall(
 	fc: RawFunctionCall,
 	context: ToolExecutionContext,
-): Promise<Record<string, unknown>> {
+): Promise<unknown> {
 	const name = fc.name;
 	const args: Record<string, unknown> = { ...(fc.args || {}) };
 	const traceId = context.traceId || "default";
@@ -45,9 +31,7 @@ async function executeSingleToolCall(
 
 	if (context.signal?.aborted) {
 		logger.info(`[Agent:${traceId}] Tool '${name}' skipped (aborted).`);
-		return buildFunctionResponse(fc, {
-			error: `Tool '${name}' was cancelled before execution.`,
-		});
+		return { error: `Tool '${name}' was cancelled before execution.` };
 	}
 
 	const startTime = Date.now();
@@ -72,18 +56,18 @@ async function executeSingleToolCall(
 		step,
 	});
 
-	return buildFunctionResponse(fc, llmSafeResult);
+	return llmSafeResult;
 }
 
 /**
- * Executes multiple function calls in parallel while preserving exact response
+ * Executes multiple function calls in parallel while preserving exact result
  * ordering, isolating failures, and routing all reporting through one emitter.
  */
 export async function executeFunctionCallsInParallel(
 	functionCalls: RawFunctionCall[],
 	options: ToolExecutionOptions,
 	step: number,
-): Promise<Array<Record<string, unknown>>> {
+): Promise<unknown[]> {
 	const emit = mergeAgentEventHandlers(options.onEvent);
 
 	// Announce every requested tool first, in order, before execution begins.

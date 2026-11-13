@@ -6,8 +6,9 @@ import {
 import logger from "../../utils/logger";
 import { dotProduct, normalizeVector } from "../../utils/vector";
 import { getLlmProvider } from "../llm/index";
+import { geminiRunWithRetry } from "../llm/retry";
 import { ai } from "./client";
-import { expandContextualQuery, runWithRetry } from "./utils";
+import { expandContextualQuery } from "./queryExpansion";
 
 const newMemoriesCount = new Map<string, number>();
 const MAX_TRACKED_CHATS = 200;
@@ -37,7 +38,7 @@ export async function generateEmbedding(
 		const cached = queryEmbeddingCache.get(cacheKey);
 		if (cached) return cached;
 
-		const response = await runWithRetry(
+		const response = await geminiRunWithRetry(
 			() =>
 				ai.models.embedContent({
 					model: "gemini-embedding-2",
