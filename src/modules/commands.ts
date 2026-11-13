@@ -4,7 +4,7 @@ import { buildMiniAppKeyboard } from "../bot/ui/index";
 import { CONFIG } from "../config/index";
 import { Repository } from "../db/repository";
 import { abortGeneration } from "../services/bot/generation";
-import { processNewMemory } from "../services/gemini/memory";
+import { processNewMemory } from "../services/memory/memory";
 import logger from "../utils/logger";
 import { extractTelegramChatTitle } from "../utils/message";
 

@@ -1,9 +1,8 @@
 import { runAgentLoop, toolRegistry } from "../../agent";
-import { CONFIG } from "../../config";
 import type { MessageRow } from "../../db/repository";
 import { Repository } from "../../db/repository";
 import logger from "../../utils/logger";
-import { getRelevantMemories, type RetrievedMemory } from "../gemini/memory";
+import { getRelevantMemories, type RetrievedMemory } from "../memory/memory";
 import {
 	buildConversationalContextSections,
 	buildConversationalMessages,
@@ -12,17 +11,11 @@ import {
 	shouldEnableToolsForTurn,
 } from "./messages";
 import { getSystemInstruction } from "./prompt";
-import { getLlmProvider } from "./providerSelector";
 import { parseAndProcessReply } from "./replyParser";
 import { ensureTopicSummary, summarizeTopic } from "./topicSummary";
-import type {
-	GenerateReplyOptions,
-	GenerateResponseOptions,
-	LlmProvider,
-} from "./types";
+import type { GenerateReplyOptions, GenerateResponseOptions } from "./types";
 
 export type { GeneratedMediaArtifact } from "../../agent/index";
-export { getLlmProvider } from "./providerSelector";
 export type {
 	GenerateReplyOptions,
 	ReplyContextInfo,
@@ -45,21 +38,8 @@ function resolveGenerationFailure(
 	return fallbackError;
 }
 
-function resolveMaxOutputTokens(
-	isAgentic: boolean,
-	provider: LlmProvider,
-): number {
-	const isConversationalProvider = provider.name === "openai";
-	if (!isAgentic) {
-		return isConversationalProvider ? 2048 : 1024;
-	}
-	if (isConversationalProvider) {
-		return 4096;
-	}
-	if (CONFIG.MAX_TOOL_OUTPUT_TOKENS && CONFIG.MAX_TOOL_OUTPUT_TOKENS > 0) {
-		return CONFIG.MAX_TOOL_OUTPUT_TOKENS;
-	}
-	return 8192;
+function resolveMaxOutputTokens(isAgentic: boolean): number {
+	return isAgentic ? 4096 : 2048;
 }
 
 async function loadContextMemories(
@@ -136,7 +116,6 @@ async function generateResponse(
 		);
 		const messages = buildConversationalMessages(history, options);
 
-		const provider = getLlmProvider();
 		const declarations = enableTools
 			? toolRegistry.getFunctionDeclarations()
 			: [];
@@ -147,7 +126,7 @@ async function generateResponse(
 				isAgentic ? declarations.map((t) => t.name) : undefined,
 				contextSections,
 			),
-			maxOutputTokens: resolveMaxOutputTokens(isAgentic, provider),
+			maxOutputTokens: resolveMaxOutputTokens(isAgentic),
 			tools: isAgentic ? declarations : undefined,
 		};
 

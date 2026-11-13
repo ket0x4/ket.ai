@@ -1,7 +1,8 @@
-import OpenAI from "openai";
+import type OpenAI from "openai";
 import { extractFunctionCalls } from "../../agent/functionCalls";
 import type { FunctionDeclaration } from "../../agent/types";
 import { CONFIG } from "../../config";
+import { getOpenAiClient } from "./client";
 import { runWithRetry } from "./retry";
 import { normalizeSchemaSafely, parseStructuredJson } from "./structuredJson";
 import type {
@@ -149,34 +150,12 @@ function convertMessages(
 
 class OpenAiProvider implements LlmProvider {
 	readonly name = "openai" as const;
-	private client: OpenAI | null = null;
-	private clientBaseUrl = "";
-	private clientApiKey = "";
-
-	private getClient(): OpenAI {
-		const currentBaseUrl = CONFIG.OPENAI_BASE_URL;
-		const currentApiKey = CONFIG.OPENAI_API_KEY || "no-key";
-
-		if (
-			!this.client ||
-			this.clientBaseUrl !== currentBaseUrl ||
-			this.clientApiKey !== currentApiKey
-		) {
-			this.client = new OpenAI({
-				baseURL: currentBaseUrl,
-				apiKey: currentApiKey,
-			});
-			this.clientBaseUrl = currentBaseUrl;
-			this.clientApiKey = currentApiKey;
-		}
-		return this.client;
-	}
 
 	async chat(
 		messages: ChatMessage[],
 		options?: LlmChatOptions,
 	): Promise<LlmChatResult> {
-		const client = this.getClient();
+		const client = getOpenAiClient();
 		const openAiMessages = convertMessages(
 			messages,
 			options?.systemInstruction,
@@ -230,7 +209,7 @@ class OpenAiProvider implements LlmProvider {
 		systemInstruction?: string,
 		signal?: AbortSignal,
 	): Promise<T> {
-		const client = this.getClient();
+		const client = getOpenAiClient();
 
 		const isArraySchema =
 			schema &&

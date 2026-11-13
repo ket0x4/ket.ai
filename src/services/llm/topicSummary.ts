@@ -1,7 +1,7 @@
 import type { MessageRow } from "../../db/repository";
 import { Repository } from "../../db/repository";
 import logger from "../../utils/logger";
-import { getLlmProvider } from "./providerSelector";
+import { openAiProvider } from "./openAiProvider";
 
 const lastSummarizedCount = new Map<string, number>();
 const MAX_TRACKED_CHATS = 200;
@@ -38,7 +38,7 @@ export async function summarizeTopic(history: MessageRow[]): Promise<string> {
 			required: ["summary"],
 		};
 
-		const parsed = await getLlmProvider().generateStructured<{
+		const parsed = await openAiProvider.generateStructured<{
 			summary?: string;
 		}>(
 			`Summarize the main topic of this conversation in 1-2 short sentences:\n\n${lines}`,

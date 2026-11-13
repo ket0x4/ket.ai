@@ -1,11 +1,11 @@
 import type { Bot } from "grammy";
 import { Repository } from "../db/repository";
-import { transcribeAudio } from "../services/gemini/mediaPerception";
 import { LlmService } from "../services/llm/index";
 import {
 	isDirectMediaInteraction,
 	processMediaInteraction,
 } from "../services/mediaHelper";
+import { transcribeAudio } from "../services/perception/mediaPerception";
 import logger from "../utils/logger";
 import { getAudioMimeType } from "../utils/mediaDownloader";
 
@@ -29,7 +29,7 @@ export function registerVoiceHandlers(bot: Bot) {
 				targetMessage,
 			) => {
 				logger.info(
-					"[Voice] Transcribing voice message using gemini-3.5-transcribe...",
+					"[Voice] Transcribing voice message using the audio transcription model...",
 				);
 				const transcription = await transcribeAudio(buffer, mimeType);
 				const cleanTranscription = transcription.trim();

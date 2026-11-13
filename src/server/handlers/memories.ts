@@ -5,7 +5,7 @@ import { invalidateMemoryCaches } from "../../db/repository/cache";
 import {
 	generateEmbedding,
 	processNewMemory,
-} from "../../services/gemini/memory";
+} from "../../services/memory/memory";
 import { isPlaceholderChatTitle } from "../../utils/chatTitle";
 import logger from "../../utils/logger";
 import { errorResponse, jsonResponse } from "../http";
@@ -299,7 +299,7 @@ async function handleMemoryPatch(
 		};
 		if (!body.memoryText) return errorResponse("memoryText is required");
 
-		const emb = await generateEmbedding(body.memoryText, "RETRIEVAL_DOCUMENT");
+		const emb = await generateEmbedding(body.memoryText);
 		Repository.updateMemory(id, body.memoryText, body.category, emb);
 
 		return jsonResponse({

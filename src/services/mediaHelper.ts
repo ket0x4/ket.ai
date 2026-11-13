@@ -99,7 +99,7 @@ export async function processMediaInteraction(
 				);
 
 				logger.info(
-					`[${options.mediaType}] Sending ${options.mediaType} to Gemini for analysis...`,
+					`[${options.mediaType}] Sending ${options.mediaType} to the model for analysis...`,
 				);
 				const targetMessage: TargetMessageInfo = {
 					messageId: msg.message_id,

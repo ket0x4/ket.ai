@@ -112,7 +112,7 @@ export async function stageDocumentInWorkspace(
 }
 
 /**
- * Extracts and prepares document context for Gemini LLM.
+ * Extracts and prepares document context for the LLM.
  */
 export function prepareDocumentContext(
 	buffer: Buffer,
@@ -133,8 +133,7 @@ export function prepareDocumentContext(
 	let summaryHint: string | undefined;
 
 	if (isPdf) {
-		mediaPayload = { buffer, mimeType: "application/pdf" };
-		summaryHint = `PDF document (${fileName}, ${(sizeBytes / 1024).toFixed(1)} KB). Gemini can read page text and visual layouts directly.`;
+		summaryHint = `PDF document (${fileName}, ${(sizeBytes / 1024).toFixed(1)} KB). Read and analyze it from the workspace.`;
 	} else if (isImage) {
 		mediaPayload = { buffer, mimeType: mimeType || "image/png" };
 		summaryHint = `Image document (${fileName}, ${(sizeBytes / 1024).toFixed(1)} KB).`;

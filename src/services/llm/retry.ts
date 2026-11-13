@@ -1,10 +1,9 @@
-import { CONFIG } from "../../config";
 import logger from "../../utils/logger";
 
 /**
- * Single source of truth for LLM request retry logic. Provider adapters wrap
- * their SDK calls here; Gemini callers go through `geminiRunWithRetry`, which
- * adds serial rate limiting per bucket.
+ * Single source of truth for LLM request retry logic. Callers wrap their SDK
+ * calls here; the shared rate limiter buckets add serial rate limiting for
+ * high-frequency call types (embeddings, transcription).
  */
 
 interface ErrorLike {
@@ -36,36 +35,11 @@ function isTransientError(error: unknown): boolean {
 	return (
 		message.includes("429") ||
 		message.includes("503") ||
-		message.includes("UNAVAILABLE") ||
-		message.includes("RESOURCE_EXHAUSTED") ||
-		message.includes("INTERNAL") ||
-		message.includes("high demand") ||
 		message.includes("Quota exceeded") ||
 		message.includes("connection error") ||
 		message.includes("fetch failed") ||
 		message.includes("network timeout")
 	);
-}
-
-/** Extracts a server-suggested retry delay in ms (Gemini-style error payloads). */
-function parseDetailsDelay(error: unknown): number | null {
-	// biome-ignore lint/suspicious/noExplicitAny: error details can be nested
-	const errorObj: any = error;
-	const details = errorObj?.error?.details || errorObj?.details;
-	if (!Array.isArray(details)) return null;
-
-	for (const d of details) {
-		if (d?.retryDelay) {
-			const match = String(d.retryDelay).match(/^([0-9.]+)\s*s?$/i);
-			if (match?.[1]) {
-				const seconds = Number.parseFloat(match[1]);
-				if (!Number.isNaN(seconds) && seconds > 0) {
-					return Math.ceil(seconds * 1000) + 500;
-				}
-			}
-		}
-	}
-	return null;
 }
 
 function parseTextDelay(str: string): number | null {
@@ -81,30 +55,8 @@ function parseTextDelay(str: string): number | null {
 	return null;
 }
 
-function tryParseJsonObject(raw: unknown): unknown {
-	if (typeof raw === "string") {
-		try {
-			return JSON.parse(raw);
-		} catch {
-			return null;
-		}
-	}
-	if (raw instanceof Error && raw.message) {
-		try {
-			return JSON.parse(raw.message);
-		} catch {
-			return null;
-		}
-	}
-	return raw;
-}
-
 function extractRetryDelayMs(error: unknown): number | null {
 	if (!error) return null;
-
-	const parsedObj = tryParseJsonObject(error);
-	const detailsDelay = parseDetailsDelay(parsedObj || error);
-	if (detailsDelay !== null) return detailsDelay;
 
 	const str =
 		typeof error === "string"
@@ -155,22 +107,19 @@ class RateLimiter {
 	}
 }
 
-/** Shared Gemini rate limiter buckets. */
-const geminiRateLimiters = {
-	default: new RateLimiter(() => CONFIG.GEMINI_MIN_REQUEST_INTERVAL_MS ?? 3500),
+/** Shared rate limiter buckets for high-frequency call types. */
+export const rateLimiters = {
 	embedding: new RateLimiter(() => 100),
 	transcribe: new RateLimiter(() => 500),
 } as const;
 
-export type GeminiLimiterBucket = keyof typeof geminiRateLimiters;
-
 export interface RunWithRetryOptions {
 	retries?: number;
 	baseDelayMs?: number;
-	/** Serial rate limiter to schedule calls through (e.g. a Gemini bucket). */
+	/** Serial rate limiter to schedule calls through. */
 	limiter?: RateLimiter;
 	customIntervalMs?: number;
-	/** Label used in retry log lines, e.g. "Gemini:embedding". */
+	/** Label used in retry log lines, e.g. "OpenAI:embedding". */
 	logLabel?: string;
 	/** How the backoff grows between attempts. */
 	delayGrowth?: "exponential" | "linear";
@@ -265,23 +214,4 @@ export async function runWithRetry<T>(
 		}
 	}
 	throw lastError;
-}
-
-/**
- * `runWithRetry` preconfigured for Gemini API calls: the default bucket
- * rate limiter, 4 attempts, 5s base backoff, and server-delay parsing.
- */
-export function geminiRunWithRetry<T>(
-	fn: () => Promise<T>,
-	options: Omit<RunWithRetryOptions, "limiter" | "logLabel"> & {
-		bucket?: GeminiLimiterBucket;
-	} = {},
-): Promise<T> {
-	const bucket = options.bucket ?? "default";
-	return runWithRetry(fn, {
-		...options,
-		limiter: geminiRateLimiters[bucket],
-		logLabel: `Gemini:${bucket}`,
-		delayGrowth: "linear",
-	});
 }

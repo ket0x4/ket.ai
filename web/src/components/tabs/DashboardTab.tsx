@@ -57,7 +57,7 @@ const METRICS_BY_ROLE: Record<
 		},
 		{
 			title: "Active model",
-			value: s?.model || "gemini",
+			value: s?.model || "openai",
 			icon: Sparkles,
 			description: "Inference engine",
 		},

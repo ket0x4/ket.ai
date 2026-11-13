@@ -1,3 +1,4 @@
+import { CONFIG } from "../../config";
 import {
 	type MemoryItem,
 	type MessageRow,
@@ -5,9 +6,9 @@ import {
 } from "../../db/repository/index";
 import logger from "../../utils/logger";
 import { dotProduct, normalizeVector } from "../../utils/vector";
-import { getLlmProvider } from "../llm/index";
-import { geminiRunWithRetry } from "../llm/retry";
-import { ai } from "./client";
+import { getOpenAiClient } from "../llm/client";
+import { openAiProvider } from "../llm/openAiProvider";
+import { rateLimiters, runWithRetry } from "../llm/retry";
 import { expandContextualQuery } from "./queryExpansion";
 
 const newMemoriesCount = new Map<string, number>();
@@ -15,41 +16,26 @@ const MAX_TRACKED_CHATS = 200;
 const queryEmbeddingCache = new Map<string, number[]>();
 const MAX_EMBEDDING_CACHE = 100;
 
-const TASK_PREFIXES: Record<string, string> = {
-	RETRIEVAL_QUERY: "task: search result | query: ",
-	RETRIEVAL_DOCUMENT: "title: none | text: ",
-	SEMANTIC_SIMILARITY: "task: sentence similarity | query: ",
-};
-
-function formatEmbeddingContent(text: string, taskType: string): string {
-	return `${TASK_PREFIXES[taskType] ?? ""}${text.trim()}`;
-}
-
-export async function generateEmbedding(
-	text: string,
-	taskType:
-		| "RETRIEVAL_DOCUMENT"
-		| "RETRIEVAL_QUERY"
-		| "SEMANTIC_SIMILARITY" = "RETRIEVAL_DOCUMENT",
-): Promise<number[]> {
+export async function generateEmbedding(text: string): Promise<number[]> {
 	try {
-		const formattedContents = formatEmbeddingContent(text, taskType);
-		const cacheKey = `${taskType}::${formattedContents.toLowerCase()}`;
+		const trimmed = text.trim();
+		const cacheKey = trimmed.toLowerCase();
 		const cached = queryEmbeddingCache.get(cacheKey);
 		if (cached) return cached;
 
-		const response = await geminiRunWithRetry(
+		const response = await runWithRetry(
 			() =>
-				ai.models.embedContent({
-					model: "gemini-embedding-2",
-					contents: formattedContents,
-					config: {
-						taskType,
-					},
+				getOpenAiClient().embeddings.create({
+					model: CONFIG.OPENAI_EMBEDDING_MODEL,
+					input: trimmed,
 				}),
-			{ bucket: "embedding", baseDelayMs: 1000 },
+			{
+				limiter: rateLimiters.embedding,
+				baseDelayMs: 1000,
+				logLabel: "OpenAI:embedding",
+			},
 		);
-		const values = response.embeddings?.[0]?.values || [];
+		const values = response.data?.[0]?.embedding || [];
 		if (values.length > 0) {
 			if (queryEmbeddingCache.size >= MAX_EMBEDDING_CACHE) {
 				const oldest = queryEmbeddingCache.keys().next().value;
@@ -155,7 +141,7 @@ export async function processNewMemory(
 		return;
 	}
 
-	const rawEmb = await generateEmbedding(memText, "RETRIEVAL_DOCUMENT");
+	const rawEmb = await generateEmbedding(memText);
 	if (rawEmb.length === 0) {
 		logger.warn(
 			`[Memory Store] Skipped memory for chat ${chatIdStr} due to embedding failure:`,
@@ -451,10 +437,7 @@ async function queryMemoriesWithDiagnostics(
 	}
 
 	const startTime = Date.now();
-	const queryEmbedding = await generateEmbedding(
-		enrichedQuery,
-		"RETRIEVAL_QUERY",
-	);
+	const queryEmbedding = await generateEmbedding(enrichedQuery);
 	const embeddingTimeMs = Date.now() - startTime;
 
 	if (queryEmbedding.length === 0) {
@@ -556,7 +539,7 @@ Memories:
 ${memoryListText}`;
 
 		try {
-			const idsToDelete = await getLlmProvider().generateStructured<number[]>(
+			const idsToDelete = await openAiProvider.generateStructured<number[]>(
 				prompt,
 				{
 					type: "ARRAY",

@@ -1,5 +1,4 @@
 import {
-	Brain,
 	Code2,
 	Cpu,
 	FileText,
@@ -35,8 +34,6 @@ import { api } from "@/lib/api";
 import type { BotSettings } from "@/types";
 
 const DEFAULT_SETTINGS: BotSettings = {
-	llm_provider: "gemini",
-	gemini_model: "gemini-3.8-flash",
 	openai_model: "default",
 	openai_base_url: "http://localhost:8080/v1",
 	default_reply_probability: 0.05,
@@ -47,7 +44,6 @@ const DEFAULT_SETTINGS: BotSettings = {
 	enable_web_search: true,
 	enable_code_execution: true,
 	enable_fetch_url: true,
-	enable_agent_thinking: true,
 };
 
 const GroupLabel: FC<{ icon: ElementType; title: string }> = ({
@@ -159,11 +155,6 @@ const EngineSettingsSection: FC<EngineSettingsSectionProps> = ({
 	settings,
 	onPatch,
 }) => {
-	const isOpenAi = settings.llm_provider === "openai";
-	const modelValue = isOpenAi
-		? (settings.openai_model ?? "")
-		: (settings.gemini_model ?? "");
-
 	return (
 		<div className="space-y-3">
 			<GroupLabel icon={Cpu} title="AI engine" />
@@ -171,64 +162,33 @@ const EngineSettingsSection: FC<EngineSettingsSectionProps> = ({
 			<div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
 				<div className="space-y-1.5">
 					<label
-						htmlFor="select-provider-sys"
+						htmlFor="input-model-sys"
 						className="text-xs text-muted-foreground"
 					>
-						Provider
+						OpenAI / Local Model
 					</label>
-					<Select
-						value={settings.llm_provider ?? "gemini"}
-						onValueChange={(val) =>
-							onPatch({ llm_provider: val as "gemini" | "openai" })
-						}
-					>
-						<SelectTrigger id="select-provider-sys" className="w-full">
-							<SelectValue />
-						</SelectTrigger>
-						<SelectContent>
-							<SelectItem value="gemini">Google Gemini</SelectItem>
-							<SelectItem value="openai">OpenAI / llama-server</SelectItem>
-						</SelectContent>
-					</Select>
+					<Input
+						id="input-model-sys"
+						placeholder="default"
+						value={settings.openai_model ?? ""}
+						onChange={(e) => onPatch({ openai_model: e.target.value })}
+					/>
 				</div>
 
 				<div className="space-y-1.5">
 					<label
-						htmlFor="input-model-sys"
+						htmlFor="input-openai-baseurl-sys"
 						className="text-xs text-muted-foreground"
 					>
-						{isOpenAi ? "OpenAI / Local Model" : "Gemini Model"}
+						Server Base URL
 					</label>
 					<Input
-						id="input-model-sys"
-						placeholder={isOpenAi ? "default" : "gemini-3.8-flash"}
-						value={modelValue}
-						onChange={(e) =>
-							onPatch(
-								isOpenAi
-									? { openai_model: e.target.value }
-									: { gemini_model: e.target.value },
-							)
-						}
+						id="input-openai-baseurl-sys"
+						placeholder="http://localhost:8080/v1"
+						value={settings.openai_base_url ?? ""}
+						onChange={(e) => onPatch({ openai_base_url: e.target.value })}
 					/>
 				</div>
-
-				{isOpenAi && (
-					<div className="space-y-1.5 sm:col-span-2">
-						<label
-							htmlFor="input-openai-baseurl-sys"
-							className="text-xs text-muted-foreground"
-						>
-							Server Base URL
-						</label>
-						<Input
-							id="input-openai-baseurl-sys"
-							placeholder="http://localhost:8080/v1"
-							value={settings.openai_base_url ?? ""}
-							onChange={(e) => onPatch({ openai_base_url: e.target.value })}
-						/>
-					</div>
-				)}
 
 				<ClampedNumberField
 					id="input-agent-steps-sys"
@@ -270,13 +230,6 @@ const EngineSettingsSection: FC<EngineSettingsSectionProps> = ({
 					description="Fetch and read web pages directly."
 					checked={settings.enable_fetch_url ?? true}
 					onCheckedChange={(val) => onPatch({ enable_fetch_url: val })}
-				/>
-				<ToggleRow
-					icon={Brain}
-					title="Agent reasoning"
-					description="Enable thinking budget on tool turns."
-					checked={settings.enable_agent_thinking ?? true}
-					onCheckedChange={(val) => onPatch({ enable_agent_thinking: val })}
 				/>
 			</div>
 		</div>

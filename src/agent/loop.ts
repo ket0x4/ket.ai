@@ -1,5 +1,5 @@
 import { CONFIG } from "../config";
-import { getLlmProvider } from "../services/llm/providerSelector";
+import { openAiProvider } from "../services/llm/openAiProvider";
 import type { ChatMessage } from "../services/llm/types";
 import logger from "../utils/logger";
 import type { AgentEvent, AgentEventHandler } from "./events";
@@ -19,14 +19,7 @@ export interface AgentLoopConfig {
 	tools?: FunctionDeclaration[];
 }
 
-const BLOCKING_FINISH_REASONS = new Set([
-	"SAFETY",
-	"RECITATION",
-	"BLOCKLIST",
-	"PROHIBITED_CONTENT",
-	"SPII",
-	"IMAGE_SAFETY",
-]);
+const BLOCKING_FINISH_REASONS = new Set(["content_filter"]);
 
 const COMPACT_TEXT_LIMIT = 1500;
 const COMPACT_TOOL_RESULT_LIMIT = 800;
@@ -278,37 +271,24 @@ function trackFailures(
 // --- Model response inspection ---------------------------------------------
 
 function inspectNoToolCallResponse(
-	response: {
-		text: string;
-		candidates?: unknown[];
-		promptFeedback?: { blockReason?: unknown };
-	},
+	response: { text: string; choices?: unknown[] },
 	traceId: string,
 	step: number,
 ): { text: string; blocked: boolean } {
 	const text = response.text;
-	const firstCandidate = response.candidates?.[0] as
-		| { finishReason?: unknown }
-		| undefined;
-	const firstChoice = (response as { choices?: unknown[] }).choices?.[0] as
+	const firstChoice = response.choices?.[0] as
 		| { finish_reason?: unknown }
 		| undefined;
-	const finishReason = String(
-		firstCandidate?.finishReason ?? firstChoice?.finish_reason ?? "",
-	);
-	const blockReason = response.promptFeedback?.blockReason
-		? String(response.promptFeedback.blockReason)
-		: undefined;
+	const finishReason = String(firstChoice?.finish_reason ?? "");
 	const blocked =
-		Boolean(blockReason) ||
 		BLOCKING_FINISH_REASONS.has(finishReason) ||
 		finishReason === "content_filter";
 
 	if (!text) {
 		logger.warn(
-			`[Agent:${traceId}] Model returned no tool calls and no text at step ${step} (finishReason=${finishReason || "unknown"}, blockReason=${blockReason ?? "none"}).`,
+			`[Agent:${traceId}] Model returned no tool calls and no text at step ${step} (finishReason=${finishReason || "unknown"}).`,
 		);
-	} else if (finishReason === "MAX_TOKENS" || finishReason === "length") {
+	} else if (finishReason === "length") {
 		logger.warn(
 			`[Agent:${traceId}] Response truncated at MAX_TOKENS; using partial text.`,
 		);
@@ -438,10 +418,9 @@ async function generateFinalSummary(
 	config: AgentLoopConfig,
 	signal?: AbortSignal,
 ): Promise<string> {
-	const result = await getLlmProvider().chat(messages, {
+	const result = await openAiProvider.chat(messages, {
 		systemInstruction: config.systemInstruction,
 		maxTokens: 1024,
-		agenticThinking: false,
 		signal,
 	});
 	return result.text;
@@ -470,12 +449,7 @@ async function finalizeAfterToolExecution(
 }
 
 function resolveNoToolTurn(
-	response: {
-		text: string;
-		candidates?: unknown[];
-		promptFeedback?: { blockReason?: unknown };
-		choices?: unknown[];
-	},
+	response: { text: string; choices?: unknown[] },
 	traceId: string,
 	step: number,
 	alreadyRetried: boolean,
@@ -511,7 +485,7 @@ export async function runAgentLoop(
 	const { traceId, stepOptions } = resolveLoopOptions(options);
 	const maxSteps = CONFIG.MAX_AGENT_STEPS;
 	const dispatch = makeEventDispatcher(options.onEvent, traceId);
-	const provider = getLlmProvider();
+	const provider = openAiProvider;
 
 	let responseText = "";
 	let executedTools = false;
@@ -534,7 +508,6 @@ export async function runAgentLoop(
 			tools: config.tools,
 			systemInstruction: config.systemInstruction,
 			maxTokens: config.maxOutputTokens,
-			agenticThinking: step > 1,
 			signal,
 		});
 

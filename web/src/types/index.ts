@@ -93,8 +93,6 @@ export interface Chat {
 }
 
 export interface BotSettings {
-	llm_provider?: "gemini" | "openai";
-	gemini_model?: string;
 	openai_model?: string;
 	openai_base_url?: string;
 	openai_api_key?: string;
@@ -106,7 +104,6 @@ export interface BotSettings {
 	enable_web_search?: boolean;
 	enable_code_execution?: boolean;
 	enable_fetch_url?: boolean;
-	enable_agent_thinking?: boolean;
 }
 
 export interface LogEntry {

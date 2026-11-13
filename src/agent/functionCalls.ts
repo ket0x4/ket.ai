@@ -4,22 +4,8 @@ export interface RawFunctionCall {
 	args?: Record<string, unknown>;
 }
 
-interface GeminiFunctionCallPart {
-	functionCall?: {
-		id?: string;
-		name?: string;
-		args?: Record<string, unknown>;
-	};
-}
-
 export interface ModelResponseLike {
 	toolCalls?: RawFunctionCall[];
-	functionCalls?: Array<{
-		id?: string;
-		name?: string;
-		args?: Record<string, unknown>;
-	}>;
-	candidates?: unknown[];
 	choices?: unknown[];
 }
 
@@ -70,14 +56,5 @@ export function extractFunctionCalls(
 		return calls;
 	}
 
-	const firstCandidate = response.candidates?.[0] as
-		| { content?: { parts?: GeminiFunctionCallPart[] } }
-		| undefined;
-	const rawParts = firstCandidate?.content?.parts;
-	const candidateCalls =
-		response.functionCalls ||
-		rawParts?.filter((p) => p.functionCall?.name).map((p) => p.functionCall);
-	return (candidateCalls || []).filter((fc): fc is RawFunctionCall =>
-		Boolean(fc?.name),
-	);
+	return [];
 }
