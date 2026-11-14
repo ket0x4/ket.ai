@@ -1,10 +1,9 @@
-import { Bot, Brain, Home, Loader2, Settings, Users } from "lucide-react";
+import { Bot, Brain, Home, Settings, Users } from "lucide-react";
 import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { AccessDenied } from "@/components/AccessDenied";
 import { AppNav, type AppNavItem } from "@/components/AppNav";
 import { LoadingState } from "@/components/common/LoadingState";
-import { Header } from "@/components/Header";
 import { DashboardTab } from "@/components/tabs/DashboardTab";
 import { Toaster } from "@/components/ui/sonner";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
@@ -163,9 +162,8 @@ export default function App() {
 
 	if (!authChecked) {
 		return (
-			<div className="flex min-h-[100dvh] flex-col items-center justify-center gap-3 text-muted-foreground">
-				<Loader2 className="h-5 w-5 animate-spin" />
-				<span className="text-xs">Authenticating</span>
+			<div className="flex min-h-[100dvh] items-center justify-center text-xs text-muted-foreground">
+				Authenticating
 			</div>
 		);
 	}
@@ -185,16 +183,7 @@ export default function App() {
 	];
 
 	return (
-		<div className="flex min-h-[100dvh] flex-col bg-background text-foreground selection:bg-primary/20">
-			<Header
-				user={currentUser}
-				role={role}
-				isOnline={true}
-				isOptedOut={isOptedOut}
-				isUpdating={isUpdatingOptOut}
-				onToggleOptOut={() => handleToggleOptOut(!isOptedOut)}
-			/>
-
+		<div className="flex min-h-[100dvh] flex-col bg-background text-foreground">
 			<Tabs
 				value={activeTab}
 				onValueChange={setActiveTab}
@@ -208,6 +197,9 @@ export default function App() {
 							isLoading={isLoadingData}
 							onNavigateToGroups={() => setActiveTab("groups")}
 							onRefresh={loadAppData}
+							isOptedOut={isOptedOut}
+							isUpdatingOptOut={isUpdatingOptOut}
+							onToggleOptOut={() => handleToggleOptOut(!isOptedOut)}
 						/>
 					</TabsContent>
 

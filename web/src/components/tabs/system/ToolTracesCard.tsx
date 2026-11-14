@@ -34,7 +34,7 @@ export const ToolTracesCard: FC = () => {
 			</CardHeader>
 
 			<CardContent>
-				<div className="max-h-72 space-y-2 overflow-y-auto overflow-x-auto rounded-lg border border-border bg-black/40 p-3 font-mono text-[11px]">
+				<div className="max-h-72 space-y-2 overflow-y-auto overflow-x-auto rounded-lg border border-border bg-background p-3 font-mono text-[11px]">
 					{isLoading && traces.length === 0 ? (
 						<div className="py-4 text-center text-muted-foreground">
 							Loading

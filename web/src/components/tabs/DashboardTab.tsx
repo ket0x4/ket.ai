@@ -1,4 +1,9 @@
-import { ArrowRight, MessageSquare } from "lucide-react";
+import {
+	ArrowRight,
+	MessageSquare,
+	ShieldCheck,
+	ShieldOff,
+} from "lucide-react";
 import type { FC } from "react";
 import {
 	EmptyState,
@@ -71,7 +76,7 @@ const MemorySummary: FC<{
 						<div
 							key={cat.value}
 							style={{ width: `${share(catStats[cat.value] || 0)}%` }}
-							className={cn("h-full transition-all", SWATCHES[idx])}
+							className={cn("h-full", SWATCHES[idx])}
 							title={`${cat.value}: ${catStats[cat.value] || 0}`}
 						/>
 					))}
@@ -164,6 +169,9 @@ interface DashboardTabProps {
 	isLoading: boolean;
 	onNavigateToGroups: () => void;
 	onRefresh: () => void;
+	isOptedOut?: boolean;
+	isUpdatingOptOut?: boolean;
+	onToggleOptOut?: () => void;
 }
 
 export const DashboardTab: FC<DashboardTabProps> = ({
@@ -172,6 +180,9 @@ export const DashboardTab: FC<DashboardTabProps> = ({
 	isLoading,
 	onNavigateToGroups,
 	onRefresh,
+	isOptedOut = false,
+	isUpdatingOptOut = false,
+	onToggleOptOut,
 }) => {
 	if (isLoading && !stats) {
 		return <LoadingState />;
@@ -183,7 +194,32 @@ export const DashboardTab: FC<DashboardTabProps> = ({
 		<div className="space-y-4">
 			<PageHeader
 				title="Overview"
-				actions={<RefreshButton onClick={onRefresh} isLoading={isLoading} />}
+				actions={
+					<>
+						{onToggleOptOut && (
+							<Button
+								variant="ghost"
+								size="icon"
+								onClick={onToggleOptOut}
+								disabled={isUpdatingOptOut}
+								aria-pressed={isOptedOut}
+								aria-label={isOptedOut ? "Enable bot" : "Pause bot"}
+								title={
+									isOptedOut
+										? "Bot paused. Click to resume."
+										: "Bot active. Click to pause."
+								}
+							>
+								{isOptedOut ? (
+									<ShieldOff className="h-4 w-4 text-rose-400" />
+								) : (
+									<ShieldCheck className="h-4 w-4 text-emerald-400" />
+								)}
+							</Button>
+						)}
+						<RefreshButton onClick={onRefresh} isLoading={isLoading} />
+					</>
+				}
 			/>
 
 			<div className="grid grid-cols-3 divide-x divide-border overflow-hidden rounded-xl border border-border bg-card">

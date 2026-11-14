@@ -315,7 +315,7 @@ export const MemoriesTab: FC<MemoriesTabProps> = ({
 								onClick={() => setScopeFilter(scope.value)}
 								aria-pressed={scopeFilter === scope.value}
 								className={cn(
-									"flex-1 rounded-md px-2 py-1 text-[11px] font-medium transition-colors",
+									"flex-1 rounded-md px-2 py-1 text-[11px] font-medium",
 									scopeFilter === scope.value
 										? "bg-accent text-foreground"
 										: "text-muted-foreground hover:text-foreground",

@@ -188,7 +188,7 @@ export const PersonaModal: FC<PersonaModalProps> = ({
 										key={tpl.title}
 										type="button"
 										onClick={() => applyTemplate(tpl)}
-										className="rounded-lg border border-border/60 bg-background/40 px-2 py-1.5 text-left transition-colors hover:border-border hover:bg-accent"
+										className="rounded-lg border border-border/60 bg-background/40 px-2 py-1.5 text-left hover:border-border hover:bg-accent"
 									>
 										<span className="block truncate text-xs font-medium text-foreground">
 											{tpl.title}
